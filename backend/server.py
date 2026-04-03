@@ -931,10 +931,37 @@ async def create_season(name: str, current_user: User = Depends(get_current_user
 
 # ============= BANK ACCOUNT ROUTES =============
 
-@api_router.get("/bank-accounts", response_model=List[BankAccount])
+@api_router.get("/bank-accounts")
 async def get_bank_accounts(current_user: User = Depends(get_current_user)):
+    """Tüm banka hesaplarını bakiyeleriyle birlikte getir"""
     accounts = await db.bank_accounts.find({}, {"_id": 0}).to_list(1000)
-    return accounts
+    
+    # Her hesap için dinamik bakiye hesapla
+    result = []
+    for account in accounts:
+        account_id = account["id"]
+        
+        # Gelen ödemeler (student_payment)
+        income_payments = await db.payments.find({
+            "bank_account_id": account_id,
+            "payment_type": "student_payment"
+        }, {"_id": 0, "amount": 1}).to_list(10000)
+        total_income = sum([p["amount"] for p in income_payments])
+        
+        # Giden ödemeler (expense, teacher_payment)
+        expense_payments = await db.payments.find({
+            "bank_account_id": account_id,
+            "payment_type": {"$in": ["expense", "teacher_payment"]}
+        }, {"_id": 0, "amount": 1}).to_list(10000)
+        total_expense = sum([p["amount"] for p in expense_payments])
+        
+        # Bakiyeyi hesapla ve account'a ekle
+        account["balance"] = total_income - total_expense
+        account["total_income"] = total_income
+        account["total_expense"] = total_expense
+        result.append(account)
+    
+    return result
 
 @api_router.post("/bank-accounts", response_model=BankAccount)
 async def create_bank_account(account_data: BankAccountCreate, current_user: User = Depends(get_current_user)):
