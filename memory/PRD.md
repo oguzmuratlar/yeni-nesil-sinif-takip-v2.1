@@ -1,5 +1,10 @@
 # Eğitim Yönetim Sistemi - PRD
 
+## Son Güncelleme: 7 Nisan 2026
+
+### Son Değişiklik
+- **Ödeme Pop-up Scroll:** AdminPayments.jsx dialog'una max-height ve overflow-y-auto eklendi (7 Nisan 2026)
+
 ## Proje Özeti
 Özel ders merkezi yönetim sistemi. Admin ve Teacher rolleri ile öğrenci, öğretmen, ders, ödeme, kamp ve YouTube içerik yönetimi.
 

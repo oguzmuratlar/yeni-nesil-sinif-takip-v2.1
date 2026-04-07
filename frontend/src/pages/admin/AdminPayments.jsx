@@ -640,7 +640,7 @@ const AdminPayments = () => {
 
         {/* Add/Edit Payment Dialog */}
         <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-          <DialogContent className="sm:max-w-md mx-4 sm:mx-auto">
+          <DialogContent className="sm:max-w-md mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editingPayment ? 'Ödeme Düzenle' : (dialogType === 'income' ? 'Ödeme Girişi' : 'Para Çıkışı')}
