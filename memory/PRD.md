@@ -248,25 +248,27 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Son Güncelleme
 - Tarih: 2026-04-07
-- Versiyon: 3.5
+- Versiyon: 3.6
 - Değişiklikler:
-  1. **Ücretsiz Grup Dersi Özelliği**:
-     - Lesson modeline `is_free_lesson` (boolean) field eklendi
-     - Admin grup ders girişinde "Ücretsiz Ders" checkbox'ı eklendi
-     - Ücretsiz dersler öğrenci bakiyesinden düşülmez
-     - Öğretmen kazancı tüm dersler için (ücretsiz dahil) devam eder
-     - Yapılan dersler listesinde ücretsiz dersler yeşil arka plan ve 🎁 etiketi ile gösterilir
-     - Toplam ders özeti altında ücretsiz ders sayısı görüntülenir
-  2. **Admin Grup Ders Girişi Ekranı Yenilendi**:
-     - Öğretmen ekranıyla aynı UI yapısına getirildi
-     - Gruptaki öğrenciler listesi
-     - Toplam ders sayısı ve ders günü özeti
-     - Tarih formatı: gün ay yıl (ay adı yazıyla)
-  3. **Öğrenci Bakiye Hesaplaması Güncellendi**:
-     - `free_lessons` field eklendi (gösterim için)
-     - Sadece `is_free_lesson=false` dersler bakiyeden düşülür
-  4. **Önceki Güncellemeler**:
+  1. **Admin Grup Ders Girişi Ekranı Güncellendi**:
+     - Satırlarda "Düzenle" butonu eklendi
+     - Ders sayısı default 2 olarak ayarlandı
+     - Ders sayısı gösterimi düzeltildi (öğrenci sayısı ile çarpılmıyor)
+     - Tarih ve ders sayısı komponenti öğretmen ekranıyla aynı hale getirildi
+  2. **Öğretmen Grup Ders Girişi Güncellendi**:
+     - Ders sayısı default 2 olarak ayarlandı
+     - Ders sayısı gösterimi düzeltildi
+  3. **Aylık Program Filtreleri Güncellendi**:
+     - Çoklu seçim desteği (Checkbox ile birden fazla öğretmen/branş/durum/gün seçilebilir)
+     - Durum kodları yerine Türkçe adları gösteriliyor (mesaj_atildi → "Mesaj atıldı")
+     - Filtre hafızası (localStorage) - logout sonrası bile filtreler korunuyor
+     - Öğretmen gideri artık filtrelenmiş tablodan hesaplanıyor
+  4. **Ödemeler Ekranı Filtreleri Güncellendi**:
+     - Tarih filtresi dinamik hale getirildi (sadece ödeme olan aylar gösteriliyor)
+     - Gider kategorisi filtresi eklendi
+     - Öğretmen filtresi eklendi
+     - Tüm tutarlar filtrelenmiş tabloya göre hesaplanıyor
+  5. **Önceki Güncellemeler**:
+     - Ücretsiz grup dersi özelliği
      - Öğrenci dersten ayrıldığında öğretmen kazancı koruması
-     - Admin Dashboard bakiye sorunu düzeltmesi
      - Para çıkışı kasa seçimi
-     - Aylık Program: ComboBox, satır renklendirme, sıralama

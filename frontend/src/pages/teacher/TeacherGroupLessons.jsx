@@ -25,7 +25,7 @@ const TeacherGroupLessons = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newLesson, setNewLesson] = useState({
     date: new Date().toISOString().split('T')[0],
-    number_of_lessons: 1
+    number_of_lessons: 2
   });
 
   useEffect(() => {
@@ -94,7 +94,7 @@ const TeacherGroupLessons = () => {
       
       toast.success(`Grup dersi eklendi - ${group.student_ids?.length || 0} öğrenciye kaydedildi`);
       setDialogOpen(false);
-      setNewLesson({ date: new Date().toISOString().split('T')[0], number_of_lessons: 1 });
+      setNewLesson({ date: new Date().toISOString().split('T')[0], number_of_lessons: 2 });
       fetchData();
     } catch (error) {
       toast.error('Ders eklenemedi');
@@ -250,18 +250,22 @@ const TeacherGroupLessons = () => {
             <p className="text-center text-slate-500 py-8">Henüz ders girişi yapılmamış</p>
           ) : (
             <div className="space-y-4">
-              {Object.entries(lessonsByDate).sort((a, b) => b[0].localeCompare(a[0])).map(([date, dateLessons]) => (
-                <div key={date} className="border-b pb-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-slate-800">{formatDateTurkish(date)}</p>
-                      <p className="text-sm text-slate-600">
-                        {dateLessons.length} öğrenci • {dateLessons.reduce((s, l) => s + l.number_of_lessons, 0)} ders
-                      </p>
+              {Object.entries(lessonsByDate).sort((a, b) => b[0].localeCompare(a[0])).map(([date, dateLessons]) => {
+                // İlk öğrencinin ders sayısını al (tüm öğrencilerde aynı)
+                const lessonCount = dateLessons[0]?.number_of_lessons || 0;
+                return (
+                  <div key={date} className="border-b pb-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-800">{formatDateTurkish(date)}</p>
+                        <p className="text-sm text-slate-600">
+                          {dateLessons.length} öğrenci • {lessonCount} ders
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

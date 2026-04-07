@@ -22,10 +22,10 @@ const AdminGroupLesson = () => {
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingLesson, setEditingLesson] = useState(null);
+  const [editingDate, setEditingDate] = useState(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    number_of_lessons: 1,
+    number_of_lessons: 2,
     is_free_lesson: false
   });
 
@@ -101,17 +101,61 @@ const AdminGroupLesson = () => {
     }
   };
 
+  const handleUpdateLesson = async () => {
+    if (!formData.date || !formData.number_of_lessons) {
+      toast.error('Tüm alanları doldurun');
+      return;
+    }
+
+    try {
+      // Eski tarihteki dersleri sil
+      const lessonsToDelete = lessons.filter(l => l.date === editingDate);
+      for (const lesson of lessonsToDelete) {
+        await apiClient.delete(`/lessons/${lesson.id}`);
+      }
+      
+      // Yeni dersleri ekle
+      const params = new URLSearchParams({
+        group_id: groupId,
+        branch_id: group.branch_id,
+        date: formData.date,
+        number_of_lessons: formData.number_of_lessons,
+        is_free_lesson: formData.is_free_lesson
+      });
+      
+      await apiClient.post(`/group-lessons?${params.toString()}`);
+      
+      toast.success('Ders güncellendi');
+      setDialogOpen(false);
+      resetForm();
+      fetchData();
+    } catch (error) {
+      toast.error('Ders güncellenemedi');
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       date: new Date().toISOString().split('T')[0],
-      number_of_lessons: 1,
+      number_of_lessons: 2,
       is_free_lesson: false
     });
-    setEditingLesson(null);
+    setEditingDate(null);
   };
 
-  const openDialog = () => {
+  const openAddDialog = () => {
     resetForm();
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (date, dateLessons) => {
+    const firstLesson = dateLessons[0];
+    setEditingDate(date);
+    setFormData({
+      date: date,
+      number_of_lessons: firstLesson?.number_of_lessons || 2,
+      is_free_lesson: firstLesson?.is_free_lesson || false
+    });
     setDialogOpen(true);
   };
 
@@ -228,14 +272,14 @@ const AdminGroupLesson = () => {
         <div className="flex justify-end mb-6">
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="admin-btn" onClick={openDialog}>
+              <Button className="admin-btn" onClick={openAddDialog}>
                 <Plus size={20} className="mr-2" />
                 Grup Dersi Ekle
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Grup Dersi Ekle</DialogTitle>
+                <DialogTitle>{editingDate ? 'Grup Dersi Düzenle' : 'Grup Dersi Ekle'}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -253,7 +297,7 @@ const AdminGroupLesson = () => {
                     type="number"
                     min="1"
                     value={formData.number_of_lessons}
-                    onChange={(e) => setFormData({ ...formData, number_of_lessons: parseInt(e.target.value) || 1 })}
+                    onChange={(e) => setFormData({ ...formData, number_of_lessons: parseInt(e.target.value) || 2 })}
                   />
                 </div>
                 
@@ -295,7 +339,9 @@ const AdminGroupLesson = () => {
                   </p>
                 </div>
                 <div className="flex gap-3">
-                  <Button onClick={handleAddLesson} className="flex-1">Kaydet</Button>
+                  <Button onClick={editingDate ? handleUpdateLesson : handleAddLesson} className="flex-1">
+                    {editingDate ? 'Güncelle' : 'Kaydet'}
+                  </Button>
                   <Button variant="outline" onClick={() => setDialogOpen(false)}>İptal</Button>
                 </div>
               </div>
@@ -314,6 +360,7 @@ const AdminGroupLesson = () => {
               {Object.entries(lessonsByDate).sort((a, b) => b[0].localeCompare(a[0])).map(([date, dateLessons]) => {
                 const firstLesson = dateLessons[0];
                 const isFree = firstLesson?.is_free_lesson;
+                const lessonCount = firstLesson?.number_of_lessons || 0;
                 return (
                   <div 
                     key={date} 
@@ -331,9 +378,18 @@ const AdminGroupLesson = () => {
                           )}
                         </p>
                         <p className="text-sm text-slate-600">
-                          {dateLessons.length} öğrenci • {firstLesson?.number_of_lessons || 0} ders
+                          {dateLessons.length} öğrenci • {lessonCount} ders
                         </p>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(date, dateLessons)}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        <Pencil size={16} className="mr-1" />
+                        Düzenle
+                      </Button>
                     </div>
                   </div>
                 );

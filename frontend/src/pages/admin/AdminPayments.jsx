@@ -38,6 +38,8 @@ const AdminPayments = () => {
   const [editingPayment, setEditingPayment] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedCashbox, setSelectedCashbox] = useState('all');
+  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState('all');
+  const [selectedTeacherFilter, setSelectedTeacherFilter] = useState('all');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState(null);
   const [selectedStudentFilter, setSelectedStudentFilter] = useState('');
@@ -46,6 +48,7 @@ const AdminPayments = () => {
   const [formStudentOpen, setFormStudentOpen] = useState(false);
   const [formStudentSearch, setFormStudentSearch] = useState('');
   const [studentCourses, setStudentCourses] = useState([]);
+  const [allPaymentsForMonths, setAllPaymentsForMonths] = useState([]);
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -64,7 +67,7 @@ const AdminPayments = () => {
 
   useEffect(() => {
     fetchPayments();
-  }, [selectedMonth, selectedCashbox, selectedStudentFilter]);
+  }, [selectedMonth, selectedCashbox, selectedStudentFilter, selectedExpenseCategory, selectedTeacherFilter]);
 
   // Custom filter function for combo search (student name + parent name)
   const filterStudents = (searchTerm, studentList) => {
@@ -133,22 +136,66 @@ const AdminPayments = () => {
 
   const fetchPayments = async () => {
     try {
-      let url = '/payments?';
+      // Önce tüm ödemeleri al (ay listesi için)
+      const allResponse = await apiClient.get('/payments');
+      setAllPaymentsForMonths(allResponse.data);
+      
+      // Filtrelenmiş ödemeleri al
+      let filteredPayments = allResponse.data;
+      
       if (selectedMonth) {
-        url += `month=${selectedMonth}&`;
+        filteredPayments = filteredPayments.filter(p => p.date?.startsWith(selectedMonth));
       }
       if (selectedCashbox && selectedCashbox !== 'all') {
-        url += `cashbox_id=${selectedCashbox}&`;
+        filteredPayments = filteredPayments.filter(p => p.cashbox_id === selectedCashbox);
       }
       if (selectedStudentFilter) {
-        url += `student_id=${selectedStudentFilter}`;
+        filteredPayments = filteredPayments.filter(p => p.student_id === selectedStudentFilter);
       }
-      const response = await apiClient.get(url);
-      setPayments(response.data);
+      if (selectedExpenseCategory && selectedExpenseCategory !== 'all') {
+        filteredPayments = filteredPayments.filter(p => p.expense_category === selectedExpenseCategory);
+      }
+      if (selectedTeacherFilter && selectedTeacherFilter !== 'all') {
+        filteredPayments = filteredPayments.filter(p => p.teacher_id === selectedTeacherFilter);
+      }
+      
+      setPayments(filteredPayments);
     } catch (error) {
       toast.error('Ödemeler yüklenemedi');
     }
   };
+
+  // Veritabanındaki ödemelerden benzersiz ayları hesapla
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set();
+    allPaymentsForMonths.forEach(p => {
+      if (p.date) {
+        const month = p.date.substring(0, 7); // "2026-04" formatı
+        monthSet.add(month);
+      }
+    });
+    
+    // Ayları sırala (yeniden eskiye)
+    const sortedMonths = Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+    
+    // Türkçe ay adları
+    const monthNames = {
+      '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',
+      '05': 'Mayıs', '06': 'Haziran', '07': 'Temmuz', '08': 'Ağustos',
+      '09': 'Eylül', '10': 'Ekim', '11': 'Kasım', '12': 'Aralık'
+    };
+    
+    return sortedMonths.map(m => {
+      const [year, month] = m.split('-');
+      return {
+        value: m,
+        label: `${monthNames[month]} ${year}`
+      };
+    });
+  }, [allPaymentsForMonths]);
+
+  // Gider kategorileri
+  const expenseCategories = ['Maaş', 'Kira', 'Reklam', 'Ofis', 'Sermaye', 'Diğer'];
 
   const handleSubmitPayment = async (e) => {
     e.preventDefault();
@@ -472,16 +519,9 @@ const AdminPayments = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tüm Aylar</SelectItem>
-                  <SelectItem value="2024-12">Aralık 2024</SelectItem>
-                  <SelectItem value="2025-01">Ocak 2025</SelectItem>
-                  <SelectItem value="2025-02">Şubat 2025</SelectItem>
-                  <SelectItem value="2025-03">Mart 2025</SelectItem>
-                  <SelectItem value="2025-04">Nisan 2025</SelectItem>
-                  <SelectItem value="2025-05">Mayıs 2025</SelectItem>
-                  <SelectItem value="2025-06">Haziran 2025</SelectItem>
-                  <SelectItem value="2026-01">Ocak 2026</SelectItem>
-                  <SelectItem value="2026-02">Şubat 2026</SelectItem>
-                  <SelectItem value="2026-03">Mart 2026</SelectItem>
+                  {availableMonths.map(m => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
@@ -498,9 +538,33 @@ const AdminPayments = () => {
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select value={selectedExpenseCategory} onValueChange={setSelectedExpenseCategory}>
+                <SelectTrigger className="h-11 lg:h-10 text-sm" data-testid="expense-category-filter">
+                  <SelectValue placeholder="Gider Kategorisi" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tüm Kategoriler</SelectItem>
+                  {expenseCategories.map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedTeacherFilter} onValueChange={setSelectedTeacherFilter}>
+                <SelectTrigger className="h-11 lg:h-10 text-sm" data-testid="teacher-filter">
+                  <SelectValue placeholder="Öğretmen" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tüm Öğretmenler</SelectItem>
+                  {teachers.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {(selectedMonth || selectedCashbox !== 'all' || selectedStudentFilter) && (
+            {(selectedMonth || selectedCashbox !== 'all' || selectedStudentFilter || selectedExpenseCategory !== 'all' || selectedTeacherFilter !== 'all') && (
               <Button 
                 variant="ghost" 
                 size="sm"
@@ -509,6 +573,8 @@ const AdminPayments = () => {
                   setSelectedCashbox('all');
                   setSelectedStudentFilter('');
                   setStudentFilterSearch('');
+                  setSelectedExpenseCategory('all');
+                  setSelectedTeacherFilter('all');
                 }}
                 className="h-10 text-slate-600"
               >

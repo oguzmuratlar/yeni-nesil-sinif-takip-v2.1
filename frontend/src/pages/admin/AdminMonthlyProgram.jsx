@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
-import { Calendar, Filter, X, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Calendar, Filter, X, ChevronDown, ChevronUp, ArrowUpDown, ArrowUp, ArrowDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
+import { Checkbox } from '../../components/ui/checkbox';
 import { debounce } from 'lodash';
 import { formatMoney } from '../../lib/utils';
 
@@ -18,6 +20,12 @@ const PAYMENT_STATUS_OPTIONS = [
   { value: 'hatirlatma_3', label: '3. hatırlatma yapıldı' },
   { value: 'parcali', label: 'Parçalı ödeyecek' },
 ];
+
+// Durum kodundan adı getir
+const getStatusLabel = (statusCode) => {
+  const option = PAYMENT_STATUS_OPTIONS.find(o => o.value === statusCode);
+  return option ? option.label : statusCode;
+};
 
 // Satır renk sınıfları
 const getRowColorClass = (paymentStatus, isRisky) => {
@@ -37,12 +45,45 @@ const AdminMonthlyProgram = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   
-  // Filtreler
-  const [filterStudent, setFilterStudent] = useState('');
-  const [filterTeacher, setFilterTeacher] = useState('all');
-  const [filterBranch, setFilterBranch] = useState('all');
-  const [filterPaymentStatus, setFilterPaymentStatus] = useState('all');
-  const [filterPaymentDay, setFilterPaymentDay] = useState('all');
+  // Filtreler - localStorage'dan yükle
+  const [filterStudent, setFilterStudent] = useState(() => localStorage.getItem('mp_filterStudent') || '');
+  const [filterTeachers, setFilterTeachers] = useState(() => {
+    const saved = localStorage.getItem('mp_filterTeachers');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [filterBranches, setFilterBranches] = useState(() => {
+    const saved = localStorage.getItem('mp_filterBranches');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [filterPaymentStatuses, setFilterPaymentStatuses] = useState(() => {
+    const saved = localStorage.getItem('mp_filterPaymentStatuses');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [filterPaymentDays, setFilterPaymentDays] = useState(() => {
+    const saved = localStorage.getItem('mp_filterPaymentDays');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Filtreleri localStorage'a kaydet
+  useEffect(() => {
+    localStorage.setItem('mp_filterStudent', filterStudent);
+  }, [filterStudent]);
+  
+  useEffect(() => {
+    localStorage.setItem('mp_filterTeachers', JSON.stringify(filterTeachers));
+  }, [filterTeachers]);
+  
+  useEffect(() => {
+    localStorage.setItem('mp_filterBranches', JSON.stringify(filterBranches));
+  }, [filterBranches]);
+  
+  useEffect(() => {
+    localStorage.setItem('mp_filterPaymentStatuses', JSON.stringify(filterPaymentStatuses));
+  }, [filterPaymentStatuses]);
+  
+  useEffect(() => {
+    localStorage.setItem('mp_filterPaymentDays', JSON.stringify(filterPaymentDays));
+  }, [filterPaymentDays]);
 
   const months = [
     { value: '2024-12', label: 'Aralık 2024' },
@@ -202,22 +243,29 @@ const AdminMonthlyProgram = () => {
     if (filterStudent && !student.student_name.toLowerCase().includes(filterStudent.toLowerCase())) {
       return false;
     }
-    if (filterTeacher !== 'all') {
-      const teacherName = programData.teachers.find(t => t.id === filterTeacher)?.name;
-      const hasTeacher = Object.keys(student.teacher_earnings || {}).includes(teacherName);
-      if (!hasTeacher) return false;
+    // Çoklu öğretmen filtresi
+    if (filterTeachers.length > 0) {
+      const teacherNames = filterTeachers.map(tId => programData.teachers.find(t => t.id === tId)?.name).filter(Boolean);
+      const hasAnyTeacher = teacherNames.some(tName => Object.keys(student.teacher_earnings || {}).includes(tName));
+      if (!hasAnyTeacher) return false;
     }
-    if (filterBranch !== 'all') {
-      if (!student.branch_details?.[filterBranch]) return false;
+    // Çoklu branş filtresi
+    if (filterBranches.length > 0) {
+      const hasAnyBranch = filterBranches.some(b => student.branch_details?.[b]);
+      if (!hasAnyBranch) return false;
     }
-    if (filterPaymentStatus !== 'all') {
+    // Çoklu ödeme durumu filtresi
+    if (filterPaymentStatuses.length > 0) {
       const status = student.payment_status || '';
-      if (filterPaymentStatus === 'empty' && status !== '') return false;
-      if (filterPaymentStatus !== 'empty' && status !== filterPaymentStatus) return false;
+      const hasEmpty = filterPaymentStatuses.includes('empty');
+      const hasStatus = filterPaymentStatuses.includes(status);
+      if (hasEmpty && status === '') return true;
+      if (!hasStatus && !(hasEmpty && status === '')) return false;
     }
-    if (filterPaymentDay !== 'all') {
+    // Çoklu ödeme günü filtresi
+    if (filterPaymentDays.length > 0) {
       const day = student.payment_day || '';
-      if (day !== filterPaymentDay) return false;
+      if (!filterPaymentDays.includes(day)) return false;
     }
     return true;
   }) || [];
@@ -259,29 +307,34 @@ const AdminMonthlyProgram = () => {
 
   const grandTotal = sortedStudents.reduce((sum, s) => sum + calculateStudentTotal(s), 0);
 
-  // Toplam öğretmen gideri
+  // Toplam öğretmen gideri - FİLTRELENMİŞ öğrencilerin tablodaki öğretmen kazançlarından hesapla
   const totalTeacherExpense = useMemo(() => {
-    if (!programData?.teacher_totals) return 0;
-    return Object.values(programData.teacher_totals).reduce((sum, val) => sum + val, 0);
-  }, [programData?.teacher_totals]);
+    let total = 0;
+    for (const student of sortedStudents) {
+      if (student.teacher_earnings) {
+        total += Object.values(student.teacher_earnings).reduce((sum, val) => sum + (val || 0), 0);
+      }
+    }
+    return total;
+  }, [sortedStudents]);
 
   // Toplam kar = Ciro - Öğretmen Gideri
   const totalProfit = grandTotal - totalTeacherExpense;
 
   const activeFilterCount = [
     filterStudent,
-    filterTeacher !== 'all' ? filterTeacher : '',
-    filterBranch !== 'all' ? filterBranch : '',
-    filterPaymentStatus !== 'all' ? filterPaymentStatus : '',
-    filterPaymentDay !== 'all' ? filterPaymentDay : ''
+    filterTeachers.length > 0 ? 'teachers' : '',
+    filterBranches.length > 0 ? 'branches' : '',
+    filterPaymentStatuses.length > 0 ? 'statuses' : '',
+    filterPaymentDays.length > 0 ? 'days' : ''
   ].filter(Boolean).length;
 
   const clearFilters = () => {
     setFilterStudent('');
-    setFilterTeacher('all');
-    setFilterBranch('all');
-    setFilterPaymentStatus('all');
-    setFilterPaymentDay('all');
+    setFilterTeachers([]);
+    setFilterBranches([]);
+    setFilterPaymentStatuses([]);
+    setFilterPaymentDays([]);
   };
 
   if (loading) {
@@ -355,54 +408,142 @@ const AdminMonthlyProgram = () => {
               />
 
               <div className="grid grid-cols-2 gap-2 lg:flex lg:gap-3">
-                <Select value={filterTeacher} onValueChange={setFilterTeacher}>
-                  <SelectTrigger className="h-11 lg:h-10 lg:w-40" data-testid="teacher-filter">
-                    <SelectValue placeholder="Öğretmen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tüm Öğretmenler</SelectItem>
-                    {programData?.teachers?.map(t => (
-                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Öğretmen Filtresi - Çoklu Seçim */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="h-11 lg:h-10 lg:w-44 justify-between">
+                      {filterTeachers.length > 0 
+                        ? `${filterTeachers.length} öğretmen` 
+                        : 'Tüm Öğretmenler'}
+                      <ChevronDown size={16} className="ml-2" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {programData?.teachers?.map(t => (
+                        <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded cursor-pointer">
+                          <Checkbox
+                            checked={filterTeachers.includes(t.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFilterTeachers([...filterTeachers, t.id]);
+                              } else {
+                                setFilterTeachers(filterTeachers.filter(id => id !== t.id));
+                              }
+                            }}
+                          />
+                          <span className="text-sm">{t.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
-                <Select value={filterBranch} onValueChange={setFilterBranch}>
-                  <SelectTrigger className="h-11 lg:h-10 lg:w-40" data-testid="branch-filter">
-                    <SelectValue placeholder="Branş" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tüm Branşlar</SelectItem>
-                    {programData?.branches?.map(b => (
-                      <SelectItem key={b} value={b}>{b}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Branş Filtresi - Çoklu Seçim */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="h-11 lg:h-10 lg:w-40 justify-between">
+                      {filterBranches.length > 0 
+                        ? `${filterBranches.length} branş` 
+                        : 'Tüm Branşlar'}
+                      <ChevronDown size={16} className="ml-2" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {programData?.branches?.map(b => (
+                        <label key={b} className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded cursor-pointer">
+                          <Checkbox
+                            checked={filterBranches.includes(b)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFilterBranches([...filterBranches, b]);
+                              } else {
+                                setFilterBranches(filterBranches.filter(branch => branch !== b));
+                              }
+                            }}
+                          />
+                          <span className="text-sm">{b}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
-                <Select value={filterPaymentStatus} onValueChange={setFilterPaymentStatus}>
-                  <SelectTrigger className="h-11 lg:h-10 lg:w-40" data-testid="payment-status-filter">
-                    <SelectValue placeholder="Ödeme Durumu" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tüm Durumlar</SelectItem>
-                    <SelectItem value="empty">Boş (Girilmemiş)</SelectItem>
-                    {uniquePaymentStatuses.map(status => (
-                      <SelectItem key={status} value={status}>{status}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Ödeme Durumu Filtresi - Çoklu Seçim */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="h-11 lg:h-10 lg:w-44 justify-between">
+                      {filterPaymentStatuses.length > 0 
+                        ? `${filterPaymentStatuses.length} durum` 
+                        : 'Tüm Durumlar'}
+                      <ChevronDown size={16} className="ml-2" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-60 p-2" align="start">
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      <label className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded cursor-pointer">
+                        <Checkbox
+                          checked={filterPaymentStatuses.includes('empty')}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setFilterPaymentStatuses([...filterPaymentStatuses, 'empty']);
+                            } else {
+                              setFilterPaymentStatuses(filterPaymentStatuses.filter(s => s !== 'empty'));
+                            }
+                          }}
+                        />
+                        <span className="text-sm">Boş (Girilmemiş)</span>
+                      </label>
+                      {PAYMENT_STATUS_OPTIONS.filter(o => o.value !== 'none').map(opt => (
+                        <label key={opt.value} className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded cursor-pointer">
+                          <Checkbox
+                            checked={filterPaymentStatuses.includes(opt.value)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFilterPaymentStatuses([...filterPaymentStatuses, opt.value]);
+                              } else {
+                                setFilterPaymentStatuses(filterPaymentStatuses.filter(s => s !== opt.value));
+                              }
+                            }}
+                          />
+                          <span className="text-sm">{opt.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
 
-                <Select value={filterPaymentDay} onValueChange={setFilterPaymentDay}>
-                  <SelectTrigger className="h-11 lg:h-10 lg:w-40" data-testid="payment-day-filter">
-                    <SelectValue placeholder="Ödeme Günü" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tüm Günler</SelectItem>
-                    {uniquePaymentDays.map(day => (
-                      <SelectItem key={day} value={day}>Ayın {day}. günü</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Ödeme Günü Filtresi - Çoklu Seçim */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="h-11 lg:h-10 lg:w-40 justify-between">
+                      {filterPaymentDays.length > 0 
+                        ? `${filterPaymentDays.length} gün` 
+                        : 'Tüm Günler'}
+                      <ChevronDown size={16} className="ml-2" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <div className="space-y-1 max-h-60 overflow-y-auto">
+                      {uniquePaymentDays.map(day => (
+                        <label key={day} className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded cursor-pointer">
+                          <Checkbox
+                            checked={filterPaymentDays.includes(day)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setFilterPaymentDays([...filterPaymentDays, day]);
+                              } else {
+                                setFilterPaymentDays(filterPaymentDays.filter(d => d !== day));
+                              }
+                            }}
+                          />
+                          <span className="text-sm">Ayın {day}. günü</span>
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {activeFilterCount > 0 && (
