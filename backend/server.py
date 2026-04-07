@@ -252,6 +252,8 @@ class Payment(BaseModel):
     bank_account_id: Optional[str] = None
     description: Optional[str] = None
     expense_category: Optional[str] = None  # "Kira", "Reklam", "Maaş", "Ofis", "Sermaye", "Transfer"
+    payment_method: Optional[str] = None  # "elden" veya "resmi" - sadece Maaş kategorisi için
+    tax_amount: Optional[float] = None  # Vergi tutarı - sadece resmi maaş ödemeleri için
     transfer_id: Optional[str] = None  # Kasalar arası transfer için
     season_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -267,6 +269,8 @@ class PaymentCreate(BaseModel):
     bank_account_id: Optional[str] = None
     description: Optional[str] = None
     expense_category: Optional[str] = None
+    payment_method: Optional[str] = None  # "elden" veya "resmi"
+    tax_amount: Optional[float] = None  # Vergi tutarı
     season_id: Optional[str] = None
 
 # ============= CASHBOX MODELS =============
@@ -1430,6 +1434,17 @@ async def get_teacher_balance(
     payments = await db.payments.find(payment_query, {"_id": 0}).to_list(1000)
     total_paid = sum([p["amount"] for p in payments])
     
+    # Ödeme şekline göre ayrıntılı hesaplama (Maaş kategorisi için)
+    elden_tutar = sum([p["amount"] for p in payments if p.get("expense_category") == "Maaş" and p.get("payment_method") == "elden"])
+    resmi_brut_tutar = sum([p["amount"] for p in payments if p.get("expense_category") == "Maaş" and p.get("payment_method") == "resmi"])
+    resmi_vergi_toplami = sum([p.get("tax_amount", 0) or 0 for p in payments if p.get("expense_category") == "Maaş" and p.get("payment_method") == "resmi"])
+    diger_odemeler = sum([p["amount"] for p in payments if p.get("expense_category") != "Maaş"])
+    
+    # Toplam ödeme (brüt) = elden + resmi + diğer
+    toplam_odeme_brut = elden_tutar + resmi_brut_tutar + diger_odemeler
+    # Toplam net kazanç = brüt - vergi
+    toplam_net_kazanc = toplam_odeme_brut - resmi_vergi_toplami
+    
     # Kamp kazançlarını hesapla - ay filtresi kamplar için uygulanamaz (kamplar belirli bir ay'a bağlı değil)
     camps = await db.camps.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
     total_camp_earnings = 0
@@ -1491,7 +1506,16 @@ async def get_teacher_balance(
         "balance": balance,
         "payments": payments,
         "camp_earnings_details": camp_earnings_details if not month else [],
-        "youtube_earnings_details": youtube_earnings_details
+        "youtube_earnings_details": youtube_earnings_details,
+        # Ödeme şekli detayları
+        "payment_details": {
+            "elden_tutar": elden_tutar,
+            "resmi_brut_tutar": resmi_brut_tutar,
+            "resmi_vergi_toplami": resmi_vergi_toplami,
+            "diger_odemeler": diger_odemeler,
+            "toplam_odeme_brut": toplam_odeme_brut,
+            "toplam_net_kazanc": toplam_net_kazanc
+        }
     }
 
 # ============= STUDENT GROUP ROUTES =============

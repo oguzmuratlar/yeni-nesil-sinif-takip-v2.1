@@ -58,7 +58,9 @@ const AdminPayments = () => {
     cashbox_id: '',
     bank_account_id: '',
     description: '',
-    expense_category: ''
+    expense_category: '',
+    payment_method: '',
+    tax_amount: ''
   });
 
   useEffect(() => {
@@ -237,12 +239,26 @@ const AdminPayments = () => {
       return;
     }
     
+    // Maaş ödemelerinde ödeme şekli zorunlu
+    if (dialogType === 'expense' && newPayment.expense_category === 'Maaş') {
+      if (!newPayment.payment_method) {
+        toast.error('Maaş ödemelerinde ödeme şekli zorunludur');
+        return;
+      }
+      // Resmi ödemede vergi tutarı zorunlu
+      if (newPayment.payment_method === 'resmi' && !newPayment.tax_amount) {
+        toast.error('Resmi ödemede vergi tutarı zorunludur');
+        return;
+      }
+    }
+    
     try {
       const paymentData = {
         ...newPayment,
         amount: parseFloat(newPayment.amount),
         payment_type: dialogType === 'income' ? 'student_payment' : 
-                      newPayment.expense_category === 'Maaş' ? 'teacher_payment' : 'expense'
+                      newPayment.expense_category === 'Maaş' ? 'teacher_payment' : 'expense',
+        tax_amount: newPayment.tax_amount ? parseFloat(newPayment.tax_amount) : null
       };
       
       if (editingPayment) {
@@ -288,7 +304,9 @@ const AdminPayments = () => {
         cashbox_id: payment.cashbox_id || '',
         bank_account_id: payment.bank_account_id || '',
         description: payment.description || '',
-        expense_category: payment.expense_category || ''
+        expense_category: payment.expense_category || '',
+        payment_method: payment.payment_method || '',
+        tax_amount: payment.tax_amount ? payment.tax_amount.toString() : ''
       });
     } else {
       setNewPayment({
@@ -300,7 +318,9 @@ const AdminPayments = () => {
         cashbox_id: '',
         bank_account_id: '',
         description: '',
-        expense_category: ''
+        expense_category: '',
+        payment_method: '',
+        tax_amount: ''
       });
     }
     
@@ -778,19 +798,55 @@ const AdminPayments = () => {
                     </Select>
                   </div>
                   {newPayment.expense_category === 'Maaş' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="teacher">Öğretmen *</Label>
-                      <Select value={newPayment.teacher_id} onValueChange={(value) => setNewPayment({ ...newPayment, teacher_id: value })}>
-                        <SelectTrigger className="h-12">
-                          <SelectValue placeholder="Öğretmen seçin" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {teachers.filter(t => t.status === 'active').map((teacher) => (
-                            <SelectItem key={teacher.id} value={teacher.id}>{teacher.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="teacher">Öğretmen *</Label>
+                        <Select value={newPayment.teacher_id} onValueChange={(value) => setNewPayment({ ...newPayment, teacher_id: value })}>
+                          <SelectTrigger className="h-12">
+                            <SelectValue placeholder="Öğretmen seçin" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {teachers.filter(t => t.status === 'active').map((teacher) => (
+                              <SelectItem key={teacher.id} value={teacher.id}>{teacher.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="payment_method">Ödeme Şekli *</Label>
+                        <Select 
+                          value={newPayment.payment_method} 
+                          onValueChange={(value) => setNewPayment({ 
+                            ...newPayment, 
+                            payment_method: value,
+                            tax_amount: value === 'elden' ? '' : newPayment.tax_amount 
+                          })}
+                        >
+                          <SelectTrigger className="h-12" data-testid="payment-method-select">
+                            <SelectValue placeholder="Ödeme şekli seçin" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="elden">Elden</SelectItem>
+                            <SelectItem value="resmi">Resmi</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {newPayment.payment_method === 'resmi' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="tax_amount">Vergi Tutarı (₺) *</Label>
+                          <Input
+                            id="tax_amount"
+                            type="number"
+                            step="0.01"
+                            value={newPayment.tax_amount}
+                            onChange={(e) => setNewPayment({ ...newPayment, tax_amount: e.target.value })}
+                            className="h-12"
+                            placeholder="Kesilen vergi tutarı"
+                          />
+                          <p className="text-xs text-slate-500">Vergi sadece bilgilendirme amaçlıdır, kasadan ayrıca düşülmez</p>
+                        </div>
+                      )}
+                    </>
                   )}
                   <div className="space-y-2">
                     <Label htmlFor="description">Açıklama</Label>

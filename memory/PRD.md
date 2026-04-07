@@ -248,27 +248,27 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Son Güncelleme
 - Tarih: 2026-04-07
-- Versiyon: 3.6
+- Versiyon: 3.7
 - Değişiklikler:
-  1. **Admin Grup Ders Girişi Ekranı Güncellendi**:
-     - Satırlarda "Düzenle" butonu eklendi
-     - Ders sayısı default 2 olarak ayarlandı
-     - Ders sayısı gösterimi düzeltildi (öğrenci sayısı ile çarpılmıyor)
-     - Tarih ve ders sayısı komponenti öğretmen ekranıyla aynı hale getirildi
-  2. **Öğretmen Grup Ders Girişi Güncellendi**:
-     - Ders sayısı default 2 olarak ayarlandı
-     - Ders sayısı gösterimi düzeltildi
-  3. **Aylık Program Filtreleri Güncellendi**:
-     - Çoklu seçim desteği (Checkbox ile birden fazla öğretmen/branş/durum/gün seçilebilir)
-     - Durum kodları yerine Türkçe adları gösteriliyor (mesaj_atildi → "Mesaj atıldı")
-     - Filtre hafızası (localStorage) - logout sonrası bile filtreler korunuyor
-     - Öğretmen gideri artık filtrelenmiş tablodan hesaplanıyor
-  4. **Ödemeler Ekranı Filtreleri Güncellendi**:
-     - Tarih filtresi dinamik hale getirildi (sadece ödeme olan aylar gösteriliyor)
-     - Gider kategorisi filtresi eklendi
-     - Öğretmen filtresi eklendi
-     - Tüm tutarlar filtrelenmiş tabloya göre hesaplanıyor
-  5. **Önceki Güncellemeler**:
+  1. **Öğretmen Maaş Ödemeleri - Ödeme Şekli ve Vergi Takibi**:
+     - Payment modeline `payment_method` (elden/resmi) ve `tax_amount` field'ları eklendi
+     - Admin ödeme girişinde Maaş kategorisinde "Ödeme Şekli" dropdown'ı eklendi
+     - Resmi ödeme seçildiğinde "Vergi Tutarı" alanı görünür
+     - Vergi sadece bilgilendirme amaçlı - kasadan ayrıca düşülmez
+  2. **Öğretmen Bakiye Ekranı - Ödeme Detay Modalı**:
+     - "Yapılan Ödeme" kartı tıklanabilir hale getirildi
+     - Detay modalında gösterilen bilgiler:
+       - Elden Alınan Tutar
+       - Resmi Yatırılan Tutar (Brüt)
+       - Resmi Maaştan Kesilen Vergi
+       - Toplam Ödeme (Brüt)
+       - Toplam Net Kazanç
+  3. **Hesaplama Kuralları**:
+     - Kalan Bakiye = Toplam Kazanç - Toplam Ödeme (Brüt)
+     - Net Kazanç = Toplam Ödeme (Brüt) - Vergi Toplamı
+     - Kasadan düşen tek tutar = Ana tutar (vergi dahil değil)
+  4. **Önceki Güncellemeler**:
+     - Grup ders güncelleme ve ders sayısı düzeltmesi
+     - Aylık program çoklu filtre ve hafıza
+     - Ödemeler ekranı dinamik filtreler
      - Ücretsiz grup dersi özelliği
-     - Öğrenci dersten ayrıldığında öğretmen kazancı koruması
-     - Para çıkışı kasa seçimi
