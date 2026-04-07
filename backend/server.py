@@ -213,6 +213,7 @@ class Lesson(BaseModel):
     teacher_id: Optional[str] = None  # Öğretmen ID - course silinse bile kazanç hesaplanabilsin
     branch_id: Optional[str] = None  # Branş ID - course silinse bile kazanç hesaplanabilsin
     student_id: Optional[str] = None  # Öğrenci ID - course silinse bile izlenebilsin
+    is_free_lesson: bool = False  # Ücretsiz ders - öğrenci bakiyesinden düşülmez, öğretmen kazancı devam eder
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class LessonCreate(BaseModel):
@@ -1608,6 +1609,7 @@ async def create_group_lesson(
     branch_id: str,
     date: str,
     number_of_lessons: int,
+    is_free_lesson: bool = False,
     current_user: User = Depends(get_current_user)
 ):
     # Get group
@@ -1618,6 +1620,10 @@ async def create_group_lesson(
     # Check access
     if current_user.user_type == "teacher" and group.get("teacher_id") != current_user.teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Sadece admin ücretsiz ders işaretleyebilir
+    if is_free_lesson and current_user.user_type != "admin":
+        is_free_lesson = False
     
     # Grup boyutunu belirle ve öğretmen ücretini hesapla
     group_size = len(group["student_ids"])
@@ -1671,14 +1677,15 @@ async def create_group_lesson(
                 date=date,
                 number_of_lessons=number_of_lessons,
                 teacher_rate=lesson_teacher_rate,
-                group_id=group_id  # Grup ID'si kaydediyoruz
+                group_id=group_id,
+                is_free_lesson=is_free_lesson  # Ücretsiz ders flag'i
             )
             doc = lesson.model_dump()
             doc['created_at'] = doc['created_at'].isoformat()
             await db.lessons.insert_one(doc)
             created_lessons.append(lesson)
     
-    return {"message": f"Created {len(created_lessons)} lessons for group", "count": len(created_lessons)}
+    return {"message": f"Created {len(created_lessons)} lessons for group", "count": len(created_lessons), "is_free_lesson": is_free_lesson}
 
 # ============= GROUP PLANNED LESSON =============
 
@@ -2923,13 +2930,19 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
             "student_course_id": course["id"]
         }, {"_id": 0}).to_list(10000)
         
+        # Ücretsiz olmayan derslerin toplam sayısı (bakiye hesabı için)
+        paid_lessons = [l for l in lessons if not l.get("is_free_lesson", False)]
+        total_paid_lessons = sum([l["number_of_lessons"] for l in paid_lessons])
+        
+        # Tüm dersler (gösterim için)
         total_lessons = sum([l["number_of_lessons"] for l in lessons])
+        free_lessons = sum([l["number_of_lessons"] for l in lessons if l.get("is_free_lesson", False)])
         
         # Öğrenci ders ücreti
         student_price = course.get("student_price") or course.get("price") or 0
         
-        # Kullanılan tutar
-        used_amount = total_lessons * student_price
+        # Kullanılan tutar (sadece ücretli dersler)
+        used_amount = total_paid_lessons * student_price
         
         # Bu branş için ödemeler
         payments = await db.payments.find({
@@ -2951,6 +2964,7 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
             "teacher_name": teacher.get("name", "Bilinmiyor"),
             "student_price": student_price,
             "total_lessons": total_lessons,
+            "free_lessons": free_lessons,
             "used_amount": used_amount,
             "total_paid": total_paid,
             "remaining_balance": remaining_balance,
@@ -3018,11 +3032,18 @@ async def get_students_by_branch(branch_id: str, current_user: User = Depends(ge
         lessons = await db.lessons.find({
             "student_course_id": course["id"]
         }, {"_id": 0}).to_list(10000)
+        
+        # Ücretsiz olmayan derslerin toplam sayısı (bakiye hesabı için)
+        paid_lessons = [l for l in lessons if not l.get("is_free_lesson", False)]
+        total_paid_lessons = sum([l["number_of_lessons"] for l in paid_lessons])
+        
+        # Tüm dersler (gösterim için)
         total_lessons = sum([l["number_of_lessons"] for l in lessons])
+        free_lessons = sum([l["number_of_lessons"] for l in lessons if l.get("is_free_lesson", False)])
         
         # Öğrenci ders ücreti
         student_price = course.get("student_price") or course.get("price") or 0
-        used_amount = total_lessons * student_price
+        used_amount = total_paid_lessons * student_price  # Sadece ücretli dersler
         
         # Ödemeler
         payments = await db.payments.find({
@@ -3044,6 +3065,7 @@ async def get_students_by_branch(branch_id: str, current_user: User = Depends(ge
             "teacher_name": teacher.get("name", "Bilinmiyor"),
             "student_price": student_price,
             "total_lessons": total_lessons,
+            "free_lessons": free_lessons,
             "total_paid": total_paid,
             "used_amount": used_amount,
             "remaining_balance": remaining_balance,

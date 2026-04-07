@@ -247,24 +247,26 @@ group_id: str (optional)  # YENİ - Grup dersi için
 ---
 
 ## Son Güncelleme
-- Tarih: 2026-04-02
-- Versiyon: 3.4
+- Tarih: 2026-04-07
+- Versiyon: 3.5
 - Değişiklikler:
-  1. **ÖNEMLİ İŞ KURALI DÜZELTMESİ**: Öğrenci dersten ayrıldığında öğretmen kazancı artık silinmiyor
-     - Lesson modeline `teacher_id`, `branch_id`, `student_id` field'ları eklendi
-     - Ders oluşturulurken bu bilgiler kaydediliyor
-     - Course silinse bile ders kayıtları ve öğretmen kazancı korunuyor
-     - Geriye dönük uyumluluk: Mevcut dersler için migration endpoint eklendi
-  2. Admin Aylık Program - Ödeme Durumu ComboBox:
-     - 5 seçenek eklendi: Seçiniz, Ödedi, Mesaj atıldı, 2. hatırlatma yapıldı, 3. hatırlatma yapıldı, Parçalı ödeyecek
-     - Hem desktop hem mobil görünümde çalışıyor
-  3. Admin Aylık Program - Satır Renklendirme:
-     - Yeşil (bg-green-100): "Ödedi" durumu
-     - Sarı tonları: Hatırlatma durumları
-     - Kırmızı (bg-red-100): "Riskli" öğrenciler (ödedi hariç)
-  4. Admin Aylık Program - Sütun Sıralaması:
-     - Tıklanabilir başlıklar: Öğrenci, Toplam, Ödeme Durumu
-     - Artan/Azalan sıralama desteği
-  5. Öğrenci Profili - "Riskli" Checkbox:
-     - Student modeline `is_risky` field eklendi
-     - Öğrenci düzenleme formuna "Riskli Öğrenci" checkbox eklendi
+  1. **Ücretsiz Grup Dersi Özelliği**:
+     - Lesson modeline `is_free_lesson` (boolean) field eklendi
+     - Admin grup ders girişinde "Ücretsiz Ders" checkbox'ı eklendi
+     - Ücretsiz dersler öğrenci bakiyesinden düşülmez
+     - Öğretmen kazancı tüm dersler için (ücretsiz dahil) devam eder
+     - Yapılan dersler listesinde ücretsiz dersler yeşil arka plan ve 🎁 etiketi ile gösterilir
+     - Toplam ders özeti altında ücretsiz ders sayısı görüntülenir
+  2. **Admin Grup Ders Girişi Ekranı Yenilendi**:
+     - Öğretmen ekranıyla aynı UI yapısına getirildi
+     - Gruptaki öğrenciler listesi
+     - Toplam ders sayısı ve ders günü özeti
+     - Tarih formatı: gün ay yıl (ay adı yazıyla)
+  3. **Öğrenci Bakiye Hesaplaması Güncellendi**:
+     - `free_lessons` field eklendi (gösterim için)
+     - Sadece `is_free_lesson=false` dersler bakiyeden düşülür
+  4. **Önceki Güncellemeler**:
+     - Öğrenci dersten ayrıldığında öğretmen kazancı koruması
+     - Admin Dashboard bakiye sorunu düzeltmesi
+     - Para çıkışı kasa seçimi
+     - Aylık Program: ComboBox, satır renklendirme, sıralama
