@@ -59,75 +59,66 @@ const PlanningMasterCard = () => {
 
   if (loading) {
     return (
-      <div className="teacher-card p-6 animate-pulse">
-        <div className="h-6 bg-slate-200 rounded w-1/2 mb-4"></div>
-        <div className="h-20 bg-slate-200 rounded"></div>
+      <div className="bg-amber-50/50 border border-amber-100 rounded-xl p-4 animate-pulse">
+        <div className="h-5 bg-amber-200/50 rounded w-32"></div>
       </div>
     );
   }
 
   if (!summary) return null;
 
-  // Planlanan ay (gelecek ay)
   const nextMonthName = getMonthName(summary.next_month);
 
   return (
     <>
+      {/* Minimal Card */}
       <div 
-        className="teacher-card p-6 bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200 cursor-pointer hover:shadow-lg transition-shadow"
+        className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 cursor-pointer hover:shadow-md transition-all"
         onClick={fetchDetail}
         data-testid="planning-master-card"
       >
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center">
-              <Trophy className="text-white" size={24} />
+            <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center">
+              <Trophy className="text-white" size={20} />
             </div>
-            <h3 className="text-lg font-bold text-slate-800">Planlama Ustası</h3>
+            <div>
+              <h3 className="font-semibold text-slate-800">Planlama Ustası</h3>
+              <p className="text-xs text-slate-500">{nextMonthName}: {summary.next_month_score} puan</p>
+            </div>
           </div>
-          {summary.big_badge && (
-            <div className="bg-amber-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
-              <Award size={16} />
-              Büyük Rozet!
-            </div>
-          )}
-        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-          <div className="bg-white/60 rounded-lg p-3 text-center">
-            <p className="text-xs text-slate-500 mb-1">{nextMonthName} Ayı Puanı</p>
-            <p className="text-2xl font-bold text-amber-600">{summary.next_month_score}</p>
-          </div>
-          <div className="bg-white/60 rounded-lg p-3 text-center">
-            <p className="text-xs text-slate-500 mb-1">Toplam Puan</p>
-            <p className="text-2xl font-bold text-slate-800">{summary.total_score}</p>
-          </div>
-          <div className="bg-white/60 rounded-lg p-3 text-center">
-            <p className="text-xs text-slate-500 mb-1">Mini Rozet</p>
-            <div className="flex items-center justify-center gap-1">
-              <Target size={18} className="text-amber-500" />
-              <span className="text-2xl font-bold text-slate-800">{summary.mini_badge_count}</span>
-              <span className="text-slate-400">/8</span>
-            </div>
-          </div>
-          <div className="bg-white/60 rounded-lg p-3 text-center">
-            <p className="text-xs text-slate-500 mb-1">Streak</p>
-            <div className="flex items-center justify-center gap-1">
-              <Flame size={18} className="text-orange-500" />
-              <span className="text-2xl font-bold text-slate-800">{summary.current_streak}</span>
-              {summary.longest_streak > summary.current_streak && (
-                <span className="text-xs text-slate-400">(En: {summary.longest_streak})</span>
+          <div className="flex items-center gap-4">
+            {/* Stats inline */}
+            <div className="hidden sm:flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-1">
+                <Target size={16} className="text-amber-500" />
+                <span className="font-semibold text-slate-700">{summary.mini_badge_count}/8</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Flame size={16} className="text-orange-500" />
+                <span className="font-semibold text-slate-700">{summary.current_streak}</span>
+              </div>
+              {summary.big_badge && (
+                <div className="bg-amber-500 text-white px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1">
+                  <Award size={12} />
+                  Büyük Rozet
+                </div>
               )}
             </div>
+            <ChevronRight size={20} className="text-amber-500" />
           </div>
         </div>
 
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">
-            8 mini rozet = 1 büyük rozet
-          </span>
-          <div className="flex items-center gap-1 text-amber-600 font-medium">
-            Detay <ChevronRight size={16} />
+        {/* Mobile stats */}
+        <div className="flex sm:hidden items-center gap-4 mt-3 pt-3 border-t border-amber-200/50 text-sm">
+          <div className="flex items-center gap-1">
+            <Target size={14} className="text-amber-500" />
+            <span className="text-slate-600">Rozet: {summary.mini_badge_count}/8</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Flame size={14} className="text-orange-500" />
+            <span className="text-slate-600">Streak: {summary.current_streak}</span>
           </div>
         </div>
       </div>

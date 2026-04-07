@@ -20,11 +20,19 @@ const TeacherDashboard = () => {
   }, [user]);
 
   const checkPlanningStatus = async () => {
+    // Session'da zaten gösterilmiş mi kontrol et
+    const warningShown = sessionStorage.getItem('planning_warning_shown');
+    if (warningShown) {
+      return; // Bu session'da zaten gösterilmiş, tekrar gösterme
+    }
+
     try {
       const res = await apiClient.get(`/planning-master/check/${user.teacher_id}`);
       if (res.data.show_warning) {
         setPlanningWarning(res.data);
         setShowWarning(true);
+        // Session'a gösterildiğini kaydet
+        sessionStorage.setItem('planning_warning_shown', 'true');
       }
     } catch (error) {
       console.error('Planlama durumu kontrol edilemedi:', error);
@@ -88,7 +96,7 @@ const TeacherDashboard = () => {
   return (
     <TeacherLayout>
       <div className="max-w-5xl mx-auto">
-        {/* Planning Warning Popup */}
+        {/* Planning Warning Popup - Sadece login'de 1 kez */}
         {showWarning && planningWarning && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" data-testid="planning-warning-popup">
             <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative animate-in fade-in zoom-in duration-300">
@@ -151,7 +159,7 @@ const TeacherDashboard = () => {
           </p>
         </div>
 
-        {/* Planning Master Card - Top position */}
+        {/* Planning Master Card - Minimal */}
         <div className="mb-6 lg:mb-8">
           <PlanningMasterCard />
         </div>
