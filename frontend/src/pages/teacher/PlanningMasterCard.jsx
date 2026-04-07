@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../../api/axios';
 import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Trophy, Target, Flame, Award, Check, X, ChevronRight, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+
+const MONTH_NAMES = {
+  '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',
+  '05': 'Mayıs', '06': 'Haziran', '07': 'Temmuz', '08': 'Ağustos',
+  '09': 'Eylül', '10': 'Ekim', '11': 'Kasım', '12': 'Aralık'
+};
 
 const PlanningMasterCard = () => {
   const { user } = useAuth();
@@ -40,15 +45,16 @@ const PlanningMasterCard = () => {
     }
   };
 
+  const getMonthName = (monthStr) => {
+    if (!monthStr) return '';
+    const month = monthStr.split('-')[1];
+    return MONTH_NAMES[month] || month;
+  };
+
   const formatMonth = (monthStr) => {
     if (!monthStr) return '';
-    const monthNames = {
-      '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',
-      '05': 'Mayıs', '06': 'Haziran', '07': 'Temmuz', '08': 'Ağustos',
-      '09': 'Eylül', '10': 'Ekim', '11': 'Kasım', '12': 'Aralık'
-    };
     const [year, month] = monthStr.split('-');
-    return `${monthNames[month] || month} ${year}`;
+    return `${MONTH_NAMES[month] || month} ${year}`;
   };
 
   if (loading) {
@@ -62,6 +68,9 @@ const PlanningMasterCard = () => {
 
   if (!summary) return null;
 
+  // Planlanan ay (gelecek ay)
+  const nextMonthName = getMonthName(summary.next_month);
+
   return (
     <>
       <div 
@@ -74,10 +83,7 @@ const PlanningMasterCard = () => {
             <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center">
               <Trophy className="text-white" size={24} />
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-slate-800">Planlama Ustası</h3>
-              <p className="text-sm text-slate-500">{summary.season} Sezonu</p>
-            </div>
+            <h3 className="text-lg font-bold text-slate-800">Planlama Ustası</h3>
           </div>
           {summary.big_badge && (
             <div className="bg-amber-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
@@ -89,8 +95,8 @@ const PlanningMasterCard = () => {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <div className="bg-white/60 rounded-lg p-3 text-center">
-            <p className="text-xs text-slate-500 mb-1">Bu Ay</p>
-            <p className="text-2xl font-bold text-amber-600">{summary.current_month_score}</p>
+            <p className="text-xs text-slate-500 mb-1">{nextMonthName} Ayı Puanı</p>
+            <p className="text-2xl font-bold text-amber-600">{summary.next_month_score}</p>
           </div>
           <div className="bg-white/60 rounded-lg p-3 text-center">
             <p className="text-xs text-slate-500 mb-1">Toplam Puan</p>

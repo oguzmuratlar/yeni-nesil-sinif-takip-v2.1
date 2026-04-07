@@ -30,12 +30,19 @@ const AdminBadges = () => {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [season, setSeason] = useState('');
+  const [nextMonth, setNextMonth] = useState('');
   const [detailOpen, setDetailOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState(null);
   const [detail, setDetail] = useState(null);
   const [history, setHistory] = useState(null);
   const [seasonEndDialogOpen, setSeasonEndDialogOpen] = useState(false);
+
+  const MONTH_NAMES = {
+    '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',
+    '05': 'Mayıs', '06': 'Haziran', '07': 'Temmuz', '08': 'Ağustos',
+    '09': 'Eylül', '10': 'Ekim', '11': 'Kasım', '12': 'Aralık'
+  };
 
   useEffect(() => {
     fetchTeachers();
@@ -46,11 +53,18 @@ const AdminBadges = () => {
       const res = await apiClient.get('/planning-master/all-teachers');
       setTeachers(res.data.teachers || []);
       setSeason(res.data.season || '');
+      setNextMonth(res.data.next_month || '');
     } catch (error) {
       toast.error('Veriler yüklenemedi');
     } finally {
       setLoading(false);
     }
+  };
+
+  const getMonthName = (monthStr) => {
+    if (!monthStr) return '';
+    const month = monthStr.split('-')[1];
+    return MONTH_NAMES[month] || month;
   };
 
   const fetchDetail = async (teacher) => {
@@ -150,10 +164,7 @@ const AdminBadges = () => {
                     <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
                       <Trophy className="text-amber-600" size={24} />
                     </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-slate-800">{teacher.teacher_name}</h3>
-                      <p className="text-sm text-slate-500">{season}</p>
-                    </div>
+                    <h3 className="text-lg font-bold text-slate-800">{teacher.teacher_name}</h3>
                     {teacher.big_badge && (
                       <div className="bg-amber-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
                         <Award size={16} />
@@ -165,8 +176,8 @@ const AdminBadges = () => {
                   {/* Stats */}
                   <div className="grid grid-cols-4 gap-3 lg:gap-6">
                     <div className="text-center">
-                      <p className="text-xs text-slate-500 mb-1">Bu Ay</p>
-                      <p className="text-xl lg:text-2xl font-bold text-amber-600">{teacher.current_month_score}</p>
+                      <p className="text-xs text-slate-500 mb-1">{getMonthName(nextMonth)} Ayı</p>
+                      <p className="text-xl lg:text-2xl font-bold text-amber-600">{teacher.next_month_score}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-xs text-slate-500 mb-1">Toplam</p>

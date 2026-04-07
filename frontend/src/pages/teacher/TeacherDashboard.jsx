@@ -142,13 +142,18 @@ const TeacherDashboard = () => {
         )}
 
         {/* Header - Mobile optimized */}
-        <div className="mb-8 lg:mb-12 text-center">
+        <div className="mb-6 lg:mb-8 text-center">
           <h1 className="text-3xl lg:text-5xl font-extrabold text-slate-800 mb-2 lg:mb-3" data-testid="teacher-dashboard-title">
             Öğretmen Portalı
           </h1>
           <p className="text-base lg:text-lg text-stone-600">
             Öğrencilerinizi yönetin ve dersleri takip edin
           </p>
+        </div>
+
+        {/* Planning Master Card - Top position */}
+        <div className="mb-6 lg:mb-8">
+          <PlanningMasterCard />
         </div>
 
         {/* Cards Grid - Mobile optimized */}
@@ -176,11 +181,6 @@ const TeacherDashboard = () => {
               </div>
             );
           })}
-        </div>
-
-        {/* Planning Master Card */}
-        <div className="mb-6 lg:mb-8">
-          <PlanningMasterCard />
         </div>
 
         {/* Welcome Card - Mobile optimized */}
