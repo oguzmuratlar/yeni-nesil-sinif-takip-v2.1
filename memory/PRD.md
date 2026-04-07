@@ -3,6 +3,7 @@
 ## Son Güncelleme: 7 Nisan 2026
 
 ### Son Değişiklik
+- **Planlama Ustası Gamification:** Öğretmenler için aylık planlama takip sistemi eklendi (7 Nisan 2026)
 - **Ödeme Pop-up Scroll:** AdminPayments.jsx dialog'una max-height ve overflow-y-auto eklendi (7 Nisan 2026)
 
 ## Proje Özeti
@@ -112,6 +113,53 @@
 - **Öğrenci filtresi**: Ödemeler listesinde öğrenci bazlı filtreleme
 - Backend'e `student_id` filtre parametresi eklendi
 
+### 9. Planlama Ustası Gamification ✅ (YENİ - v3.8)
+
+#### 9.1 Amaç
+Öğretmenlerin gelecek ay için tüm aktif öğrenci ve gruplarına eksiksiz planlama girmesini teşvik etmek.
+
+#### 9.2 Puanlama Kuralları
+- **+10 puan + Mini Rozet**: Ayın 25'ine kadar eksiksiz planlama
+- **+5 puan**: Ayın 25'i ile son günü arası eksiksiz planlama
+- **0 puan**: Eksik veya hiç planlama yok
+- **Geçerli Aylar**: Eylül-Haziran (Temmuz/Ağustos hariç)
+
+#### 9.3 Rozet Sistemi
+- **Mini Rozet**: Sadece +10 puan alanlara verilir
+- **Büyük Rozet**: 8 mini rozet toplayan öğretmene verilir
+- **Streak**: Sadece +10 puanlar streak'i artırır, +5/0 puan streak'i sıfırlar
+
+#### 9.4 Teacher Tarafı
+- **Login Uyarısı**: Eksik planlama varsa popup gösterilir ("X gün kaldı, Y öğrenci Z grup eksik")
+- **Dashboard Kartı**: Planlama Ustası kartı (Bu Ay Puan, Toplam Puan, Mini Rozet Sayısı, Streak)
+- **Detay Modal**: Tıklanınca öğrenci/grup listesi ve planlama durumu gösterilir
+
+#### 9.5 Admin Tarafı
+- **Rozetler Sayfası**: `/admin/badges` - Tüm öğretmenlerin rozet durumu
+- **Bu Ay Detay**: Her öğretmen için anlık planlama durumu
+- **Geçmiş Modal**: Sezon boyunca aylık puanlar ve rozet geçmişi
+- **Sene Sonu İşlemi**: Mini rozetleri ve streak'leri sıfırlar, geçmiş arşivde kalır
+
+#### 9.6 Veri Modelleri
+```python
+PlanningMasterRecord:
+  id, teacher_id, season, month, planning_score, mini_badge, completed_at
+
+PlanningMasterSummary:
+  id, teacher_id, season, total_score, mini_badge_count, big_badge,
+  current_streak, longest_streak
+```
+
+#### 9.7 API Endpoints
+- `GET /api/planning-master/check/{teacher_id}` - Login uyarısı için kontrol
+- `GET /api/planning-master/summary/{teacher_id}` - Dashboard kartı için özet
+- `GET /api/planning-master/detail/{teacher_id}` - Öğrenci/grup detayı
+- `GET /api/planning-master/history/{teacher_id}` - Aylık geçmiş
+- `GET /api/planning-master/all-teachers` - Admin için tüm öğretmenler
+- `POST /api/planning-master/season-end` - Sene sonu işlemi
+
+---
+
 ### 8. Diğer Geliştirmeler ✅
 - Test hesap bilgisi login'den kaldırıldı
 - Banka hesabı silme (bakiye kontrolü ile)
@@ -220,11 +268,12 @@ group_id: str (optional)  # YENİ - Grup dersi için
 5. Kamplar
 6. YouTube
 7. Branşlar
-8. **Kasalar** (YENİ)
+8. Kasalar
 9. Ödemeler
 10. Banka Hesapları
 11. Aylık Program
-12. Kullanıcı Ekle
+12. **Rozetler** (YENİ - Planlama Ustası)
+13. Kullanıcı Ekle
 
 ---
 
@@ -253,26 +302,21 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Son Güncelleme
 - Tarih: 2026-04-07
-- Versiyon: 3.7
+- Versiyon: 3.8
 - Değişiklikler:
-  1. **Öğretmen Maaş Ödemeleri - Ödeme Şekli ve Vergi Takibi**:
-     - Payment modeline `payment_method` (elden/resmi) ve `tax_amount` field'ları eklendi
-     - Admin ödeme girişinde Maaş kategorisinde "Ödeme Şekli" dropdown'ı eklendi
-     - Resmi ödeme seçildiğinde "Vergi Tutarı" alanı görünür
-     - Vergi sadece bilgilendirme amaçlı - kasadan ayrıca düşülmez
-  2. **Öğretmen Bakiye Ekranı - Ödeme Detay Modalı**:
-     - "Yapılan Ödeme" kartı tıklanabilir hale getirildi
-     - Detay modalında gösterilen bilgiler:
-       - Elden Alınan Tutar
-       - Resmi Yatırılan Tutar (Brüt)
-       - Resmi Maaştan Kesilen Vergi
-       - Toplam Ödeme (Brüt)
-       - Toplam Net Kazanç
-  3. **Hesaplama Kuralları**:
-     - Kalan Bakiye = Toplam Kazanç - Toplam Ödeme (Brüt)
-     - Net Kazanç = Toplam Ödeme (Brüt) - Vergi Toplamı
-     - Kasadan düşen tek tutar = Ana tutar (vergi dahil değil)
-  4. **Önceki Güncellemeler**:
+  1. **Planlama Ustası Gamification Sistemi** (YENİ):
+     - Öğretmen planlama takibi için oyunlaştırma
+     - Puanlama: 25'e kadar +10 + mini rozet, 25-son gün +5, eksik 0
+     - 8 mini rozet = 1 büyük rozet
+     - Streak takibi (sadece +10 puan streak'i artırır)
+     - Teacher login popup uyarısı
+     - Teacher dashboard kartı ve detay modal
+     - Admin rozetler sayfası (/admin/badges)
+     - Sene sonu işlemi (arşivle + sıfırla)
+  2. **Ödeme Pop-up Scroll Fix**: Dialog scroll özelliği
+  3. **Önceki Güncellemeler**:
+     - Öğretmen maaş ödemeleri elden/resmi takibi
+     - Öğretmen bakiye detay modalı
      - Grup ders güncelleme ve ders sayısı düzeltmesi
      - Aylık program çoklu filtre ve hafıza
      - Ödemeler ekranı dinamik filtreler
