@@ -2148,7 +2148,7 @@ async def fix_group_lesson_earnings(current_user: User = Depends(get_current_use
                 fixed_count += 1
     
     return {
-        "message": f"Grup dersi kazançları düzeltildi",
+        "message": "Grup dersi kazançları düzeltildi",
         "fixed_lessons_count": fixed_count
     }
 
@@ -3206,6 +3206,627 @@ async def migrate_lessons_teacher_info(current_user: User = Depends(get_current_
         "message": "Migration completed",
         "total_lessons_without_teacher_id": len(lessons),
         "updated_lessons": updated_count
+    }
+
+
+# ============= PLANLAMA USTASI (PLANNING MASTER) GAMIFICATION =============
+
+class PlanningMasterRecord(BaseModel):
+    """Öğretmenin aylık planlama ustası kaydı"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    teacher_id: str
+    season: str  # "2024-2025"
+    month: str  # "2026-04" (planlanan ay)
+    planning_score: int = 0  # +10, +5, 0
+    mini_badge: bool = False  # Sadece +10 puan alanlara
+    completed_at: Optional[str] = None  # Planlamanın tamamlandığı tarih
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class PlanningMasterSummary(BaseModel):
+    """Öğretmenin sezon özeti"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    teacher_id: str
+    season: str
+    total_score: int = 0
+    mini_badge_count: int = 0
+    big_badge: bool = False  # 8 mini rozet = 1 büyük rozet
+    current_streak: int = 0
+    longest_streak: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+# Geçerli aylar (Temmuz ve Ağustos hariç)
+VALID_PLANNING_MONTHS = ['09', '10', '11', '12', '01', '02', '03', '04', '05', '06']
+
+def get_current_season() -> str:
+    """Mevcut sezonu döndürür (Eylül başlangıç)"""
+    now = datetime.now(timezone.utc)
+    year = now.year
+    month = now.month
+    # Eylül-Aralık: bu yıl - gelecek yıl
+    # Ocak-Ağustos: geçen yıl - bu yıl
+    if month >= 9:
+        return f"{year}-{year + 1}"
+    else:
+        return f"{year - 1}-{year}"
+
+def get_next_month(current_date: datetime = None) -> str:
+    """Bir sonraki ayı döndürür (YYYY-MM formatında)"""
+    if current_date is None:
+        current_date = datetime.now(timezone.utc)
+    
+    year = current_date.year
+    month = current_date.month + 1
+    
+    if month > 12:
+        month = 1
+        year += 1
+    
+    return f"{year}-{month:02d}"
+
+def get_days_until_25th() -> int:
+    """Ayın 25'ine kaç gün kaldığını hesaplar"""
+    now = datetime.now(timezone.utc)
+    day = now.day
+    
+    if day >= 25:
+        # 25'i geçtiyse, sonraki ayın 25'ine kalan gün
+        # Bu durumda planlama süresi dolmuş demektir
+        return 0
+    else:
+        return 25 - day
+
+def is_valid_planning_month(month_str: str) -> bool:
+    """Ay planlama için geçerli mi kontrol eder"""
+    if not month_str or len(month_str) != 7:
+        return False
+    month = month_str[5:7]
+    return month in VALID_PLANNING_MONTHS
+
+async def get_teacher_expected_items(teacher_id: str, target_month: str):
+    """
+    Öğretmenin planlama yapması gereken aktif öğrenci ve grupları döndürür.
+    Returns: (students_list, groups_list, students_with_status, groups_with_status)
+    """
+    # Aktif öğrenci kurslarını bul (sadece bu öğretmenin)
+    courses = await db.student_courses.find({
+        "teacher_id": teacher_id,
+        "status": "active"
+    }, {"_id": 0}).to_list(10000)
+    
+    # Kurslardan benzersiz öğrenci ID'leri
+    student_ids = list(set([c["student_id"] for c in courses]))
+    
+    # Aktif öğrencileri getir
+    students = []
+    if student_ids:
+        students = await db.students.find({
+            "id": {"$in": student_ids},
+            "status": "active"
+        }, {"_id": 0}).to_list(10000)
+    
+    # Öğretmene atanmış aktif grupları bul
+    groups = await db.student_groups.find({
+        "teacher_id": teacher_id
+    }, {"_id": 0}).to_list(1000)
+    
+    # Grupların aktif olup olmadığını kontrol et (en az 1 aktif öğrenci)
+    active_groups = []
+    for group in groups:
+        group_student_ids = group.get("student_ids", [])
+        active_students_in_group = await db.students.count_documents({
+            "id": {"$in": group_student_ids},
+            "status": "active"
+        })
+        if active_students_in_group > 0:
+            active_groups.append(group)
+    
+    # Her öğrenci için planlama durumunu kontrol et
+    students_with_status = []
+    
+    for student in students:
+        # Bu öğrenci için kursları bul
+        student_courses = [c for c in courses if c["student_id"] == student["id"]]
+        
+        has_planning = False
+        for course in student_courses:
+            planned = await db.planned_lessons.find_one({
+                "student_course_id": course["id"],
+                "month": target_month
+            })
+            if planned:
+                has_planning = True
+                break
+        
+        students_with_status.append({
+            "id": student["id"],
+            "name": student["name"],
+            "has_planning": has_planning
+        })
+    
+    # Her grup için planlama durumunu kontrol et
+    groups_with_status = []
+    branches = await db.branches.find({}, {"_id": 0}).to_list(100)
+    branch_map = {b["id"]: b["name"] for b in branches}
+    
+    for group in active_groups:
+        # Grup için planlama kontrolü
+        # Gruptaki herhangi bir öğrencinin bu branştaki kursu için planlama var mı?
+        group_student_ids = group.get("student_ids", [])
+        group_courses = [c for c in courses 
+                        if c["student_id"] in group_student_ids 
+                        and c["branch_id"] == group["branch_id"]]
+        
+        has_planning = False
+        for course in group_courses:
+            planned = await db.planned_lessons.find_one({
+                "student_course_id": course["id"],
+                "month": target_month
+            })
+            if planned:
+                has_planning = True
+                break
+        
+        groups_with_status.append({
+            "id": group["id"],
+            "name": group["name"],
+            "branch_name": branch_map.get(group["branch_id"], ""),
+            "student_count": len(group_student_ids),
+            "has_planning": has_planning
+        })
+    
+    return students, active_groups, students_with_status, groups_with_status
+
+async def check_planning_complete(teacher_id: str, target_month: str) -> tuple:
+    """
+    Öğretmenin belirtilen ay için planlamasının tam olup olmadığını kontrol eder.
+    Returns: (is_complete, missing_students_count, missing_groups_count, total_students, total_groups)
+    """
+    _, _, students_with_status, groups_with_status = await get_teacher_expected_items(teacher_id, target_month)
+    
+    missing_students = [s for s in students_with_status if not s["has_planning"]]
+    missing_groups = [g for g in groups_with_status if not g["has_planning"]]
+    
+    is_complete = len(missing_students) == 0 and len(missing_groups) == 0
+    
+    # Eğer hiç öğrenci ve grup yoksa da complete sayılmaz
+    if len(students_with_status) == 0 and len(groups_with_status) == 0:
+        is_complete = False
+    
+    return (
+        is_complete,
+        len(missing_students),
+        len(missing_groups),
+        len(students_with_status),
+        len(groups_with_status)
+    )
+
+async def calculate_planning_score(teacher_id: str, target_month: str, completed_date: datetime = None) -> int:
+    """
+    Planlama puanını hesaplar.
+    - Ayın 25'ine kadar tamamlanmışsa: +10
+    - Ayın 25'i ile son günü arası: +5
+    - Tamamlanmamışsa: 0
+    """
+    is_complete, _, _, total_students, total_groups = await check_planning_complete(teacher_id, target_month)
+    
+    # Hiç öğrenci/grup yoksa 0 puan
+    if total_students == 0 and total_groups == 0:
+        return 0
+    
+    if not is_complete:
+        return 0
+    
+    # Tamamlanma tarihini kontrol et
+    if completed_date is None:
+        completed_date = datetime.now(timezone.utc)
+    
+    day = completed_date.day
+    
+    if day <= 25:
+        return 10
+    else:
+        return 5
+
+@api_router.get("/planning-master/check/{teacher_id}")
+async def check_planning_master_status(
+    teacher_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Öğretmenin planlama ustası durumunu kontrol eder.
+    Login sonrası popup için kullanılır.
+    """
+    # Yetki kontrolü
+    if current_user.user_type == "teacher" and current_user.teacher_id != teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    next_month = get_next_month()
+    
+    # Temmuz veya Ağustos ise uyarı gösterme
+    if not is_valid_planning_month(next_month):
+        return {
+            "show_warning": False,
+            "reason": "invalid_month",
+            "next_month": next_month
+        }
+    
+    is_complete, missing_students, missing_groups, total_students, total_groups = await check_planning_complete(
+        teacher_id, next_month
+    )
+    
+    days_remaining = get_days_until_25th()
+    
+    return {
+        "show_warning": not is_complete and (total_students > 0 or total_groups > 0),
+        "is_complete": is_complete,
+        "next_month": next_month,
+        "days_until_25th": days_remaining,
+        "missing_students": missing_students,
+        "missing_groups": missing_groups,
+        "total_students": total_students,
+        "total_groups": total_groups
+    }
+
+@api_router.get("/planning-master/summary/{teacher_id}")
+async def get_planning_master_summary(
+    teacher_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Öğretmenin planlama ustası özetini döndürür.
+    Dashboard kartı için kullanılır.
+    """
+    # Yetki kontrolü
+    if current_user.user_type == "teacher" and current_user.teacher_id != teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    season = get_current_season()
+    
+    # Sezon özeti var mı?
+    summary = await db.planning_master_summaries.find_one({
+        "teacher_id": teacher_id,
+        "season": season
+    }, {"_id": 0})
+    
+    if not summary:
+        # Yoksa oluştur
+        summary = PlanningMasterSummary(
+            teacher_id=teacher_id,
+            season=season
+        ).model_dump()
+        summary['created_at'] = summary['created_at'].isoformat()
+        await db.planning_master_summaries.insert_one(summary)
+    
+    # Mevcut ay puanını hesapla
+    now = datetime.now(timezone.utc)
+    current_month = f"{now.year}-{now.month:02d}"
+    
+    # Bu ay için kayıt var mı?
+    current_month_record = await db.planning_master_records.find_one({
+        "teacher_id": teacher_id,
+        "season": season,
+        "month": current_month
+    }, {"_id": 0})
+    
+    current_month_score = current_month_record.get("planning_score", 0) if current_month_record else 0
+    
+    return {
+        "teacher_id": teacher_id,
+        "season": season,
+        "current_month": current_month,
+        "current_month_score": current_month_score,
+        "total_score": summary.get("total_score", 0),
+        "mini_badge_count": summary.get("mini_badge_count", 0),
+        "big_badge": summary.get("big_badge", False),
+        "current_streak": summary.get("current_streak", 0),
+        "longest_streak": summary.get("longest_streak", 0)
+    }
+
+@api_router.get("/planning-master/detail/{teacher_id}")
+async def get_planning_master_detail(
+    teacher_id: str,
+    month: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Öğretmenin planlama detayını döndürür.
+    Hangi öğrenci/grup eksik gösterir.
+    """
+    # Yetki kontrolü
+    if current_user.user_type == "teacher" and current_user.teacher_id != teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if not month:
+        month = get_next_month()
+    
+    _, _, students_with_status, groups_with_status = await get_teacher_expected_items(teacher_id, month)
+    
+    return {
+        "teacher_id": teacher_id,
+        "month": month,
+        "students": students_with_status,
+        "groups": groups_with_status,
+        "total_students": len(students_with_status),
+        "total_groups": len(groups_with_status),
+        "completed_students": len([s for s in students_with_status if s["has_planning"]]),
+        "completed_groups": len([g for g in groups_with_status if g["has_planning"]])
+    }
+
+@api_router.get("/planning-master/history/{teacher_id}")
+async def get_planning_master_history(
+    teacher_id: str,
+    season: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Öğretmenin planlama geçmişini döndürür.
+    Admin detay ekranı için kullanılır.
+    """
+    # Admin veya kendi kaydı
+    if current_user.user_type == "teacher" and current_user.teacher_id != teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if not season:
+        season = get_current_season()
+    
+    records = await db.planning_master_records.find({
+        "teacher_id": teacher_id,
+        "season": season
+    }, {"_id": 0}).to_list(100)
+    
+    # Ay adlarını Türkçe yap
+    month_names = {
+        '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',
+        '05': 'Mayıs', '06': 'Haziran', '07': 'Temmuz', '08': 'Ağustos',
+        '09': 'Eylül', '10': 'Ekim', '11': 'Kasım', '12': 'Aralık'
+    }
+    
+    for record in records:
+        if record.get("month"):
+            parts = record["month"].split("-")
+            if len(parts) == 2:
+                record["month_label"] = f"{month_names.get(parts[1], parts[1])} {parts[0]}"
+    
+    # Aya göre sırala
+    records.sort(key=lambda x: x.get("month", ""), reverse=True)
+    
+    return {
+        "teacher_id": teacher_id,
+        "season": season,
+        "records": records
+    }
+
+@api_router.post("/planning-master/calculate/{teacher_id}")
+async def calculate_and_save_planning_master(
+    teacher_id: str,
+    month: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Öğretmenin belirtilen ay için planlama puanını hesaplar ve kaydeder.
+    Bu endpoint genellikle planlama tamamlandığında veya ay sonunda çağrılır.
+    """
+    # Admin only
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can calculate scores")
+    
+    season = get_current_season()
+    
+    # Puanı hesapla
+    score = await calculate_planning_score(teacher_id, month)
+    mini_badge = score == 10
+    
+    # Mevcut kayıt var mı?
+    existing = await db.planning_master_records.find_one({
+        "teacher_id": teacher_id,
+        "season": season,
+        "month": month
+    })
+    
+    if existing:
+        # Güncelle
+        await db.planning_master_records.update_one(
+            {"id": existing["id"]},
+            {"$set": {
+                "planning_score": score,
+                "mini_badge": mini_badge,
+                "completed_at": datetime.now(timezone.utc).isoformat() if score > 0 else None
+            }}
+        )
+    else:
+        # Yeni kayıt oluştur
+        record = PlanningMasterRecord(
+            teacher_id=teacher_id,
+            season=season,
+            month=month,
+            planning_score=score,
+            mini_badge=mini_badge,
+            completed_at=datetime.now(timezone.utc).isoformat() if score > 0 else None
+        )
+        doc = record.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        await db.planning_master_records.insert_one(doc)
+    
+    # Sezon özetini güncelle
+    await update_planning_master_summary(teacher_id, season)
+    
+    return {
+        "teacher_id": teacher_id,
+        "month": month,
+        "score": score,
+        "mini_badge": mini_badge
+    }
+
+async def update_planning_master_summary(teacher_id: str, season: str):
+    """Sezon özetini günceller"""
+    # Tüm aylık kayıtları al
+    records = await db.planning_master_records.find({
+        "teacher_id": teacher_id,
+        "season": season
+    }, {"_id": 0}).to_list(100)
+    
+    # Hesaplamalar
+    total_score = sum([r.get("planning_score", 0) for r in records])
+    mini_badge_count = len([r for r in records if r.get("mini_badge", False)])
+    big_badge = mini_badge_count >= 8
+    
+    # Streak hesapla (sadece +10 puanlar streak'i artırır)
+    # Ayları sırala
+    records.sort(key=lambda x: x.get("month", ""))
+    
+    current_streak = 0
+    longest_streak = 0
+    temp_streak = 0
+    
+    for record in records:
+        if record.get("planning_score", 0) == 10:
+            temp_streak += 1
+            if temp_streak > longest_streak:
+                longest_streak = temp_streak
+        else:
+            temp_streak = 0
+    
+    current_streak = temp_streak
+    
+    # Özeti güncelle veya oluştur
+    existing = await db.planning_master_summaries.find_one({
+        "teacher_id": teacher_id,
+        "season": season
+    })
+    
+    update_data = {
+        "total_score": total_score,
+        "mini_badge_count": mini_badge_count,
+        "big_badge": big_badge,
+        "current_streak": current_streak,
+        "longest_streak": longest_streak
+    }
+    
+    if existing:
+        await db.planning_master_summaries.update_one(
+            {"id": existing["id"]},
+            {"$set": update_data}
+        )
+    else:
+        summary = PlanningMasterSummary(
+            teacher_id=teacher_id,
+            season=season,
+            **update_data
+        )
+        doc = summary.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        await db.planning_master_summaries.insert_one(doc)
+
+@api_router.get("/planning-master/all-teachers")
+async def get_all_teachers_planning_master(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Tüm öğretmenlerin planlama ustası durumunu döndürür.
+    Admin rozetler sayfası için kullanılır.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view all teachers")
+    
+    season = get_current_season()
+    
+    # Aktif öğretmenleri al
+    teachers = await db.teachers.find({"status": "active"}, {"_id": 0}).to_list(1000)
+    
+    result = []
+    for teacher in teachers:
+        # Özet bilgisini al
+        summary = await db.planning_master_summaries.find_one({
+            "teacher_id": teacher["id"],
+            "season": season
+        }, {"_id": 0})
+        
+        if not summary:
+            summary = {
+                "total_score": 0,
+                "mini_badge_count": 0,
+                "big_badge": False,
+                "current_streak": 0,
+                "longest_streak": 0
+            }
+        
+        # Mevcut ay puanı
+        now = datetime.now(timezone.utc)
+        current_month = f"{now.year}-{now.month:02d}"
+        
+        current_record = await db.planning_master_records.find_one({
+            "teacher_id": teacher["id"],
+            "season": season,
+            "month": current_month
+        }, {"_id": 0})
+        
+        result.append({
+            "teacher_id": teacher["id"],
+            "teacher_name": teacher["name"],
+            "season": season,
+            "current_month": current_month,
+            "current_month_score": current_record.get("planning_score", 0) if current_record else 0,
+            "total_score": summary.get("total_score", 0),
+            "mini_badge_count": summary.get("mini_badge_count", 0),
+            "big_badge": summary.get("big_badge", False),
+            "current_streak": summary.get("current_streak", 0),
+            "longest_streak": summary.get("longest_streak", 0)
+        })
+    
+    # Toplam puana göre sırala
+    result.sort(key=lambda x: x["total_score"], reverse=True)
+    
+    return {
+        "season": season,
+        "teachers": result
+    }
+
+@api_router.post("/planning-master/season-end")
+async def planning_master_season_end(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Sene sonu işlemi - mevcut sezon verilerini arşivler ve yeni sezon başlatır.
+    Mini rozetler ve streakler sıfırlanır, geçmiş silinmez.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can perform season end")
+    
+    old_season = get_current_season()
+    
+    # Yeni sezonu hesapla
+    parts = old_season.split("-")
+    new_season = f"{int(parts[1])}-{int(parts[1]) + 1}"
+    
+    # Tüm öğretmenler için yeni sezon özeti oluştur (eski veriler korunur)
+    teachers = await db.teachers.find({"status": "active"}, {"_id": 0}).to_list(1000)
+    
+    created_count = 0
+    for teacher in teachers:
+        # Yeni sezon özeti var mı?
+        existing = await db.planning_master_summaries.find_one({
+            "teacher_id": teacher["id"],
+            "season": new_season
+        })
+        
+        if not existing:
+            summary = PlanningMasterSummary(
+                teacher_id=teacher["id"],
+                season=new_season
+            )
+            doc = summary.model_dump()
+            doc['created_at'] = doc['created_at'].isoformat()
+            await db.planning_master_summaries.insert_one(doc)
+            created_count += 1
+    
+    return {
+        "message": "Sene sonu işlemi tamamlandı",
+        "old_season": old_season,
+        "new_season": new_season,
+        "teachers_processed": created_count,
+        "note": "Geçmiş sezon verileri korunmuştur."
     }
 
 

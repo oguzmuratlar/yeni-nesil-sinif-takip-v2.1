@@ -16,7 +16,8 @@ import {
   Youtube,
   Menu,
   X,
-  Wallet
+  Wallet,
+  Trophy
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -56,6 +57,7 @@ const AdminLayout = ({ children }) => {
     { path: '/admin/payments', label: 'Ödemeler', icon: CreditCard },
     { path: '/admin/bank-accounts', label: 'Banka Hesapları', icon: Landmark },
     { path: '/admin/monthly-program', label: 'Aylık Program', icon: Calendar },
+    { path: '/admin/badges', label: 'Rozetler', icon: Trophy },
     { path: '/admin/users/new', label: 'Kullanıcı Ekle', icon: UserPlus },
   ];
 

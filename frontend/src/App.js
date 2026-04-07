@@ -37,6 +37,7 @@ import AdminCampStudents from "./pages/admin/AdminCampStudents";
 import AdminYoutube from "./pages/admin/AdminYoutube";
 import AdminCashboxes from "./pages/admin/AdminCashboxes";
 import AdminStudentsByBranch from "./pages/admin/AdminStudentsByBranch";
+import AdminBadges from "./pages/admin/AdminBadges";
 
 // Teacher Pages
 import TeacherStudents from "./pages/teacher/TeacherStudents";
@@ -218,6 +219,11 @@ function App() {
             <Route path="/admin/cashboxes" element={
               <ProtectedRoute requiredRole="admin">
                 <AdminCashboxes />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/badges" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminBadges />
               </ProtectedRoute>
             } />
             <Route path="/admin/students/branch/:branchId" element={
