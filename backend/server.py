@@ -3732,12 +3732,26 @@ async def check_and_award_planning_master(teacher_id: str):
     """
     Öğretmenin planlama durumunu kontrol eder ve tamamlandıysa anında puan/rozet verir.
     Bu fonksiyon her planlama eklendiğinde/güncellendiğinde çağrılır.
+    Race condition'ı önlemek için find_one_and_update ile upsert kullanır.
     """
     next_month = get_next_month()
     
     # Temmuz/Ağustos kontrolü
     if not is_valid_planning_month(next_month):
         return None
+    
+    season = get_current_season()
+    
+    # Önce mevcut kayıt var mı kontrol et - varsa hiçbir şey yapma
+    existing = await db.planning_master_records.find_one({
+        "teacher_id": teacher_id,
+        "season": season,
+        "month": next_month
+    })
+    
+    if existing:
+        # Bu ay için zaten puan verilmiş, tekrar verme
+        return {"already_awarded": True, "month": next_month}
     
     # Planlamanın tamamlanıp tamamlanmadığını kontrol et
     is_complete, _, _, total_students, total_groups = await check_planning_complete(teacher_id, next_month)
@@ -3751,7 +3765,6 @@ async def check_and_award_planning_master(teacher_id: str):
         return None
     
     # Tamamlandı! Puan hesapla
-    season = get_current_season()
     now = datetime.now(timezone.utc)
     day = now.day
     
@@ -3759,39 +3772,41 @@ async def check_and_award_planning_master(teacher_id: str):
     score = 10 if day <= 25 else 5
     mini_badge = score == 10
     
-    # Mevcut kayıt var mı kontrol et
-    existing = await db.planning_master_records.find_one({
-        "teacher_id": teacher_id,
-        "season": season,
-        "month": next_month
-    })
-    
-    if existing:
-        # Zaten puan verilmiş, güncelleme yapma
-        return existing
-    
-    # Yeni kayıt oluştur - ilk kez tamamlandı
-    record = PlanningMasterRecord(
-        teacher_id=teacher_id,
-        season=season,
-        month=next_month,
-        planning_score=score,
-        mini_badge=mini_badge,
-        completed_at=now.isoformat()
+    # Atomik upsert - sadece kayıt yoksa oluştur (race condition önlemi)
+    # $setOnInsert sadece insert durumunda çalışır, update durumunda çalışmaz
+    result = await db.planning_master_records.update_one(
+        {
+            "teacher_id": teacher_id,
+            "season": season,
+            "month": next_month
+        },
+        {
+            "$setOnInsert": {
+                "id": str(uuid.uuid4()),
+                "teacher_id": teacher_id,
+                "season": season,
+                "month": next_month,
+                "planning_score": score,
+                "mini_badge": mini_badge,
+                "completed_at": now.isoformat(),
+                "created_at": now.isoformat()
+            }
+        },
+        upsert=True
     )
-    doc = record.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
-    await db.planning_master_records.insert_one(doc)
     
-    # Sezon özetini güncelle (streak ve toplam puan)
-    await update_planning_master_summary(teacher_id, season)
+    # Eğer yeni kayıt oluşturulduysa (upserted_id varsa) summary'yi güncelle
+    if result.upserted_id:
+        await update_planning_master_summary(teacher_id, season)
+        return {
+            "awarded": True,
+            "score": score,
+            "mini_badge": mini_badge,
+            "month": next_month
+        }
     
-    return {
-        "awarded": True,
-        "score": score,
-        "mini_badge": mini_badge,
-        "month": next_month
-    }
+    # Kayıt zaten vardı, değişiklik yapılmadı
+    return {"already_awarded": True, "month": next_month}
 
 @api_router.get("/planning-master/all-teachers")
 async def get_all_teachers_planning_master(
