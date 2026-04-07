@@ -3299,6 +3299,7 @@ def is_valid_planning_month(month_str: str) -> bool:
 async def get_teacher_expected_items(teacher_id: str, target_month: str):
     """
     Öğretmenin planlama yapması gereken aktif öğrenci ve grupları döndürür.
+    Grup öğrencileri birebir listesinde gösterilmez.
     Returns: (students_list, groups_list, students_with_status, groups_with_status)
     """
     # Aktif öğrenci kurslarını bul (sadece bu öğretmenin)
@@ -3324,7 +3325,10 @@ async def get_teacher_expected_items(teacher_id: str, target_month: str):
     }, {"_id": 0}).to_list(1000)
     
     # Grupların aktif olup olmadığını kontrol et (en az 1 aktif öğrenci)
+    # Aynı zamanda grup öğrenci ID'lerini topla
     active_groups = []
+    group_student_ids_set = set()
+    
     for group in groups:
         group_student_ids = group.get("student_ids", [])
         active_students_in_group = await db.students.count_documents({
@@ -3333,11 +3337,17 @@ async def get_teacher_expected_items(teacher_id: str, target_month: str):
         })
         if active_students_in_group > 0:
             active_groups.append(group)
+            # Bu gruptaki öğrenci ID'lerini set'e ekle
+            group_student_ids_set.update(group_student_ids)
     
-    # Her öğrenci için planlama durumunu kontrol et
+    # Birebir öğrenciler = Tüm öğrenciler - Grup öğrencileri
+    # Sadece grupta olmayan öğrencileri birebir olarak göster
+    one_on_one_students = [s for s in students if s["id"] not in group_student_ids_set]
+    
+    # Her birebir öğrenci için planlama durumunu kontrol et
     students_with_status = []
     
-    for student in students:
+    for student in one_on_one_students:
         # Bu öğrenci için kursları bul
         student_courses = [c for c in courses if c["student_id"] == student["id"]]
         
@@ -3388,7 +3398,7 @@ async def get_teacher_expected_items(teacher_id: str, target_month: str):
             "has_planning": has_planning
         })
     
-    return students, active_groups, students_with_status, groups_with_status
+    return one_on_one_students, active_groups, students_with_status, groups_with_status
 
 async def check_planning_complete(teacher_id: str, target_month: str) -> tuple:
     """

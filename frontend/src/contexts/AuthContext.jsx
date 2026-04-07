@@ -51,6 +51,8 @@ export const AuthProvider = ({ children }) => {
       setToken(access_token);
       localStorage.setItem('token', access_token);
       setUser({ username, user_type, teacher_id });
+      // Her login'de planlama uyarısı gösterilmesi için flag'i temizle
+      sessionStorage.removeItem('planning_warning_shown');
       return { success: true, user_type, teacher_id };
     } catch (error) {
       console.error('Login failed:', error);
@@ -62,6 +64,8 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');
+    // Logout'ta da temizle
+    sessionStorage.removeItem('planning_warning_shown');
   };
 
   const getAuthHeader = () => {
