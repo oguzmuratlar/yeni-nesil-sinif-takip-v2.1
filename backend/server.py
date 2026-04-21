@@ -1190,7 +1190,7 @@ async def get_planned_lessons(
             pl['created_at'] = datetime.fromisoformat(pl['created_at'])
     return planned
 
-@api_router.post("/planned-lessons", response_model=PlannedLesson)
+@api_router.post("/planned-lessons")
 async def create_planned_lesson(planned_data: PlannedLessonCreate, current_user: User = Depends(get_current_user)):
     course = await db.student_courses.find_one({"id": planned_data.student_course_id}, {"_id": 0})
     if not course:
@@ -1205,9 +1205,21 @@ async def create_planned_lesson(planned_data: PlannedLessonCreate, current_user:
     await db.planned_lessons.insert_one(doc)
     
     # Planlama tamamlandı mı kontrol et ve puan ver
-    await check_and_award_planning_master(course["teacher_id"])
+    badge_result = await check_and_award_planning_master(course["teacher_id"])
     
-    return planned
+    # Response'a rozet bilgisini ekle
+    response_data = {
+        "id": planned.id,
+        "student_course_id": planned.student_course_id,
+        "dates": planned.dates,
+        "number_of_lessons": planned.number_of_lessons,
+        "messaged": planned.messaged,
+        "month": planned.month,
+        "no_lesson_this_month": planned.no_lesson_this_month,
+        "planning_master_badge": badge_result
+    }
+    
+    return response_data
 
 @api_router.put("/planned-lessons/{planned_id}", response_model=PlannedLesson)
 async def update_planned_lesson(planned_id: str, planned_data: PlannedLessonCreate, current_user: User = Depends(get_current_user)):
@@ -3823,11 +3835,21 @@ async def check_and_award_planning_master(teacher_id: str):
     # Eğer yeni kayıt oluşturulduysa (upserted_id varsa) summary'yi güncelle
     if result.upserted_id:
         await update_planning_master_summary(teacher_id, season)
+        
+        # Güncel summary bilgilerini al
+        summary = await db.planning_master_summaries.find_one({
+            "teacher_id": teacher_id,
+            "season": season
+        }, {"_id": 0})
+        
         return {
             "awarded": True,
             "score": score,
             "mini_badge": mini_badge,
-            "month": next_month
+            "month": next_month,
+            "current_streak": summary.get("current_streak", 1) if summary else 1,
+            "mini_badge_count": summary.get("mini_badge_count", 1) if summary else 1,
+            "big_badge": summary.get("big_badge", False) if summary else False
         }
     
     # Kayıt zaten vardı, değişiklik yapılmadı
