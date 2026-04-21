@@ -102,3 +102,57 @@ export const turkishLocale = {
     date: () => 'd MMMM yyyy',
   },
 };
+
+/**
+ * Dinamik ay listesi oluşturur
+ * @param {number} monthsBefore - Mevcut aydan kaç ay öncesi (varsayılan: 6)
+ * @param {number} monthsAfter - Mevcut aydan kaç ay sonrası (varsayılan: 3)
+ * @param {boolean} nextMonthFirst - Bir sonraki ay ilk sırada olsun mu (varsayılan: false)
+ * @returns {Array} Ay listesi [{value: 'YYYY-MM', label: 'Ay Yıl'}, ...]
+ */
+export const generateMonthOptions = (monthsBefore = 6, monthsAfter = 3, nextMonthFirst = false) => {
+  const months = [];
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  
+  // Başlangıç ve bitiş aylarını hesapla
+  const startDate = new Date(currentYear, currentMonth - monthsBefore, 1);
+  const endDate = new Date(currentYear, currentMonth + monthsAfter, 1);
+  
+  // Tüm ayları ekle
+  let date = new Date(startDate);
+  while (date <= endDate) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const value = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const label = `${turkishMonths[month]} ${year}`;
+    months.push({ value, label });
+    date.setMonth(date.getMonth() + 1);
+  }
+  
+  if (nextMonthFirst) {
+    // Bir sonraki ayı bul ve en üste taşı
+    const nextMonth = new Date(currentYear, currentMonth + 1, 1);
+    const nextMonthValue = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Önce bir sonraki ayı, sonra diğerlerini sırala
+    months.sort((a, b) => {
+      if (a.value === nextMonthValue) return -1;
+      if (b.value === nextMonthValue) return 1;
+      return a.value.localeCompare(b.value);
+    });
+  }
+  
+  return months;
+};
+
+/**
+ * Bir sonraki ayın değerini döndürür
+ * @returns {string} YYYY-MM formatında bir sonraki ay
+ */
+export const getNextMonth = () => {
+  const now = new Date();
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+};

@@ -6,7 +6,7 @@ import { Calendar, Filter, BookOpen, Users, TrendingUp, Video, Tent } from 'luci
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Badge } from '../../components/ui/badge';
-import { formatDateTurkish } from '../../lib/dateUtils';
+import { formatDateTurkish, generateMonthOptions } from '../../lib/dateUtils';
 import { formatMoney } from '../../lib/utils';
 
 const TeacherSchedule = () => {
@@ -23,19 +23,8 @@ const TeacherSchedule = () => {
   const [campEarnings, setCampEarnings] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
 
-  const months = [
-    { value: '2024-12', label: 'Aralık 2024' },
-    { value: '2025-01', label: 'Ocak 2025' },
-    { value: '2025-02', label: 'Şubat 2025' },
-    { value: '2025-03', label: 'Mart 2025' },
-    { value: '2025-04', label: 'Nisan 2025' },
-    { value: '2025-05', label: 'Mayıs 2025' },
-    { value: '2025-06', label: 'Haziran 2025' },
-    { value: '2026-01', label: 'Ocak 2026' },
-    { value: '2026-02', label: 'Şubat 2026' },
-    { value: '2026-03', label: 'Mart 2026' },
-    { value: '2026-04', label: 'Nisan 2026' },
-  ];
+  // Dinamik ay listesi: 6 ay önce, 3 ay sonra
+  const months = generateMonthOptions(6, 3);
 
   useEffect(() => {
     fetchData();

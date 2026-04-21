@@ -230,6 +230,7 @@ class PlannedLesson(BaseModel):
     number_of_lessons: int
     messaged: bool = False
     month: str
+    no_lesson_this_month: bool = False  # Bu ay dersi yok
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PlannedLessonCreate(BaseModel):
@@ -238,6 +239,7 @@ class PlannedLessonCreate(BaseModel):
     number_of_lessons: int
     messaged: bool = False
     month: str
+    no_lesson_this_month: bool = False  # Bu ay dersi yok
 
 class Payment(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1822,6 +1824,12 @@ async def get_monthly_program_detailed(month: str, current_user: User = Depends(
     # Bu ay için planlı dersleri getir
     planned_lessons = await db.planned_lessons.find({"month": month}, {"_id": 0}).to_list(10000)
     
+    # "Bu ay dersi yok" işaretli öğrenci kurslarını bul
+    no_lesson_course_ids = set([
+        pl["student_course_id"] for pl in planned_lessons 
+        if pl.get("no_lesson_this_month", False)
+    ])
+    
     # Tüm aktif öğrencileri getir
     students = await db.students.find({"status": "active"}, {"_id": 0}).to_list(1000)
     
@@ -1852,6 +1860,13 @@ async def get_monthly_program_detailed(month: str, current_user: User = Depends(
         
         if not student_course_list:
             continue  # Kursu olmayan öğrenciyi atla
+        
+        # Bu öğrencinin tüm kursları "bu ay dersi yok" mu kontrol et
+        all_courses_no_lesson = all(
+            sc["id"] in no_lesson_course_ids for sc in student_course_list
+        )
+        if all_courses_no_lesson:
+            continue  # Bu öğrenci bu ay aylık programda görünmeyecek
         
         # Öğrencinin aldığı branşlar
         student_branches = list(set([sc["branch_id"] for sc in student_course_list]))

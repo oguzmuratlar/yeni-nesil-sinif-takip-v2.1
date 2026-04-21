@@ -7,8 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Plus, Trash2, ArrowLeft, Edit, Calendar } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, Edit, Calendar, Ban } from 'lucide-react';
 import { toast } from 'sonner';
+import { Checkbox } from '../../components/ui/checkbox';
+import { generateMonthOptions, getNextMonth } from '../../lib/dateUtils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,36 +45,26 @@ const TeacherStudentPlannedLessons = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [filterMonth, setFilterMonth] = useState('all');
+  
+  // Varsayılan ay: bir sonraki ay
+  const defaultMonth = getNextMonth();
+  
   const [newPlanned, setNewPlanned] = useState({
     dates: '',
-    number_of_lessons: '',
-    month: new Date().toISOString().substring(0, 7),
-    messaged: false
+    number_of_lessons: '2', // Varsayılan ders adedi: 2
+    month: defaultMonth,
+    messaged: false,
+    no_lesson_this_month: false // Bu ay dersi yok seçeneği
   });
   const [editPlanned, setEditPlanned] = useState({
     dates: '',
     number_of_lessons: '',
-    month: ''
+    month: '',
+    no_lesson_this_month: false
   });
 
-  const months = [
-    { value: '2025-01', label: 'Ocak 2025' },
-    { value: '2025-02', label: 'Şubat 2025' },
-    { value: '2025-03', label: 'Mart 2025' },
-    { value: '2025-04', label: 'Nisan 2025' },
-    { value: '2025-05', label: 'Mayıs 2025' },
-    { value: '2025-06', label: 'Haziran 2025' },
-    { value: '2025-09', label: 'Eylül 2025' },
-    { value: '2025-10', label: 'Ekim 2025' },
-    { value: '2025-11', label: 'Kasım 2025' },
-    { value: '2025-12', label: 'Aralık 2025' },
-    { value: '2026-01', label: 'Ocak 2026' },
-    { value: '2026-02', label: 'Şubat 2026' },
-    { value: '2026-03', label: 'Mart 2026' },
-    { value: '2026-04', label: 'Nisan 2026' },
-    { value: '2026-05', label: 'Mayıs 2026' },
-    { value: '2026-06', label: 'Haziran 2026' },
-  ];
+  // Dinamik ay listesi: 6 ay önce, 3 ay sonra, bir sonraki ay en üstte
+  const months = generateMonthOptions(6, 3, true);
 
   useEffect(() => {
     fetchData();
@@ -100,21 +92,59 @@ const TeacherStudentPlannedLessons = () => {
 
   const handleAddPlanned = async (e) => {
     e.preventDefault();
+    
+    // "Bu ay dersi yok" seçiliyse sadece ay bilgisi yeterli
+    if (newPlanned.no_lesson_this_month) {
+      // Aynı ay için zaten kayıt var mı kontrol et
+      const existingPlan = plannedLessons.find(p => p.month === newPlanned.month);
+      if (existingPlan) {
+        toast.error(`${formatMonthTurkish(newPlanned.month)} için zaten planlama var. Aynı ay için birden fazla planlama yapılamaz.`);
+        return;
+      }
+      
+      try {
+        await apiClient.post('/planned-lessons', {
+          student_course_id: courseId,
+          dates: 'Bu ay dersi yok',
+          number_of_lessons: 0,
+          month: newPlanned.month,
+          messaged: false,
+          no_lesson_this_month: true
+        });
+        toast.success('Bu ay dersi yok olarak kaydedildi');
+        setDialogOpen(false);
+        setNewPlanned({ dates: '', number_of_lessons: '2', month: defaultMonth, messaged: false, no_lesson_this_month: false });
+        fetchData();
+      } catch (error) {
+        toast.error(error.response?.data?.detail || 'Kayıt başarısız');
+      }
+      return;
+    }
+    
     if (!newPlanned.dates || !newPlanned.number_of_lessons || !newPlanned.month) {
       toast.error('Tüm alanları doldurun');
       return;
     }
+    
+    // Aynı ay için zaten kayıt var mı kontrol et
+    const existingPlan = plannedLessons.find(p => p.month === newPlanned.month);
+    if (existingPlan) {
+      toast.error(`${formatMonthTurkish(newPlanned.month)} için zaten planlama var. Aynı ay için birden fazla planlama yapılamaz.`);
+      return;
+    }
+    
     try {
       await apiClient.post('/planned-lessons', {
         student_course_id: courseId,
         dates: newPlanned.dates,
         number_of_lessons: parseInt(newPlanned.number_of_lessons),
         month: newPlanned.month,
-        messaged: false
+        messaged: false,
+        no_lesson_this_month: false
       });
       toast.success('Planlanmış ders eklendi');
       setDialogOpen(false);
-      setNewPlanned({ dates: '', number_of_lessons: '', month: new Date().toISOString().substring(0, 7), messaged: false });
+      setNewPlanned({ dates: '', number_of_lessons: '2', month: defaultMonth, messaged: false, no_lesson_this_month: false });
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Ders planlanamadı');
@@ -234,31 +264,51 @@ const TeacherStudentPlannedLessons = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="dates">Tarihler *</Label>
-                    <Input
-                      id="dates"
-                      type="text"
-                      value={newPlanned.dates}
-                      onChange={(e) => setNewPlanned({ ...newPlanned, dates: e.target.value })}
-                      placeholder="Örn: 3-10-17-24"
+                  
+                  {/* Bu ay dersi yok seçeneği */}
+                  <div className="flex items-center space-x-2 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <Checkbox
+                      id="no_lesson"
+                      checked={newPlanned.no_lesson_this_month}
+                      onCheckedChange={(checked) => setNewPlanned({ ...newPlanned, no_lesson_this_month: checked })}
                     />
-                    <p className="text-xs text-slate-500">Tarihleri istediğiniz formatta yazın</p>
+                    <div className="flex items-center gap-2">
+                      <Ban size={16} className="text-amber-600" />
+                      <Label htmlFor="no_lesson" className="text-amber-700 cursor-pointer">Bu ay dersi yok</Label>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="number">Toplam Ders Sayısı *</Label>
-                    <Input
-                      id="number"
-                      type="number"
-                      min="1"
-                      placeholder="Örn: 8"
-                      value={newPlanned.number_of_lessons}
-                      onChange={(e) => setNewPlanned({ ...newPlanned, number_of_lessons: e.target.value })}
-                    />
-                  </div>
+                  
+                  {!newPlanned.no_lesson_this_month && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="dates">Tarihler *</Label>
+                        <Input
+                          id="dates"
+                          type="text"
+                          value={newPlanned.dates}
+                          onChange={(e) => setNewPlanned({ ...newPlanned, dates: e.target.value })}
+                          placeholder="Örn: 3-10-17-24"
+                        />
+                        <p className="text-xs text-slate-500">Tarihleri istediğiniz formatta yazın</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="number">Toplam Ders Sayısı *</Label>
+                        <Input
+                          id="number"
+                          type="number"
+                          min="1"
+                          placeholder="Örn: 8"
+                          value={newPlanned.number_of_lessons}
+                          onChange={(e) => setNewPlanned({ ...newPlanned, number_of_lessons: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="bg-blue-50 p-3 rounded-lg">
                     <p className="text-sm text-blue-700">
-                      Bu plan admin aylık programında görünecektir.
+                      {newPlanned.no_lesson_this_month 
+                        ? 'Bu öğrenci seçilen ayda aylık programda görünmeyecektir.' 
+                        : 'Bu plan admin aylık programında görünecektir.'}
                     </p>
                   </div>
                   <div className="flex gap-3">

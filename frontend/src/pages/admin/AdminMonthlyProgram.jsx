@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/pop
 import { Checkbox } from '../../components/ui/checkbox';
 import { debounce } from 'lodash';
 import { formatMoney } from '../../lib/utils';
+import { generateMonthOptions } from '../../lib/dateUtils';
 
 // Ödeme durumu seçenekleri
 const PAYMENT_STATUS_OPTIONS = [
@@ -85,19 +86,8 @@ const AdminMonthlyProgram = () => {
     localStorage.setItem('mp_filterPaymentDays', JSON.stringify(filterPaymentDays));
   }, [filterPaymentDays]);
 
-  const months = [
-    { value: '2024-12', label: 'Aralık 2024' },
-    { value: '2025-01', label: 'Ocak 2025' },
-    { value: '2025-02', label: 'Şubat 2025' },
-    { value: '2025-03', label: 'Mart 2025' },
-    { value: '2025-04', label: 'Nisan 2025' },
-    { value: '2025-05', label: 'Mayıs 2025' },
-    { value: '2025-06', label: 'Haziran 2025' },
-    { value: '2026-01', label: 'Ocak 2026' },
-    { value: '2026-02', label: 'Şubat 2026' },
-    { value: '2026-03', label: 'Mart 2026' },
-    { value: '2026-04', label: 'Nisan 2026' },
-  ];
+  // Dinamik ay listesi: 6 ay önce, 3 ay sonra
+  const months = generateMonthOptions(6, 3);
 
   useEffect(() => {
     fetchData();
