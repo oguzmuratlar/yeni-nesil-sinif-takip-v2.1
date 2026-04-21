@@ -21,6 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
+import PlanningMasterCelebration from '../../components/PlanningMasterCelebration';
 
 // Ay adını Türkçe formata çevir
 const formatMonthTurkish = (monthStr) => {
@@ -62,6 +63,10 @@ const TeacherStudentPlannedLessons = () => {
     month: '',
     no_lesson_this_month: false
   });
+  
+  // Kutlama animasyonu state'leri
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationData, setCelebrationData] = useState(null);
 
   // Dinamik ay listesi: 6 ay önce, 3 ay sonra, bir sonraki ay en üstte
   const months = generateMonthOptions(6, 3, true);
@@ -103,7 +108,7 @@ const TeacherStudentPlannedLessons = () => {
       }
       
       try {
-        await apiClient.post('/planned-lessons', {
+        const response = await apiClient.post('/planned-lessons', {
           student_course_id: courseId,
           dates: 'Bu ay dersi yok',
           number_of_lessons: 0,
@@ -115,6 +120,12 @@ const TeacherStudentPlannedLessons = () => {
         setDialogOpen(false);
         setNewPlanned({ dates: '', number_of_lessons: '2', month: defaultMonth, messaged: false, no_lesson_this_month: false });
         fetchData();
+        
+        // Kutlama kontrolü
+        if (response.data?.planning_master_badge?.awarded) {
+          setCelebrationData(response.data.planning_master_badge);
+          setShowCelebration(true);
+        }
       } catch (error) {
         toast.error(error.response?.data?.detail || 'Kayıt başarısız');
       }
@@ -134,7 +145,7 @@ const TeacherStudentPlannedLessons = () => {
     }
     
     try {
-      await apiClient.post('/planned-lessons', {
+      const response = await apiClient.post('/planned-lessons', {
         student_course_id: courseId,
         dates: newPlanned.dates,
         number_of_lessons: parseInt(newPlanned.number_of_lessons),
@@ -146,6 +157,12 @@ const TeacherStudentPlannedLessons = () => {
       setDialogOpen(false);
       setNewPlanned({ dates: '', number_of_lessons: '2', month: defaultMonth, messaged: false, no_lesson_this_month: false });
       fetchData();
+      
+      // Kutlama kontrolü
+      if (response.data?.planning_master_badge?.awarded) {
+        setCelebrationData(response.data.planning_master_badge);
+        setShowCelebration(true);
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Ders planlanamadı');
     }
@@ -448,6 +465,13 @@ const TeacherStudentPlannedLessons = () => {
           </AlertDialogContent>
         </AlertDialog>
       </div>
+      
+      {/* Planlama Ustası Kutlama Animasyonu */}
+      <PlanningMasterCelebration
+        isOpen={showCelebration}
+        onClose={() => setShowCelebration(false)}
+        data={celebrationData}
+      />
     </TeacherLayout>
   );
 };

@@ -20,6 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
+import PlanningMasterCelebration from '../../components/PlanningMasterCelebration';
+import { generateMonthOptions, getNextMonth } from '../../lib/dateUtils';
 
 const TeacherGroupPlannedLessons = () => {
   const { groupId } = useParams();
@@ -36,35 +38,27 @@ const TeacherGroupPlannedLessons = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [filterMonth, setFilterMonth] = useState('all');
+  
+  // Varsayılan ay: bir sonraki ay
+  const defaultMonth = getNextMonth();
+  
   const [newPlan, setNewPlan] = useState({
     dates: '',
-    number_of_lessons: '',
-    month: new Date().toISOString().substring(0, 7)
+    number_of_lessons: '2', // Varsayılan ders adedi: 2
+    month: defaultMonth
   });
   const [editPlan, setEditPlan] = useState({
     dates: '',
     number_of_lessons: '',
     month: ''
   });
+  
+  // Kutlama animasyonu state'leri
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationData, setCelebrationData] = useState(null);
 
-  const months = [
-    { value: '2025-01', label: 'Ocak 2025' },
-    { value: '2025-02', label: 'Şubat 2025' },
-    { value: '2025-03', label: 'Mart 2025' },
-    { value: '2025-04', label: 'Nisan 2025' },
-    { value: '2025-05', label: 'Mayıs 2025' },
-    { value: '2025-06', label: 'Haziran 2025' },
-    { value: '2025-09', label: 'Eylül 2025' },
-    { value: '2025-10', label: 'Ekim 2025' },
-    { value: '2025-11', label: 'Kasım 2025' },
-    { value: '2025-12', label: 'Aralık 2025' },
-    { value: '2026-01', label: 'Ocak 2026' },
-    { value: '2026-02', label: 'Şubat 2026' },
-    { value: '2026-03', label: 'Mart 2026' },
-    { value: '2026-04', label: 'Nisan 2026' },
-    { value: '2026-05', label: 'Mayıs 2026' },
-    { value: '2026-06', label: 'Haziran 2026' },
-  ];
+  // Dinamik ay listesi: 6 ay önce, 3 ay sonra, bir sonraki ay en üstte
+  const months = generateMonthOptions(6, 3, true);
 
   useEffect(() => {
     if (user?.teacher_id) {
@@ -118,7 +112,7 @@ const TeacherGroupPlannedLessons = () => {
     }
 
     try {
-      await apiClient.post('/group-planned-lessons', {
+      const response = await apiClient.post('/group-planned-lessons', {
         group_id: groupId,
         dates: newPlan.dates,
         number_of_lessons: parseInt(newPlan.number_of_lessons),
@@ -127,8 +121,14 @@ const TeacherGroupPlannedLessons = () => {
       
       toast.success(`Grup planlaması eklendi - ${group.student_ids?.length || 0} öğrenciye kaydedildi`);
       setDialogOpen(false);
-      setNewPlan({ dates: '', number_of_lessons: '', month: new Date().toISOString().substring(0, 7) });
+      setNewPlan({ dates: '', number_of_lessons: '2', month: defaultMonth });
       fetchData();
+      
+      // Kutlama kontrolü
+      if (response.data?.planning_master_badge?.awarded) {
+        setCelebrationData(response.data.planning_master_badge);
+        setShowCelebration(true);
+      }
     } catch (error) {
       console.error('Plan error:', error);
       toast.error(error.response?.data?.detail || 'Planlama eklenemedi');
@@ -509,6 +509,13 @@ const TeacherGroupPlannedLessons = () => {
           </AlertDialogContent>
         </AlertDialog>
       </div>
+      
+      {/* Planlama Ustası Kutlama Animasyonu */}
+      <PlanningMasterCelebration
+        isOpen={showCelebration}
+        onClose={() => setShowCelebration(false)}
+        data={celebrationData}
+      />
     </TeacherLayout>
   );
 };

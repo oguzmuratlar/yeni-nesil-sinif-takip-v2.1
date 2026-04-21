@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Trophy, Flame, Target, X, Sparkles } from 'lucide-react';
-import { Button } from '../../components/ui/button';
+import { Button } from './ui/button';
 
 const MONTH_NAMES = {
   '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',

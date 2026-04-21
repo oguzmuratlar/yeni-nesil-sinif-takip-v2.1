@@ -301,10 +301,20 @@ group_id: str (optional)  # YENİ - Grup dersi için
 ---
 
 ## Son Güncelleme
-- Tarih: 2026-04-07
-- Versiyon: 3.8
+- Tarih: 2026-04-21
+- Versiyon: 3.9
 - Değişiklikler:
-  1. **Planlama Ustası Gamification Sistemi** (YENİ):
+  1. **Kutlama Animasyonu** (YENİ - 21 Nisan 2026):
+     - Öğretmen ders planını tamamladığında konfeti animasyonu
+     - Mini rozet kazanımı bildirimi
+     - Streak ve rozet progress gösterimi
+     - TeacherStudentPlannedLessons.jsx ve TeacherGroupPlannedLessons.jsx entegrasyonu
+  2. **Varsayılan Ay Düzeltmesi**:
+     - Grup planlama formunda varsayılan ay: bir sonraki ay (Mayıs 2026)
+     - Varsayılan ders sayısı: 2
+  3. **Backend Güncellemesi**:
+     - /api/group-planned-lessons endpoint'i planning_master_badge döndürüyor
+  4. **Planlama Ustası Gamification Sistemi** (7 Nisan 2026):
      - Öğretmen planlama takibi için oyunlaştırma
      - Puanlama: 25'e kadar +10 + mini rozet, 25-son gün +5, eksik 0
      - 8 mini rozet = 1 büyük rozet
@@ -313,8 +323,8 @@ group_id: str (optional)  # YENİ - Grup dersi için
      - Teacher dashboard kartı ve detay modal
      - Admin rozetler sayfası (/admin/badges)
      - Sene sonu işlemi (arşivle + sıfırla)
-  2. **Ödeme Pop-up Scroll Fix**: Dialog scroll özelliği
-  3. **Önceki Güncellemeler**:
+  5. **Ödeme Pop-up Scroll Fix**: Dialog scroll özelliği
+  6. **Önceki Güncellemeler**:
      - Öğretmen maaş ödemeleri elden/resmi takibi
      - Öğretmen bakiye detay modalı
      - Grup ders güncelleme ve ders sayısı düzeltmesi

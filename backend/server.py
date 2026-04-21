@@ -1773,10 +1773,15 @@ async def create_group_planned_lesson(data: GroupPlannedLessonCreate, current_us
             created_plans.append(planned)
     
     # Planlama tamamlandı mı kontrol et ve puan ver
+    badge_result = None
     if group.get("teacher_id"):
-        await check_and_award_planning_master(group["teacher_id"])
+        badge_result = await check_and_award_planning_master(group["teacher_id"])
     
-    return {"message": f"Created {len(created_plans)} planned lessons for group", "count": len(created_plans)}
+    return {
+        "message": f"Created {len(created_plans)} planned lessons for group",
+        "count": len(created_plans),
+        "planning_master_badge": badge_result
+    }
 
 @api_router.get("/all-planned-lessons")
 async def get_all_planned_lessons(month: Optional[str] = None, current_user: User = Depends(get_current_user)):
