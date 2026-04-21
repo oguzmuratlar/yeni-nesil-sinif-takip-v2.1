@@ -19,7 +19,7 @@ const TeacherStudentLessons = () => {
   const [lessons, setLessons] = useState([]);
   const [branch, setBranch] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newLesson, setNewLesson] = useState({ date: '', number_of_lessons: 1 });
+  const [newLesson, setNewLesson] = useState({ date: '', number_of_lessons: 2 });
 
   useEffect(() => {
     fetchData();
@@ -57,7 +57,7 @@ const TeacherStudentLessons = () => {
       });
       toast.success('Ders eklendi');
       setDialogOpen(false);
-      setNewLesson({ date: '', number_of_lessons: 1 });
+      setNewLesson({ date: '', number_of_lessons: 2 });
       fetchData();
     } catch (error) {
       toast.error('Ders eklenemedi');

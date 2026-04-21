@@ -298,26 +298,24 @@ const TeacherStudents = () => {
 
         {/* Selected Item Actions - Responsive */}
         {selectedItem && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 shadow-lg p-3 sm:p-6 z-20">
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 shadow-lg p-4 z-20">
             <div className="container mx-auto">
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
                 <div className="flex items-center gap-3 w-full sm:w-auto">
                   {selectedItem.type === 'group' ? (
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-                      <Users size={16} className="sm:hidden text-purple-600" />
-                      <Users size={20} className="hidden sm:block text-purple-600" />
+                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                      <Users size={20} className="text-purple-600" />
                     </div>
                   ) : (
-                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <User size={16} className="sm:hidden text-blue-600" />
-                      <User size={20} className="hidden sm:block text-blue-600" />
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                      <User size={20} className="text-blue-600" />
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-stone-500">
+                    <p className="text-xs text-stone-500">
                       {selectedItem.type === 'group' ? 'Seçili Grup' : 'Seçili Öğrenci'}
                     </p>
-                    <p className="font-bold text-slate-800 text-sm sm:text-lg truncate">
+                    <p className="font-bold text-slate-800 text-base truncate">
                       {selectedItem.data.name}
                     </p>
                   </div>
@@ -326,37 +324,27 @@ const TeacherStudents = () => {
                   <Button
                     onClick={handleLessonEntry}
                     data-testid="lesson-entry-btn"
-                    className="teacher-btn flex-1 sm:flex-none text-sm sm:text-base px-3 sm:px-6 py-2 sm:py-3"
-                    size="sm"
+                    className="teacher-btn flex-1 sm:flex-none px-4 py-2"
                   >
-                    {selectedItem.type === 'group' ? (
-                      <Book size={16} className="mr-1 sm:mr-2" />
-                    ) : (
-                      <Edit size={16} className="mr-1 sm:mr-2" />
-                    )}
-                    <span className="hidden xs:inline">Ders Girişi</span>
-                    <span className="xs:hidden">Giriş</span>
+                    <Edit size={16} className="mr-2" />
+                    Ders Girişi
                   </Button>
                   <Button
                     onClick={handleLessonPlanning}
                     data-testid="lesson-planning-btn"
                     variant="outline"
-                    className="rounded-full flex-1 sm:flex-none text-sm sm:text-base px-3 sm:px-6 py-2 sm:py-3"
-                    size="sm"
+                    className="rounded-full flex-1 sm:flex-none px-4 py-2"
                   >
-                    <Calendar size={16} className="mr-1 sm:mr-2" />
-                    <span className="hidden xs:inline">Ders Planlama</span>
-                    <span className="xs:hidden">Planla</span>
+                    <Calendar size={16} className="mr-2" />
+                    Ders Planlama
                   </Button>
                   <Button
                     onClick={() => setSelectedItem(null)}
                     variant="outline"
                     data-testid="cancel-selection-btn"
-                    className="rounded-full px-3 sm:px-4"
-                    size="sm"
+                    className="rounded-full px-3 py-2"
                   >
-                    <X size={16} className="sm:mr-1" />
-                    <span className="hidden sm:inline">İptal</span>
+                    <X size={16} />
                   </Button>
                 </div>
               </div>
