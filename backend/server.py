@@ -170,6 +170,7 @@ class StudentGroup(BaseModel):
     level: str  # sınıf
     student_ids: List[str]  # öğrenci ID listesi
     teacher_id: Optional[str] = None
+    status: str = "active"  # active / inactive
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class StudentGroupCreate(BaseModel):
@@ -178,6 +179,7 @@ class StudentGroupCreate(BaseModel):
     level: str
     student_ids: List[str]
     teacher_id: Optional[str] = None
+    status: str = "active"
 
 class StudentCourse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1543,8 +1545,9 @@ async def get_teacher_balance(
 # ============= STUDENT GROUP ROUTES =============
 
 @api_router.get("/student-groups", response_model=List[StudentGroup])
-async def get_student_groups(current_user: User = Depends(get_current_user)):
-    groups = await db.student_groups.find({}, {"_id": 0}).to_list(1000)
+async def get_student_groups(include_inactive: bool = False, current_user: User = Depends(get_current_user)):
+    query = {} if include_inactive else {"status": {"$ne": "inactive"}}
+    groups = await db.student_groups.find(query, {"_id": 0}).to_list(1000)
     for group in groups:
         if isinstance(group.get('created_at'), str):
             group['created_at'] = datetime.fromisoformat(group['created_at'])
@@ -1579,14 +1582,42 @@ async def update_student_group(group_id: str, group_data: StudentGroupCreate, cu
     return StudentGroup(**updated)
 
 @api_router.delete("/student-groups/{group_id}")
-async def delete_student_group(group_id: str, current_user: User = Depends(get_current_user)):
+async def deactivate_student_group(group_id: str, current_user: User = Depends(get_current_user)):
+    """Grubu pasife al ve öğrencileri gruptan çıkar"""
     if current_user.user_type != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can delete groups")
+        raise HTTPException(status_code=403, detail="Only admins can deactivate groups")
     
-    result = await db.student_groups.delete_one({"id": group_id})
-    if result.deleted_count == 0:
+    group = await db.student_groups.find_one({"id": group_id})
+    if not group:
         raise HTTPException(status_code=404, detail="Group not found")
-    return {"message": "Group deleted successfully"}
+    
+    # Grubu pasife al ve öğrencileri çıkar
+    await db.student_groups.update_one(
+        {"id": group_id}, 
+        {"$set": {"status": "inactive", "student_ids": []}}
+    )
+    
+    return {"message": "Group deactivated and students removed successfully"}
+
+@api_router.post("/student-groups/{group_id}/activate")
+async def activate_student_group(group_id: str, current_user: User = Depends(get_current_user)):
+    """Pasif grubu tekrar aktifleştir"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can activate groups")
+    
+    group = await db.student_groups.find_one({"id": group_id})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    await db.student_groups.update_one(
+        {"id": group_id}, 
+        {"$set": {"status": "active"}}
+    )
+    
+    updated = await db.student_groups.find_one({"id": group_id}, {"_id": 0})
+    if isinstance(updated.get('created_at'), str):
+        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    return StudentGroup(**updated)
 
 @api_router.post("/student-groups/{group_id}/add-student")
 async def add_student_to_group(group_id: str, student_id: str, current_user: User = Depends(get_current_user)):
@@ -1865,8 +1896,8 @@ async def get_monthly_program_detailed(month: str, current_user: User = Depends(
     result = []
     teacher_totals = {t["id"]: 0 for t in teachers}  # Öğretmen kazanç toplamları
     
-    # Grup bilgilerini getir
-    student_groups = await db.student_groups.find({}, {"_id": 0}).to_list(1000)
+    # Grup bilgilerini getir (sadece aktif gruplar)
+    student_groups = await db.student_groups.find({"status": {"$ne": "inactive"}}, {"_id": 0}).to_list(1000)
     
     # İşlenmiş grup planlamalarını takip et (çoklama önlemek için)
     processed_group_plans = set()
@@ -1967,7 +1998,9 @@ async def get_monthly_program_detailed(month: str, current_user: User = Depends(
                 if student["id"] in (group.get("student_ids") or []) and group.get("branch_id") == branch_id:
                     is_group_lesson = True
                     group_id = group["id"]
-                    group_size = len(group.get("student_ids") or [])
+                    # Maksimum 4 kişilik grup gibi hesapla
+                    actual_size = len(group.get("student_ids") or [])
+                    group_size = min(actual_size, 4)
                     break
             
             # Öğretmen ücretini teacher_prices'dan al

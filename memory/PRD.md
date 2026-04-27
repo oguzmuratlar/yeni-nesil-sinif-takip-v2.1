@@ -301,30 +301,30 @@ group_id: str (optional)  # YENİ - Grup dersi için
 ---
 
 ## Son Güncelleme
-- Tarih: 2026-04-21
-- Versiyon: 3.9
+- Tarih: 2026-04-27
+- Versiyon: 4.0
 - Değişiklikler:
-  1. **Kutlama Animasyonu** (YENİ - 21 Nisan 2026):
+  1. **Pasif Grup Yönetimi** (YENİ - 27 Nisan 2026):
+     - Grup pasife alındığında öğrenciler otomatik gruptan çıkarılıyor
+     - "Pasifleri Göster/Gizle" toggle butonu
+     - Pasif gruplar soluk görünüm + "Pasif" badge
+     - "Aktifleştir" butonu ile grup tekrar aktifleştirilebilir
+     - Backend: /api/student-groups/{id}/activate endpoint'i
+  2. **4+ Kişilik Grup Hesaplama Düzeltmesi** (YENİ - 27 Nisan 2026):
+     - 4'ten fazla öğrencili gruplarda öğretmen 4 kişilik ücret kazanıyor
+     - Aylık programda hesaplama düzeltildi (min(group_size, 4))
+     - Gruplar sayfasında "4+ kişi" badge'i eklendi
+  3. **Kutlama Animasyonu** (21 Nisan 2026):
      - Öğretmen ders planını tamamladığında konfeti animasyonu
      - Mini rozet kazanımı bildirimi
      - Streak ve rozet progress gösterimi
-     - TeacherStudentPlannedLessons.jsx ve TeacherGroupPlannedLessons.jsx entegrasyonu
-  2. **Varsayılan Ay Düzeltmesi**:
-     - Grup planlama formunda varsayılan ay: bir sonraki ay (Mayıs 2026)
-     - Varsayılan ders sayısı: 2
-  3. **Backend Güncellemesi**:
-     - /api/group-planned-lessons endpoint'i planning_master_badge döndürüyor
   4. **Planlama Ustası Gamification Sistemi** (7 Nisan 2026):
      - Öğretmen planlama takibi için oyunlaştırma
      - Puanlama: 25'e kadar +10 + mini rozet, 25-son gün +5, eksik 0
      - 8 mini rozet = 1 büyük rozet
      - Streak takibi (sadece +10 puan streak'i artırır)
-     - Teacher login popup uyarısı
-     - Teacher dashboard kartı ve detay modal
-     - Admin rozetler sayfası (/admin/badges)
-     - Sene sonu işlemi (arşivle + sıfırla)
-  5. **Ödeme Pop-up Scroll Fix**: Dialog scroll özelliği
-  6. **Önceki Güncellemeler**:
+  5. **Önceki Güncellemeler**:
+     - Ödeme Pop-up Scroll Fix
      - Öğretmen maaş ödemeleri elden/resmi takibi
      - Öğretmen bakiye detay modalı
      - Grup ders güncelleme ve ders sayısı düzeltmesi
