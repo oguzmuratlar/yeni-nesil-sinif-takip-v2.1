@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { DateInput } from '../../components/ui/date-input';
-import { Plus, Trash2, ArrowLeft, User } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, User, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTurkish } from '../../lib/dateUtils';
 
@@ -19,6 +19,7 @@ const AdminStudentLessons = () => {
   const [lessons, setLessons] = useState([]);
   const [branch, setBranch] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingLesson, setEditingLesson] = useState(null);
   const [newLesson, setNewLesson] = useState({ date: '', number_of_lessons: 1 });
 
   useEffect(() => {
@@ -49,17 +50,44 @@ const AdminStudentLessons = () => {
   const handleAddLesson = async (e) => {
     e.preventDefault();
     try {
-      await apiClient.post('/lessons', {
-        student_course_id: courseId,
-        ...newLesson
-      });
-      toast.success('Ders eklendi');
+      if (editingLesson) {
+        // Düzenleme: Mevcut dersi sil ve yenisini ekle
+        await apiClient.delete(`/lessons/${editingLesson.id}`);
+        await apiClient.post('/lessons', {
+          student_course_id: courseId,
+          ...newLesson
+        });
+        toast.success('Ders güncellendi');
+      } else {
+        // Yeni ders ekle
+        await apiClient.post('/lessons', {
+          student_course_id: courseId,
+          ...newLesson
+        });
+        toast.success('Ders eklendi');
+      }
       setDialogOpen(false);
+      setEditingLesson(null);
       setNewLesson({ date: '', number_of_lessons: 1 });
       fetchData();
     } catch (error) {
-      toast.error('Ders eklenemedi');
+      toast.error(editingLesson ? 'Ders güncellenemedi' : 'Ders eklenemedi');
     }
+  };
+
+  const openEditDialog = (lesson) => {
+    setEditingLesson(lesson);
+    setNewLesson({
+      date: lesson.date,
+      number_of_lessons: lesson.number_of_lessons
+    });
+    setDialogOpen(true);
+  };
+
+  const openAddDialog = () => {
+    setEditingLesson(null);
+    setNewLesson({ date: '', number_of_lessons: 1 });
+    setDialogOpen(true);
   };
 
   const handleDeleteLesson = async (lessonId) => {
@@ -102,14 +130,14 @@ const AdminStudentLessons = () => {
             </div>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
-                <Button data-testid="add-lesson-btn" className="admin-btn">
+                <Button data-testid="add-lesson-btn" className="admin-btn" onClick={openAddDialog}>
                   <Plus size={20} className="mr-2" />
                   Ders Ekle
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Yeni Ders Ekle</DialogTitle>
+                  <DialogTitle>{editingLesson ? 'Ders Düzenle' : 'Yeni Ders Ekle'}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleAddLesson} className="space-y-4">
                   <div className="space-y-2">
@@ -133,8 +161,11 @@ const AdminStudentLessons = () => {
                     />
                   </div>
                   <div className="flex gap-3">
-                    <Button type="submit" className="flex-1">Kaydet</Button>
-                    <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>İptal</Button>
+                    <Button type="submit" className="flex-1">{editingLesson ? 'Güncelle' : 'Kaydet'}</Button>
+                    <Button type="button" variant="outline" onClick={() => {
+                      setDialogOpen(false);
+                      setEditingLesson(null);
+                    }}>İptal</Button>
                   </div>
                 </form>
               </DialogContent>
@@ -154,13 +185,24 @@ const AdminStudentLessons = () => {
                     <p className="font-semibold text-slate-800">{formatDateTurkish(lesson.date)}</p>
                     <p className="text-sm text-slate-600">{lesson.number_of_lessons} ders</p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleDeleteLesson(lesson.id)}
-                  >
-                    <Trash2 size={16} />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                      onClick={() => openEditDialog(lesson)}
+                    >
+                      <Pencil size={16} className="mr-1" />
+                      Düzenle
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleDeleteLesson(lesson.id)}
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

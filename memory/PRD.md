@@ -302,30 +302,32 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Son Güncelleme
 - Tarih: 2026-04-27
-- Versiyon: 4.3
+- Versiyon: 4.4
 - Değişiklikler:
-  1. **Ders Silme/Düzenleme Lokasyonu Değişikliği** (YENİ - 27 Nisan 2026):
+  1. **Öğrenci Ders Düzenleme Özelliği** (YENİ - 27 Nisan 2026):
+     - Admin öğrenci ders giriş ekranında her ders için "Düzenle" butonu eklendi
+     - Düzenleme modal'ı: Tarih ve ders adedi değiştirilebilir (örn: 8 ders → 10 ders)
+     - Pasif öğrenciler için de ders ekleme, düzenleme ve silme işlemleri yapılabilir
+     - Eklenen dersler otomatik olarak öğretmen bakiyesine yansıyor (`teacher_rate` hesaplanıyor)
+  2. **Ders Silme Lokasyonu Değişikliği** (27 Nisan 2026):
      - Admin Ders Kazanç Detay sayfasından silme butonu kaldırıldı
      - Silme işlemi artık ilgili ders giriş ekranlarında yapılıyor:
        - Grup Ders Giriş: `/admin/groups/{id}/lesson` - "Düzenle" ve "Sil" butonları
-       - Öğrenci Ders Giriş: `/admin/students/{id}/lessons/{courseId}` - Silme butonu
+       - Öğrenci Ders Giriş: `/admin/students/{id}/lessons/{courseId}` - "Düzenle" ve "Sil" butonları
      - "Düzenle" butonu ilgili ders giriş ekranına yönlendiriyor
-     - Pasif öğrenciler için de düzenleme ve silme işlemleri yapılabilir
-  2. **Admin Öğretmen Kazanç Detay Yönetimi** (27 Nisan 2026):
+  3. **Admin Öğretmen Kazanç Detay Yönetimi** (27 Nisan 2026):
      - Toplam Kazanç kartı tıklanabilir yapıldı
      - Kazanç Detayları modal'ı: Ders, Kamp, YouTube kartları
      - Admin için ders/kamp/youtube kazanç detay sayfaları eklendi (teacher componentleri reuse)
      - Ay filtresi dinamik hale getirildi (6 ay önce, 3 ay sonra)
      - Admin silme yetkileri eklendi (YouTube içerik silme)
-     - Ödeme Özeti modal'ı: Elden/Resmi ayrımı ve vergi detayları
-     - Ödeme geçmişinde silme butonu (admin)
-  3. **4+ Kişilik Grup Hesaplama FIX** (27 Nisan 2026):
+  4. **4+ Kişilik Grup Hesaplama FIX** (27 Nisan 2026):
      - `calculate_teacher_earning_rate` fonksiyonu düzeltildi
      - Eski yanlış kayıtlar migration scriptiyle düzeltildi
-  4. **Pasif Grup Yönetimi** (27 Nisan 2026):
+  5. **Pasif Grup Yönetimi** (27 Nisan 2026):
      - Grup pasife alındığında öğrenciler otomatik gruptan çıkarılıyor
      - "Pasifleri Göster/Gizle" toggle butonu
      - "Aktifleştir" butonu ile grup tekrar aktifleştirilebilir
-  5. **Önceki Güncellemeler**:
+  6. **Önceki Güncellemeler**:
      - Kutlama Animasyonu
      - Planlama Ustası Gamification Sistemi
