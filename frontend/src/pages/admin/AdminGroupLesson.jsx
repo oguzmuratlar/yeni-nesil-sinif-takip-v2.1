@@ -8,7 +8,7 @@ import { Label } from '../../components/ui/label';
 import { DateInput } from '../../components/ui/date-input';
 import { Checkbox } from '../../components/ui/checkbox';
 import { toast } from 'sonner';
-import { Users, ArrowLeft, Plus, Pencil, Gift } from 'lucide-react';
+import { Users, ArrowLeft, Plus, Pencil, Gift, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { formatDateTurkish } from '../../lib/dateUtils';
 
@@ -157,6 +157,21 @@ const AdminGroupLesson = () => {
       is_free_lesson: firstLesson?.is_free_lesson || false
     });
     setDialogOpen(true);
+  };
+
+  // Belirli tarihteki tüm dersleri sil
+  const handleDeleteLessonsByDate = async (date, dateLessons) => {
+    if (!window.confirm(`${formatDateTurkish(date)} tarihindeki tüm dersleri silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`)) return;
+    
+    try {
+      for (const lesson of dateLessons) {
+        await apiClient.delete(`/lessons/${lesson.id}`);
+      }
+      toast.success(`${dateLessons.length} öğrencinin dersi silindi`);
+      fetchData();
+    } catch (error) {
+      toast.error('Dersler silinemedi');
+    }
   };
 
   const branch = group ? branches.find(b => b.id === group.branch_id) : null;
@@ -381,6 +396,7 @@ const AdminGroupLesson = () => {
                           {dateLessons.length} öğrenci • {lessonCount} ders
                         </p>
                       </div>
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -390,6 +406,16 @@ const AdminGroupLesson = () => {
                         <Pencil size={16} className="mr-1" />
                         Düzenle
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteLessonsByDate(date, dateLessons)}
+                        className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                      >
+                        <Trash2 size={16} className="mr-1" />
+                        Sil
+                      </Button>
+                    </div>
                     </div>
                   </div>
                 );

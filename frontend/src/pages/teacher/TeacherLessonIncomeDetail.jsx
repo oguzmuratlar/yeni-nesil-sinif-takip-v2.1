@@ -6,20 +6,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { ArrowLeft, Users, BookOpen, Calendar, Trash2, Edit, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, Calendar, Edit, ExternalLink } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { formatDateTurkish, generateMonthOptions } from '../../lib/dateUtils';
 import { toast } from 'sonner';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../../components/ui/alert-dialog';
+// AlertDialog removed - delete işlemi ders giriş ekranında yapılacak
 
 const TeacherLessonIncomeDetail = () => {
   const { id } = useParams();
@@ -31,8 +22,6 @@ const TeacherLessonIncomeDetail = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('');
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState(null);
   
   const Layout = isAdmin ? AdminLayout : TeacherLayout;
 
@@ -70,36 +59,6 @@ const TeacherLessonIncomeDetail = () => {
     { value: 'all', label: 'Tüm Zamanlar' },
     ...dynamicMonths
   ];
-
-  // Admin: Ders silme işlevi
-  const handleDeleteLesson = async (lessonId) => {
-    if (!isAdmin) return;
-    if (!window.confirm('Bu ders kaydını silmek istediğinizden emin misiniz?')) return;
-    try {
-      await apiClient.delete(`/lessons/${lessonId}`);
-      toast.success('Ders kaydı silindi');
-      fetchData();
-    } catch (error) {
-      toast.error('Ders kaydı silinemedi');
-    }
-  };
-
-  // Admin: Tüm kaynak derslerini silme (grup veya öğrenci bazında)
-  const handleDeleteAllLessons = async () => {
-    if (!isAdmin || !itemToDelete) return;
-    try {
-      // Tüm lesson_ids'leri sil
-      for (const lessonId of itemToDelete.lesson_ids) {
-        await apiClient.delete(`/lessons/${lessonId}`);
-      }
-      toast.success(`${itemToDelete.source_name} için ${itemToDelete.lesson_ids.length} ders kaydı silindi`);
-      setDeleteDialogOpen(false);
-      setItemToDelete(null);
-      fetchData();
-    } catch (error) {
-      toast.error('Ders kayıtları silinemedi');
-    }
-  };
 
   // Admin: Düzenleme için yönlendirme
   const handleEditLessons = (item) => {
@@ -201,9 +160,9 @@ const TeacherLessonIncomeDetail = () => {
                     <div className="text-right">
                       <p className="text-xl font-bold text-green-600">{formatCurrency(item.total_earning)}</p>
                     </div>
-                    {/* Admin Butonları */}
+                    {/* Admin Düzenleme Butonu */}
                     {isAdmin && (
-                      <div className="flex items-center gap-1 ml-2">
+                      <div className="ml-2">
                         <Button
                           size="sm"
                           variant="outline"
@@ -213,18 +172,6 @@ const TeacherLessonIncomeDetail = () => {
                         >
                           <Edit size={16} className="mr-1" />
                           Düzenle
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => {
-                            setItemToDelete(item);
-                            setDeleteDialogOpen(true);
-                          }}
-                          title="Tüm Dersleri Sil"
-                        >
-                          <Trash2 size={16} />
                         </Button>
                       </div>
                     )}
@@ -267,24 +214,6 @@ const TeacherLessonIncomeDetail = () => {
           </div>
         )}
 
-        {/* Silme Onay Dialog */}
-        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Dersleri Sil</AlertDialogTitle>
-              <AlertDialogDescription>
-                <strong>{itemToDelete?.source_name}</strong> için <strong>{itemToDelete?.lesson_ids?.length || 0} ders kaydı</strong> silinecek. 
-                Bu işlem geri alınamaz ve öğretmen kazancını etkileyecektir.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setItemToDelete(null)}>İptal</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteAllLessons} className="bg-red-600 hover:bg-red-700">
-                Tümünü Sil
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </Layout>
   );
