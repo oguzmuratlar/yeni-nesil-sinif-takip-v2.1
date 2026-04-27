@@ -2871,12 +2871,16 @@ async def get_teacher_lesson_income_detail(teacher_id: str, month: Optional[str]
             source_name = group.get("name", "Bilinmeyen Grup")
             source_type = "Grup Dersi"
             group_size = len(group.get("student_ids", []))
+            source_id = group_id
+            source_kind = "group"
         else:
             student = student_map.get(student_id, {})
             key = f"student_{student_id}_{branch_id}"
             source_name = student.get("name", "Bilinmeyen Öğrenci")
             source_type = "Birebir Ders"
             group_size = 1
+            source_id = student_id
+            source_kind = "student"
         
         if key not in income_by_source:
             branch = branch_map.get(branch_id, {})
@@ -2885,9 +2889,15 @@ async def get_teacher_lesson_income_detail(teacher_id: str, month: Optional[str]
             lesson_type_id = course.get("lesson_type_id") if course else None
             lesson_type = lesson_type_map.get(lesson_type_id, {}) if lesson_type_id else {}
             
+            # Student course ID'yi de sakla (düzenleme için)
+            student_course_id = lesson.get("student_course_id")
+            
             income_by_source[key] = {
                 "source_name": source_name,
                 "source_type": source_type,
+                "source_id": source_id,
+                "source_kind": source_kind,
+                "student_course_id": student_course_id,
                 "branch_name": branch.get("name", "Bilinmiyor"),
                 "branch_id": branch_id,
                 "lesson_type": lesson_type.get("name", "Bilinmiyor"),
@@ -2895,12 +2905,14 @@ async def get_teacher_lesson_income_detail(teacher_id: str, month: Optional[str]
                 "total_lessons": 0,
                 "unit_price": teacher_rate,
                 "total_earning": 0,
-                "dates": []
+                "dates": [],
+                "lesson_ids": []  # Silme için lesson ID'leri
             }
         
         income_by_source[key]["total_lessons"] += lesson["number_of_lessons"]
         income_by_source[key]["total_earning"] += teacher_rate * lesson["number_of_lessons"]
         income_by_source[key]["dates"].append(lesson["date"])
+        income_by_source[key]["lesson_ids"].append(lesson["id"])
     
     # Sonuçları listeye çevir
     result = list(income_by_source.values())
