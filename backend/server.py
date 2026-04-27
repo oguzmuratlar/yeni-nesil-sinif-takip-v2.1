@@ -3398,9 +3398,10 @@ async def get_teacher_expected_items(teacher_id: str, target_month: str):
             "status": "active"
         }, {"_id": 0}).to_list(10000)
     
-    # Öğretmene atanmış aktif grupları bul
+    # Öğretmene atanmış AKTİF grupları bul
     groups = await db.student_groups.find({
-        "teacher_id": teacher_id
+        "teacher_id": teacher_id,
+        "status": {"$ne": "inactive"}
     }, {"_id": 0}).to_list(1000)
     
     # Grupların aktif olup olmadığını kontrol et (en az 1 aktif öğrenci)

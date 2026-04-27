@@ -35,15 +35,19 @@ const TeacherStudents = () => {
         apiClient.get('/branches')
       ]);
       
-      setStudents(studentsRes.data);
+      // Sadece aktif öğrencileri filtrele
+      const activeStudents = studentsRes.data.filter(s => s.status === 'active');
+      setStudents(activeStudents);
       setBranches(branchesRes.data);
       
-      // Öğretmene ait kursları filtrele
+      // Öğretmene ait aktif kursları filtrele
       const teacherCourses = coursesRes.data.filter(c => c.teacher_id === user.teacher_id);
       setCourses(teacherCourses);
       
-      // Öğretmene ait grupları filtrele
-      const teacherGroups = groupsRes.data.filter(g => g.teacher_id === user.teacher_id);
+      // Öğretmene ait AKTİF grupları filtrele
+      const teacherGroups = groupsRes.data.filter(g => 
+        g.teacher_id === user.teacher_id && g.status !== 'inactive'
+      );
       setGroups(teacherGroups);
     } catch (error) {
       toast.error('Veriler yüklenemedi');
