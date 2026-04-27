@@ -434,28 +434,24 @@ async def calculate_teacher_earning_rate(
     Öğretmenin ders ücretini hesaplar.
     
     Kurallar:
-    - Birebir ders: teacher_prices'dan birebir fiyatı al
+    - Birebir ders: teacher_prices'dan birebir fiyatı al (group_size=None)
     - Grup dersi: group_size'a göre fiyat al
       - 1 kişilik grup: ayrı fiyat
-      - 2-3-4 kişilik grup: aynı fiyat
+      - 2-3-4 kişilik grup: ayrı fiyatlar
+      - 4+ kişilik grup: 4 kişilik fiyat
     
     Returns: Öğretmenin ders başına ücreti (TL)
     """
     # teacher_prices'dan fiyat bul
     query = {
         "teacher_id": teacher_id,
-        "branch_id": branch_id,
-        "lesson_type_id": lesson_type_id
+        "branch_id": branch_id
     }
     
-    # Lesson type ismini kontrol et (Birebir vs Grup)
-    lesson_type = await db.lesson_types.find_one({"id": lesson_type_id}, {"_id": 0})
-    is_group = lesson_type and lesson_type.get("name", "").lower() == "grup"
-    
-    if is_group and group_size is not None:
+    if group_size is not None and group_size > 0:
         # Grup dersi - group_size'a göre fiyat bul
-        # 2, 3, 4 kişilik gruplar aynı fiyat
-        effective_group_size = group_size if group_size <= 4 else 4
+        # 4+ kişilik gruplar 4 kişilik fiyat alır
+        effective_group_size = min(group_size, 4)
         query["group_size"] = effective_group_size
     else:
         # Birebir ders
@@ -466,11 +462,17 @@ async def calculate_teacher_earning_rate(
     if price_record:
         return price_record.get("price", 0)
     
-    # Eğer exact match bulunamazsa, sadece teacher_id ve branch_id ile dene
+    # Eğer exact match bulunamazsa, lesson_type_id ile de dene
+    query["lesson_type_id"] = lesson_type_id
+    price_record = await db.teacher_prices.find_one(query, {"_id": 0})
+    
+    if price_record:
+        return price_record.get("price", 0)
+    
+    # Hala bulunamazsa, sadece teacher_id ve branch_id ile fallback
     fallback = await db.teacher_prices.find_one({
         "teacher_id": teacher_id,
-        "branch_id": branch_id,
-        "lesson_type_id": lesson_type_id
+        "branch_id": branch_id
     }, {"_id": 0})
     
     return fallback.get("price", 0) if fallback else 0
