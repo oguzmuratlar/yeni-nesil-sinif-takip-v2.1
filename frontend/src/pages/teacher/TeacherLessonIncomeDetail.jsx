@@ -6,9 +6,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { ArrowLeft, Users, BookOpen, Calendar } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, Calendar, Trash2, Edit } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
-import { formatDateTurkish } from '../../lib/dateUtils';
+import { formatDateTurkish, generateMonthOptions } from '../../lib/dateUtils';
+import { toast } from 'sonner';
 
 const TeacherLessonIncomeDetail = () => {
   const { id } = useParams();
@@ -31,7 +32,7 @@ const TeacherLessonIncomeDetail = () => {
     if (!teacherId) return;
     try {
       let url = `/teachers/${teacherId}/lesson-income-detail`;
-      if (selectedMonth) {
+      if (selectedMonth && selectedMonth !== 'all') {
         url += `?month=${selectedMonth}`;
       }
       const response = await apiClient.get(url);
@@ -48,22 +49,28 @@ const TeacherLessonIncomeDetail = () => {
       style: 'currency', 
       currency: 'TRY',
       minimumFractionDigits: 2 
-    }).format(amount);
+    }).format(amount || 0);
   };
 
+  // Dinamik ay listesi: 6 ay önce, 3 ay sonra
+  const dynamicMonths = generateMonthOptions(6, 3);
   const months = [
-    { value: '2024-12', label: 'Aralık 2024' },
-    { value: '2025-01', label: 'Ocak 2025' },
-    { value: '2025-02', label: 'Şubat 2025' },
-    { value: '2025-03', label: 'Mart 2025' },
-    { value: '2025-04', label: 'Nisan 2025' },
-    { value: '2025-05', label: 'Mayıs 2025' },
-    { value: '2025-06', label: 'Haziran 2025' },
-    { value: '2026-01', label: 'Ocak 2026' },
-    { value: '2026-02', label: 'Şubat 2026' },
-    { value: '2026-03', label: 'Mart 2026' },
-    { value: '2026-04', label: 'Nisan 2026' },
+    { value: 'all', label: 'Tüm Zamanlar' },
+    ...dynamicMonths
   ];
+
+  // Admin: Ders silme işlevi
+  const handleDeleteLesson = async (lessonId) => {
+    if (!isAdmin) return;
+    if (!window.confirm('Bu ders kaydını silmek istediğinizden emin misiniz?')) return;
+    try {
+      await apiClient.delete(`/lessons/${lessonId}`);
+      toast.success('Ders kaydı silindi');
+      fetchData();
+    } catch (error) {
+      toast.error('Ders kaydı silinemedi');
+    }
+  };
 
   return (
     <Layout>

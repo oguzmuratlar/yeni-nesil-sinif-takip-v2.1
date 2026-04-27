@@ -302,24 +302,23 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Son Güncelleme
 - Tarih: 2026-04-27
-- Versiyon: 4.1
+- Versiyon: 4.2
 - Değişiklikler:
-  1. **4+ Kişilik Grup Hesaplama FIX** (27 Nisan 2026):
+  1. **Admin Öğretmen Kazanç Detay Yönetimi** (YENİ - 27 Nisan 2026):
+     - Toplam Kazanç kartı tıklanabilir yapıldı
+     - Kazanç Detayları modal'ı: Ders, Kamp, YouTube kartları
+     - Admin için ders/kamp/youtube kazanç detay sayfaları eklendi (teacher componentleri reuse)
+     - Ay filtresi dinamik hale getirildi (6 ay önce, 3 ay sonra)
+     - Admin silme yetkileri eklendi (YouTube içerik silme)
+     - Ödeme Özeti modal'ı: Elden/Resmi ayrımı ve vergi detayları
+     - Ödeme geçmişinde silme butonu (admin)
+  2. **4+ Kişilik Grup Hesaplama FIX** (27 Nisan 2026):
      - `calculate_teacher_earning_rate` fonksiyonu düzeltildi
-     - `group_size` parametresi artık doğrudan kullanılıyor (lesson_type kontrolü kaldırıldı)
      - Eski yanlış kayıtlar migration scriptiyle düzeltildi
-     - 6 kişilik gruplar artık 4 kişilik fiyat (1500₺) üzerinden hesaplanıyor
-  2. **Pasif Grup Yönetimi** (27 Nisan 2026):
+  3. **Pasif Grup Yönetimi** (27 Nisan 2026):
      - Grup pasife alındığında öğrenciler otomatik gruptan çıkarılıyor
      - "Pasifleri Göster/Gizle" toggle butonu
-     - Pasif gruplar soluk görünüm + "Pasif" badge
      - "Aktifleştir" butonu ile grup tekrar aktifleştirilebilir
-     - Backend: /api/student-groups/{id}/activate endpoint'i
-  3. **Kutlama Animasyonu** (21 Nisan 2026):
-     - Öğretmen ders planını tamamladığında konfeti animasyonu
-  4. **Planlama Ustası Gamification Sistemi** (7 Nisan 2026):
-     - Öğretmen planlama takibi için oyunlaştırma
-  5. **Önceki Güncellemeler**:
-     - Ödeme Pop-up Scroll Fix
-     - Öğretmen maaş ödemeleri elden/resmi takibi
-     - Grup ders güncelleme ve ders sayısı düzeltmesi
+  4. **Önceki Güncellemeler**:
+     - Kutlama Animasyonu
+     - Planlama Ustası Gamification Sistemi

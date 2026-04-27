@@ -6,8 +6,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { ArrowLeft, Youtube, Calendar } from 'lucide-react';
+import { ArrowLeft, Youtube, Calendar, Trash2 } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
+import { generateMonthOptions } from '../../lib/dateUtils';
+import { toast } from 'sonner';
 
 const TeacherYoutubeIncomeDetail = () => {
   const { id } = useParams();
@@ -26,11 +28,39 @@ const TeacherYoutubeIncomeDetail = () => {
     fetchData();
   }, [teacherId, selectedMonth]);
 
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('tr-TR', { 
+      style: 'currency', 
+      currency: 'TRY',
+      minimumFractionDigits: 2 
+    }).format(amount || 0);
+  };
+
+  // Dinamik ay listesi
+  const dynamicMonths = generateMonthOptions(6, 3);
+  const months = [
+    { value: 'all', label: 'Tüm Zamanlar' },
+    ...dynamicMonths
+  ];
+
+  // Admin: YouTube içerik silme
+  const handleDeleteYoutubeContent = async (contentId) => {
+    if (!isAdmin) return;
+    if (!window.confirm('Bu YouTube içeriğini silmek istediğinizden emin misiniz?')) return;
+    try {
+      await apiClient.delete(`/youtube-contents/${contentId}`);
+      toast.success('YouTube içeriği silindi');
+      fetchData();
+    } catch (error) {
+      toast.error('YouTube içeriği silinemedi');
+    }
+  };
+
   const fetchData = async () => {
     if (!teacherId) return;
     try {
       let url = `/teachers/${teacherId}/youtube-income-detail`;
-      if (selectedMonth) {
+      if (selectedMonth && selectedMonth !== 'all') {
         url += `?month=${selectedMonth}`;
       }
       const response = await apiClient.get(url);
@@ -41,26 +71,6 @@ const TeacherYoutubeIncomeDetail = () => {
       setLoading(false);
     }
   };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('tr-TR', { 
-      style: 'currency', 
-      currency: 'TRY',
-      minimumFractionDigits: 2 
-    }).format(amount);
-  };
-
-  const months = [
-    { value: '2024-12', label: 'Aralık 2024' },
-    { value: '2025-01', label: 'Ocak 2025' },
-    { value: '2025-02', label: 'Şubat 2025' },
-    { value: '2025-03', label: 'Mart 2025' },
-    { value: '2025-04', label: 'Nisan 2025' },
-    { value: '2025-05', label: 'Mayıs 2025' },
-    { value: '2026-01', label: 'Ocak 2026' },
-    { value: '2026-02', label: 'Şubat 2026' },
-    { value: '2026-03', label: 'Mart 2026' },
-  ];
 
   return (
     <Layout>
@@ -137,7 +147,19 @@ const TeacherYoutubeIncomeDetail = () => {
                       </div>
                     </div>
                   </div>
-                  <p className="text-lg font-bold text-green-600">{formatCurrency(item.amount)}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-lg font-bold text-green-600">{formatCurrency(item.amount)}</p>
+                    {isAdmin && item.id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteYoutubeContent(item.id)}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

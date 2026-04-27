@@ -150,6 +150,21 @@ function App() {
                 <AdminTeacherBalance />
               </ProtectedRoute>
             } />
+            <Route path="/admin/teachers/:id/lesson-income" element={
+              <ProtectedRoute requiredRole="admin">
+                <TeacherLessonIncomeDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/teachers/:id/camp-income" element={
+              <ProtectedRoute requiredRole="admin">
+                <TeacherCampIncomeDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/teachers/:id/youtube-income" element={
+              <ProtectedRoute requiredRole="admin">
+                <TeacherYoutubeIncomeDetail />
+              </ProtectedRoute>
+            } />
 
             <Route path="/admin/payments" element={
               <ProtectedRoute requiredRole="admin">
