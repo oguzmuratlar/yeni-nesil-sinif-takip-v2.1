@@ -612,8 +612,8 @@ const AdminPayments = () => {
                   <SelectValue placeholder="Sıralama" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="desc">Sondan Başa</SelectItem>
-                  <SelectItem value="asc">Baştan Sona</SelectItem>
+                  <SelectItem value="desc">Güncelden Eskiye</SelectItem>
+                  <SelectItem value="asc">Eskiden Güncele</SelectItem>
                 </SelectContent>
               </Select>
             </div>

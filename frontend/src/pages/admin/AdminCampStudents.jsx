@@ -321,43 +321,19 @@ const AdminCampStudents = () => {
             <p className="text-slate-500 text-sm mt-2">Yukarıdaki butonu kullanarak katılımcı ekleyin</p>
           </div>
         ) : (
-          <div className="admin-card overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left py-4 px-4 font-semibold text-slate-700">Öğrenci Adı</th>
-                  <th className="text-left py-4 px-4 font-semibold text-slate-700">Veli Adı</th>
-                  <th className="text-left py-4 px-4 font-semibold text-slate-700">Telefon</th>
-                  <th className="text-center py-4 px-4 font-semibold text-slate-700">Durum</th>
-                  <th className="text-center py-4 px-4 font-semibold text-slate-700">Tutar</th>
-                  <th className="text-center py-4 px-4 font-semibold text-slate-700">Ödeme</th>
-                  <th className="text-right py-4 px-4 font-semibold text-slate-700">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {students.map((student) => (
-                  <tr key={student.id} className="border-t hover:bg-slate-50" data-testid={`student-row-${student.id}`}>
-                    <td className="py-4 px-4 font-medium text-slate-800">{student.student_name}</td>
-                    <td className="py-4 px-4 text-slate-600">{student.parent_name}</td>
-                    <td className="py-4 px-4 text-slate-600">{student.phone}</td>
-                    <td className="py-4 px-4 text-center">
-                      <Select 
-                        value={student.registration_status} 
-                        onValueChange={(value) => handleStatusChange(student, value)}
-                      >
-                        <SelectTrigger className="w-32 h-8 text-xs" data-testid={`status-select-${student.id}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="on_kayit">Ön Kayıt</SelectItem>
-                          <SelectItem value="kesin_kayit">Kesin Kayıt</SelectItem>
-                          <SelectItem value="yedek">Yedek</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="py-4 px-4 text-center font-semibold">{student.payment_amount} ₺</td>
-                    <td className="py-4 px-4 text-center">
-                      {/* Ödeme durumu statüye bağlı - sadece gösterim */}
+          <>
+            {/* Mobile Card View */}
+            <div className="lg:hidden space-y-3">
+              {students.map((student) => (
+                <div key={student.id} className="admin-card p-4" data-testid={`student-row-mobile-${student.id}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-slate-800">{student.student_name}</h3>
+                      <p className="text-sm text-slate-600">{student.parent_name}</p>
+                      <p className="text-sm text-slate-500">{student.phone}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-lg text-slate-800">{student.payment_amount} ₺</p>
                       {student.registration_status === 'kesin_kayit' ? (
                         <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
                           ✓ Ödendi
@@ -367,33 +343,124 @@ const AdminCampStudents = () => {
                           Bekliyor
                         </span>
                       )}
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleOpenDialog(student)}
-                          data-testid={`edit-student-${student.id}`}
-                        >
-                          <Edit size={16} />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(student.id)}
-                          className="text-red-600 hover:bg-red-50"
-                          data-testid={`delete-student-${student.id}`}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
-                      </div>
-                    </td>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                    <Select 
+                      value={student.registration_status} 
+                      onValueChange={(value) => handleStatusChange(student, value)}
+                    >
+                      <SelectTrigger className="w-32 h-9 text-sm" data-testid={`status-select-mobile-${student.id}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="on_kayit">Ön Kayıt</SelectItem>
+                        <SelectItem value="kesin_kayit">Kesin Kayıt</SelectItem>
+                        <SelectItem value="yedek">Yedek</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenDialog(student)}
+                        className="h-9"
+                        data-testid={`edit-student-mobile-${student.id}`}
+                      >
+                        <Edit size={16} className="mr-1" />
+                        Düzenle
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(student.id)}
+                        className="h-9 text-red-600 hover:bg-red-50"
+                        data-testid={`delete-student-mobile-${student.id}`}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden lg:block admin-card overflow-hidden">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left py-4 px-4 font-semibold text-slate-700">Öğrenci Adı</th>
+                    <th className="text-left py-4 px-4 font-semibold text-slate-700">Veli Adı</th>
+                    <th className="text-left py-4 px-4 font-semibold text-slate-700">Telefon</th>
+                    <th className="text-center py-4 px-4 font-semibold text-slate-700">Durum</th>
+                    <th className="text-center py-4 px-4 font-semibold text-slate-700">Tutar</th>
+                    <th className="text-center py-4 px-4 font-semibold text-slate-700">Ödeme</th>
+                    <th className="text-right py-4 px-4 font-semibold text-slate-700">İşlemler</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {students.map((student) => (
+                    <tr key={student.id} className="border-t hover:bg-slate-50" data-testid={`student-row-${student.id}`}>
+                      <td className="py-4 px-4 font-medium text-slate-800">{student.student_name}</td>
+                      <td className="py-4 px-4 text-slate-600">{student.parent_name}</td>
+                      <td className="py-4 px-4 text-slate-600">{student.phone}</td>
+                      <td className="py-4 px-4 text-center">
+                        <Select 
+                          value={student.registration_status} 
+                          onValueChange={(value) => handleStatusChange(student, value)}
+                        >
+                          <SelectTrigger className="w-32 h-8 text-xs" data-testid={`status-select-${student.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="on_kayit">Ön Kayıt</SelectItem>
+                            <SelectItem value="kesin_kayit">Kesin Kayıt</SelectItem>
+                            <SelectItem value="yedek">Yedek</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-4 px-4 text-center font-semibold">{student.payment_amount} ₺</td>
+                      <td className="py-4 px-4 text-center">
+                        {student.registration_status === 'kesin_kayit' ? (
+                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
+                            ✓ Ödendi
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-600">
+                            Bekliyor
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenDialog(student)}
+                            data-testid={`edit-student-${student.id}`}
+                          >
+                            <Edit size={16} />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(student.id)}
+                            className="text-red-600 hover:bg-red-50"
+                            data-testid={`delete-student-${student.id}`}
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </AdminLayout>

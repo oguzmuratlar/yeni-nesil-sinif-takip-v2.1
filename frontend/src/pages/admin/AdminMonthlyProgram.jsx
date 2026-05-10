@@ -590,15 +590,17 @@ const AdminMonthlyProgram = () => {
           <>
             {/* Mobile Card View */}
             <div className="lg:hidden space-y-3">
-              {sortedStudents.map((student) => (
+              {sortedStudents.map((student) => {
+                const rowBgClass = getRowColorClass(student.payment_status, student.is_risky);
+                return (
                 <div 
                   key={student.student_id} 
-                  className={`admin-card overflow-hidden ${getRowColorClass(student.payment_status, student.is_risky)}`}
+                  className={`border border-slate-200 rounded-lg shadow-sm overflow-hidden ${rowBgClass || 'bg-white'}`}
                   data-testid={`student-row-${student.student_id}`}
                 >
                   {/* Card Header - Always Visible */}
                   <div 
-                    className="p-4 cursor-pointer active:bg-slate-50"
+                    className="p-4 cursor-pointer"
                     onClick={() => setExpandedStudent(expandedStudent === student.student_id ? null : student.student_id)}
                   >
                     <div className="flex items-start justify-between">
@@ -716,7 +718,8 @@ const AdminMonthlyProgram = () => {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
 
             {/* Desktop Table View */}
