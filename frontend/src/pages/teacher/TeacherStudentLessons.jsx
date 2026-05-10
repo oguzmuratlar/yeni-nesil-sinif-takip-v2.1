@@ -109,11 +109,11 @@ const TeacherStudentLessons = () => {
                   Ders Ekle
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md mx-auto max-h-[85vh] overflow-y-auto rounded-xl">
                 <DialogHeader>
-                  <DialogTitle>Yeni Ders Ekle</DialogTitle>
+                  <DialogTitle className="text-lg">Yeni Ders Ekle</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleAddLesson} className="space-y-4">
+                <form onSubmit={handleAddLesson} className="space-y-4 pb-2">
                   <div className="space-y-2">
                     <Label htmlFor="date">Tarih</Label>
                     <DateInput

@@ -195,11 +195,11 @@ const AdminCampStudents = () => {
                   Katılımcı Ekle
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg mx-auto max-h-[85vh] overflow-y-auto rounded-xl">
                 <DialogHeader>
-                  <DialogTitle>{editingStudent ? 'Katılımcı Düzenle' : 'Yeni Katılımcı Ekle'}</DialogTitle>
+                  <DialogTitle className="text-lg">{editingStudent ? 'Katılımcı Düzenle' : 'Yeni Katılımcı Ekle'}</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+                <div className="space-y-4 pb-2">
                   <div className="space-y-2">
                     <Label>Öğrenci Adı *</Label>
                     <Input

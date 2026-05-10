@@ -301,20 +301,19 @@ group_id: str (optional)  # YENİ - Grup dersi için
 ---
 
 ## Son Güncelleme
-- Tarih: 2026-04-27
-- Versiyon: 4.5
+- Tarih: 2026-05-10
+- Versiyon: 4.6
 - Değişiklikler:
-  1. **Pasif Öğrenci/Grup Filtrelemesi** (YENİ - 27 Nisan 2026):
-     - Öğretmen girişinde "Öğrencilerim" sayfasında pasif öğrenciler ve pasif gruplar artık görünmüyor
-     - Planlama Ustası hedefine sadece aktif öğrenciler ve aktif gruplar dahil ediliyor
-     - Pasif öğrenci/gruplar planlama puanını etkilemiyor
-  2. **Öğrenci Ders Düzenleme Özelliği** (27 Nisan 2026):
-     - Admin öğrenci ders giriş ekranında her ders için "Düzenle" butonu
-     - Pasif öğrenciler için de ders ekleme, düzenleme ve silme işlemleri yapılabilir
-  3. **Ders Silme Lokasyonu Değişikliği** (27 Nisan 2026):
-     - Admin Ders Kazanç Detay sayfasından silme butonu kaldırıldı
-     - Silme işlemi artık ilgili ders giriş ekranlarında yapılıyor
-  4. **Admin Öğretmen Kazanç Detay Yönetimi** (27 Nisan 2026)
-  5. **4+ Kişilik Grup Hesaplama FIX** (27 Nisan 2026)
+  1. **Mobil UI/UX Geliştirmeleri** (YENİ - 10 Mayıs 2026):
+     - Login ekranı logo güncellendi (EY → Yeni Nesil Sınıf logosu)
+     - Dialog/Modal bileşenleri mobil uyumlu hale getirildi (ortalanmış, max-height, overflow-scroll)
+     - AlertDialog bileşeni mobil uyumlu güncellendi
+     - Ödemeler ekranına Banka Hesabı filtresi ve Sıralama (Baştan Sona/Sondan Başa) eklendi
+     - Aylık Program detay alanı responsive grid yapıldı (mobilde alt alta kırılıyor)
+     - Admin/Teacher modal'ları mobilde düzgün görünüyor
+  2. **Pasif Öğrenci/Grup Filtrelemesi** (27 Nisan 2026)
+  3. **Öğrenci Ders Düzenleme Özelliği** (27 Nisan 2026)
+  4. **Ders Silme Lokasyonu Değişikliği** (27 Nisan 2026)
+  5. **Admin Öğretmen Kazanç Detay Yönetimi** (27 Nisan 2026)
   6. **Pasif Grup Yönetimi** (27 Nisan 2026)
-  7. **Önceki Güncellemeler**: Kutlama Animasyonu, Planlama Ustası Gamification Sistemi
+  7. **Önceki Güncellemeler**: Kutlama Animasyonu, Planlama Ustası Gamification

@@ -148,11 +148,11 @@ const AdminCamps = () => {
                 Yeni Kamp
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg mx-4 sm:mx-auto">
+            <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg mx-auto max-h-[85vh] overflow-y-auto rounded-xl">
               <DialogHeader>
-                <DialogTitle>{editingCamp ? 'Kamp Düzenle' : 'Yeni Kamp Oluştur'}</DialogTitle>
+                <DialogTitle className="text-lg">{editingCamp ? 'Kamp Düzenle' : 'Yeni Kamp Oluştur'}</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="space-y-4 pb-2">
                 <div className="space-y-2">
                   <Label>Kamp Adı *</Label>
                   <Input

@@ -632,9 +632,9 @@ const AdminMonthlyProgram = () => {
 
                   {/* Expanded Content */}
                   {expandedStudent === student.student_id && (
-                    <div className="border-t border-slate-100 p-4 bg-slate-50 space-y-4">
+                    <div className="border-t border-slate-100 p-3 sm:p-4 bg-slate-50 space-y-3 sm:space-y-4">
                       {/* Editable Fields */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="text-xs text-slate-500 block mb-1">Not</label>
                           <Input
@@ -662,7 +662,7 @@ const AdminMonthlyProgram = () => {
                         </div>
                       </div>
 
-                      {/* Branch Details */}
+                      {/* Branch Details - Responsive grid */}
                       {programData?.branches?.map(branch => {
                         const detail = student.branch_details?.[branch];
                         if (!detail || !detail.total) return null;
@@ -671,27 +671,27 @@ const AdminMonthlyProgram = () => {
                         return (
                           <div key={branch} className="bg-white p-3 rounded-lg">
                             <p className="text-sm font-semibold text-blue-700 mb-2">{branch}</p>
-                            <div className="grid grid-cols-4 gap-2 text-xs">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                               <div>
-                                <span className="text-slate-500">Tarih:</span>
-                                <p className="text-slate-700">{detail.dates || '-'}</p>
+                                <span className="text-slate-500 block">Tarih</span>
+                                <p className="text-slate-700 truncate">{detail.dates || '-'}</p>
                               </div>
                               <div>
-                                <span className="text-slate-500">Birim:</span>
+                                <span className="text-slate-500 block">Birim</span>
                                 <p className="text-slate-700">{detail.unit_price}₺</p>
                               </div>
                               <div>
-                                <span className="text-slate-500">Hesaplanan:</span>
+                                <span className="text-slate-500 block">Hesaplanan</span>
                                 <p className={`${hasOverride ? 'line-through text-slate-400' : 'text-slate-700'}`}>{detail.total}₺</p>
                               </div>
                               <div>
-                                <span className="text-slate-500">Tutar:</span>
+                                <span className="text-slate-500 block">Özel Tutar</span>
                                 <Input
                                   type="number"
                                   value={hasOverride ? student.price_overrides[branch] : ''}
                                   onChange={(e) => handlePriceOverrideChange(student.student_id, branch, e.target.value)}
                                   placeholder="-"
-                                  className={`h-7 text-sm w-24 ${hasOverride ? 'border-orange-400 bg-orange-50' : ''}`}
+                                  className={`h-8 text-sm w-full max-w-[100px] ${hasOverride ? 'border-orange-400 bg-orange-50' : ''}`}
                                 />
                               </div>
                             </div>
@@ -706,8 +706,8 @@ const AdminMonthlyProgram = () => {
                           <div className="grid grid-cols-2 gap-2">
                             {Object.entries(student.teacher_earnings).map(([teacher, earning]) => (
                               <div key={teacher} className="flex justify-between text-sm">
-                                <span className="text-slate-600">{teacher}:</span>
-                                <span className="font-semibold text-emerald-600">{formatMoney(earning, false)}₺</span>
+                                <span className="text-slate-600 truncate mr-2">{teacher}:</span>
+                                <span className="font-semibold text-emerald-600 whitespace-nowrap">{formatMoney(earning, false)}₺</span>
                               </div>
                             ))}
                           </div>

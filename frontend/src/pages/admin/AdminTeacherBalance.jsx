@@ -210,11 +210,11 @@ const AdminTeacherBalance = () => {
                   Ödeme Girişi
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md mx-auto max-h-[85vh] overflow-y-auto rounded-xl">
                 <DialogHeader>
-                  <DialogTitle>Ödeme Girişi</DialogTitle>
+                  <DialogTitle className="text-lg">Ödeme Girişi</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleAddPayment} className="space-y-4">
+                <form onSubmit={handleAddPayment} className="space-y-4 pb-2">
                   <div className="space-y-2">
                     <Label htmlFor="amount">Tutar (₺)</Label>
                     <Input

@@ -205,11 +205,11 @@ const TeacherGroupLessons = () => {
                 Grup Dersi Ekle
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md mx-auto max-h-[85vh] overflow-y-auto rounded-xl">
               <DialogHeader>
-                <DialogTitle>Grup Dersi Ekle</DialogTitle>
+                <DialogTitle className="text-lg">Grup Dersi Ekle</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="space-y-4 pb-2">
                 <div className="space-y-2">
                   <Label>Tarih</Label>
                   <DateInput

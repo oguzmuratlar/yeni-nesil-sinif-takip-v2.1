@@ -42,9 +42,11 @@ const LoginPage = () => {
         <div className="w-full max-w-md">
           {/* Logo/Brand for mobile */}
           <div className="lg:hidden text-center mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-              <span className="text-white text-2xl font-bold">EY</span>
-            </div>
+            <img 
+              src="https://customer-assets.emergentagent.com/job_quirky-ride-4/artifacts/rtr89e48_WhatsApp%20Image%202026-03-28%20at%2020.34.56.jpeg"
+              alt="Yeni Nesil Sınıf"
+              className="w-16 h-16 mx-auto mb-4 rounded-2xl object-contain"
+            />
           </div>
 
           <div className="mb-6 lg:mb-8">

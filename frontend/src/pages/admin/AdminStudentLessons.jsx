@@ -135,9 +135,9 @@ const AdminStudentLessons = () => {
                   Ders Ekle
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md mx-auto max-h-[85vh] overflow-y-auto rounded-xl">
                 <DialogHeader>
-                  <DialogTitle>{editingLesson ? 'Ders Düzenle' : 'Yeni Ders Ekle'}</DialogTitle>
+                  <DialogTitle className="text-lg">{editingLesson ? 'Ders Düzenle' : 'Yeni Ders Ekle'}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleAddLesson} className="space-y-4">
                   <div className="space-y-2">

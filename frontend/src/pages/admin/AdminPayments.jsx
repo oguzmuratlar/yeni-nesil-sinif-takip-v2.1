@@ -49,6 +49,8 @@ const AdminPayments = () => {
   const [formStudentSearch, setFormStudentSearch] = useState('');
   const [studentCourses, setStudentCourses] = useState([]);
   const [allPaymentsForMonths, setAllPaymentsForMonths] = useState([]);
+  const [selectedBankFilter, setSelectedBankFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc' = baştan sona, 'desc' = sondan başa
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -69,7 +71,7 @@ const AdminPayments = () => {
 
   useEffect(() => {
     fetchPayments();
-  }, [selectedMonth, selectedCashbox, selectedStudentFilter, selectedExpenseCategory, selectedTeacherFilter]);
+  }, [selectedMonth, selectedCashbox, selectedStudentFilter, selectedExpenseCategory, selectedTeacherFilter, selectedBankFilter, sortOrder]);
 
   // Custom filter function for combo search (student name + parent name)
   const filterStudents = (searchTerm, studentList) => {
@@ -160,6 +162,16 @@ const AdminPayments = () => {
       if (selectedTeacherFilter && selectedTeacherFilter !== 'all') {
         filteredPayments = filteredPayments.filter(p => p.teacher_id === selectedTeacherFilter);
       }
+      if (selectedBankFilter && selectedBankFilter !== 'all') {
+        filteredPayments = filteredPayments.filter(p => p.bank_account_id === selectedBankFilter);
+      }
+      
+      // Tarih bazlı sıralama
+      filteredPayments.sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+      });
       
       setPayments(filteredPayments);
     } catch (error) {
@@ -582,9 +594,31 @@ const AdminPayments = () => {
                   ))}
                 </SelectContent>
               </Select>
+
+              <Select value={selectedBankFilter} onValueChange={setSelectedBankFilter}>
+                <SelectTrigger className="h-11 lg:h-10 text-sm" data-testid="bank-filter">
+                  <SelectValue placeholder="Banka Hesabı" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tüm Hesaplar</SelectItem>
+                  {bankAccounts.map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.bank_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={sortOrder} onValueChange={setSortOrder}>
+                <SelectTrigger className="h-11 lg:h-10 text-sm" data-testid="sort-order">
+                  <SelectValue placeholder="Sıralama" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="desc">Sondan Başa</SelectItem>
+                  <SelectItem value="asc">Baştan Sona</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {(selectedMonth || selectedCashbox !== 'all' || selectedStudentFilter || selectedExpenseCategory !== 'all' || selectedTeacherFilter !== 'all') && (
+            {(selectedMonth || selectedCashbox !== 'all' || selectedStudentFilter || selectedExpenseCategory !== 'all' || selectedTeacherFilter !== 'all' || selectedBankFilter !== 'all') && (
               <Button 
                 variant="ghost" 
                 size="sm"
@@ -595,6 +629,8 @@ const AdminPayments = () => {
                   setStudentFilterSearch('');
                   setSelectedExpenseCategory('all');
                   setSelectedTeacherFilter('all');
+                  setSelectedBankFilter('all');
+                  setSortOrder('desc');
                 }}
                 className="h-10 text-slate-600"
               >
@@ -640,13 +676,13 @@ const AdminPayments = () => {
 
         {/* Add/Edit Payment Dialog */}
         <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-          <DialogContent className="sm:max-w-md mx-4 sm:mx-auto max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[calc(100%-2rem)] sm:max-w-md mx-auto max-h-[85vh] overflow-y-auto rounded-xl">
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle className="text-lg">
                 {editingPayment ? 'Ödeme Düzenle' : (dialogType === 'income' ? 'Ödeme Girişi' : 'Para Çıkışı')}
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmitPayment} className="space-y-4">
+            <form onSubmit={handleSubmitPayment} className="space-y-4 pb-2">
               {dialogType === 'income' && (
                 <>
                   <div className="space-y-2">
