@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import TeacherLayout from '../../components/layouts/TeacherLayout';
 import { Button } from '../../components/ui/button';
@@ -6,24 +6,24 @@ import { Input } from '../../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { 
-  Book, ChevronLeft, ChevronRight, ChevronDown, Plus, Check, X, 
+  Book, ChevronLeft, ChevronDown, Plus, Check, X, 
   Calendar, FileText, RotateCcw, Trash2, Clock, AlertCircle,
-  Undo2, Edit
+  Undo2, Edit, Download, CheckCircle2, GripVertical, ClipboardCheck
 } from 'lucide-react';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
 
 // Test durumları ve renkleri
 const TEST_STATUSES = {
-  not_started: { label: 'Başlanmadı', color: 'bg-white border-slate-200', textColor: 'text-slate-500', icon: null },
-  assigned: { label: 'Ödev Verildi', color: 'bg-yellow-100 border-yellow-300', textColor: 'text-yellow-700', icon: Clock },
-  completed: { label: 'Tamamlandı', color: 'bg-green-100 border-green-300', textColor: 'text-green-700', icon: Check },
-  incomplete: { label: 'Eksik', color: 'bg-red-100 border-red-300', textColor: 'text-red-700', icon: X },
-  needs_review: { label: 'Tekrar Gerekli', color: 'bg-purple-100 border-purple-300', textColor: 'text-purple-700', icon: RotateCcw },
-  skipped: { label: 'Pas Geçildi', color: 'bg-slate-100 border-slate-300', textColor: 'text-slate-500', icon: null },
+  not_started: { label: 'Başlanmadı', color: 'bg-white border-slate-200', textColor: 'text-slate-500', bgClass: 'bg-white', icon: null },
+  assigned: { label: 'Ödev Verildi', color: 'bg-yellow-100 border-yellow-300', textColor: 'text-yellow-700', bgClass: 'bg-yellow-100', icon: Clock },
+  completed: { label: 'Tamamlandı', color: 'bg-green-100 border-green-300', textColor: 'text-green-700', bgClass: 'bg-green-100', icon: Check },
+  incomplete: { label: 'Eksik', color: 'bg-red-100 border-red-300', textColor: 'text-red-700', bgClass: 'bg-red-100', icon: X },
+  needs_review: { label: 'Tekrar Gerekli', color: 'bg-purple-100 border-purple-300', textColor: 'text-purple-700', bgClass: 'bg-purple-100', icon: RotateCcw },
+  skipped: { label: 'Pas Geçildi', color: 'bg-slate-100 border-slate-300', textColor: 'text-slate-500', bgClass: 'bg-slate-100', icon: null },
 };
 
-const DAYS_TR = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+const DAYS_TR = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
 const TeacherHomeworkEntry = () => {
   const { studentId, branchId } = useParams();
@@ -45,6 +45,10 @@ const TeacherHomeworkEntry = () => {
   const [planItems, setPlanItems] = useState({});
   const [planDuration, setPlanDuration] = useState(7);
   
+  // Drag state
+  const [draggedItem, setDraggedItem] = useState(null);
+  const [dragOverDay, setDragOverDay] = useState(null);
+  
   // Dialogs
   const [addBookDialog, setAddBookDialog] = useState(false);
   const [createPlanDialog, setCreatePlanDialog] = useState(false);
@@ -52,11 +56,13 @@ const TeacherHomeworkEntry = () => {
   const [freetextDate, setFreetextDate] = useState('');
   const [freetextValue, setFreetextValue] = useState('');
   const [statusPopup, setStatusPopup] = useState({ open: false, testId: null, x: 0, y: 0 });
+  const [homeworkCheckDialog, setHomeworkCheckDialog] = useState(false);
+  const [createBookDialog, setCreateBookDialog] = useState(false);
   
   // Tabs
-  const [activeTab, setActiveTab] = useState('homework'); // 'homework' | 'trials'
+  const [activeTab, setActiveTab] = useState('homework');
   
-  // Trials (Denemeler)
+  // Trials
   const [trials, setTrials] = useState([]);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
   const [editingTrial, setEditingTrial] = useState(null);
@@ -69,10 +75,20 @@ const TeacherHomeworkEntry = () => {
     notes: ''
   });
   
-  // Available books for assignment
-  const [availableBooks, setAvailableBooks] = useState([]);
+  // Book creation form
+  const [newBookForm, setNewBookForm] = useState({
+    name: '',
+    publisher: '',
+    level: '8',
+    book_type: 'soru_bankasi',
+    publish_year: new Date().getFullYear()
+  });
   
-  // Undo system
+  // Available books
+  const [availableBooks, setAvailableBooks] = useState([]);
+  const [allBranches, setAllBranches] = useState([]);
+  
+  // Undo
   const [undoStack, setUndoStack] = useState([]);
 
   useEffect(() => {
@@ -86,11 +102,15 @@ const TeacherHomeworkEntry = () => {
     }
   }, [selectedBook]);
 
+  useEffect(() => {
+    if (activeTab === 'trials') {
+      fetchTrials();
+    }
+  }, [activeTab]);
+
   const fetchInitialData = async () => {
     try {
       setLoading(true);
-      
-      // Tüm branşları çek ve istenen branşı filtrele
       const [studentRes, branchesRes, booksRes, plansRes] = await Promise.all([
         apiClient.get(`/students/${studentId}`),
         apiClient.get('/branches'),
@@ -99,20 +119,16 @@ const TeacherHomeworkEntry = () => {
       ]);
       
       setStudent(studentRes.data);
-      
-      // Branşı filtrele
+      setAllBranches(branchesRes.data);
       const foundBranch = branchesRes.data.find(b => b.id === branchId);
       setBranch(foundBranch || { name: 'Bilinmiyor' });
-      
       setBooks(booksRes.data);
       
-      // Aktif plan varsa yükle
       if (plansRes.data.length > 0) {
         setActivePlan(plansRes.data[0]);
         fetchPlanItems(plansRes.data[0].id);
       }
       
-      // İlk kitabı seç
       if (booksRes.data.length > 0) {
         setSelectedBook(booksRes.data[0]);
       }
@@ -124,7 +140,6 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
-  // Denemeleri çek
   const fetchTrials = async () => {
     try {
       const response = await apiClient.get(`/homework/students/${studentId}/trials?branch_id=${branchId}`);
@@ -133,12 +148,6 @@ const TeacherHomeworkEntry = () => {
       console.error('Trials error:', error);
     }
   };
-
-  useEffect(() => {
-    if (activeTab === 'trials') {
-      fetchTrials();
-    }
-  }, [activeTab, studentId, branchId]);
 
   const fetchBookTree = async (bookId) => {
     try {
@@ -170,7 +179,6 @@ const TeacherHomeworkEntry = () => {
   const fetchAvailableBooks = async () => {
     try {
       const response = await apiClient.get(`/homework/books?branch_id=${branchId}`);
-      // Zaten atanmış kitapları filtrele
       const assignedBookIds = books.map(b => b.id);
       setAvailableBooks(response.data.filter(b => !assignedBookIds.includes(b.id)));
     } catch (error) {
@@ -178,14 +186,27 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
-  // Test durumu güncelle (auto-save)
-  const updateTestStatus = useCallback(async (testId, newStatus) => {
+  // Refresh books list after assignment
+  const refreshBooks = async () => {
+    try {
+      const booksRes = await apiClient.get(`/homework/students/${studentId}/books?branch_id=${branchId}`);
+      setBooks(booksRes.data);
+      if (booksRes.data.length > 0 && !selectedBook) {
+        setSelectedBook(booksRes.data[0]);
+      }
+    } catch (error) {
+      console.error('Refresh books error:', error);
+    }
+  };
+
+  // Test durumu güncelle
+  const updateTestStatus = useCallback(async (testId, newStatus, skipUndo = false) => {
     const oldStatus = testProgress[testId]?.status || 'not_started';
     
-    // Undo stack'e ekle
-    setUndoStack(prev => [...prev, { testId, oldStatus }]);
+    if (!skipUndo) {
+      setUndoStack(prev => [...prev, { testId, oldStatus }]);
+    }
     
-    // Optimistic update
     setTestProgress(prev => ({
       ...prev,
       [testId]: { ...prev[testId], status: newStatus }
@@ -195,8 +216,9 @@ const TeacherHomeworkEntry = () => {
       await apiClient.put(`/homework/students/${studentId}/tests/${testId}/status`, {
         status: newStatus
       });
+      // Refresh book progress
+      refreshBooks();
     } catch (error) {
-      // Hata durumunda geri al
       setTestProgress(prev => ({
         ...prev,
         [testId]: { ...prev[testId], status: oldStatus }
@@ -204,6 +226,21 @@ const TeacherHomeworkEntry = () => {
       toast.error('Durum güncellenemedi');
     }
   }, [studentId, testProgress]);
+
+  // Ünite için tüm testleri güncelle
+  const updateUnitStatus = async (unit, newStatus) => {
+    const testIds = [];
+    unit.topics?.forEach(topic => {
+      topic.tests?.forEach(test => {
+        testIds.push(test.id);
+      });
+    });
+    
+    for (const testId of testIds) {
+      await updateTestStatus(testId, newStatus, true);
+    }
+    toast.success(`Ünite durumu güncellendi (${testIds.length} test)`);
+  };
 
   // Undo
   const handleUndo = useCallback(async () => {
@@ -221,6 +258,7 @@ const TeacherHomeworkEntry = () => {
       await apiClient.put(`/homework/students/${studentId}/tests/${lastAction.testId}/status`, {
         status: lastAction.oldStatus
       });
+      refreshBooks();
       toast.info('Geri alındı');
     } catch (error) {
       console.error('Undo error:', error);
@@ -237,7 +275,7 @@ const TeacherHomeworkEntry = () => {
       });
       toast.success('Kitap atandı');
       setAddBookDialog(false);
-      fetchInitialData();
+      refreshBooks();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Kitap atanamadı');
     }
@@ -254,9 +292,37 @@ const TeacherHomeworkEntry = () => {
         setSelectedBook(null);
         setBookTree(null);
       }
-      fetchInitialData();
+      refreshBooks();
     } catch (error) {
       toast.error('Kitap kaldırılamadı');
+    }
+  };
+
+  // Yeni kitap oluştur
+  const handleCreateBook = async () => {
+    if (!newBookForm.name) {
+      toast.error('Kitap adı zorunludur');
+      return;
+    }
+    
+    try {
+      await apiClient.post('/homework/books', {
+        ...newBookForm,
+        branch_id: branchId,
+        publish_year: parseInt(newBookForm.publish_year) || null
+      });
+      toast.success('Kitap oluşturuldu');
+      setCreateBookDialog(false);
+      setNewBookForm({
+        name: '',
+        publisher: '',
+        level: '8',
+        book_type: 'soru_bankasi',
+        publish_year: new Date().getFullYear()
+      });
+      fetchAvailableBooks();
+    } catch (error) {
+      toast.error('Kitap oluşturulamadı');
     }
   };
 
@@ -279,30 +345,77 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
-  // Test'i plana ekle
-  const handleAddTestToPlan = async (testId, date) => {
-    if (!activePlan) {
-      toast.error('Önce bir plan oluşturun');
-      return;
-    }
+  // Drag & Drop handlers
+  const handleDragStart = (e, item, type) => {
+    setDraggedItem({ ...item, type });
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e, date) => {
+    e.preventDefault();
+    setDragOverDay(date);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverDay(null);
+  };
+
+  const handleDrop = async (e, date) => {
+    e.preventDefault();
+    setDragOverDay(null);
+    
+    if (!activePlan || !draggedItem) return;
     
     try {
-      await apiClient.post(`/homework/plans/${activePlan.id}/items`, {
-        plan_id: activePlan.id,
-        day_date: date,
-        item_type: 'test',
-        test_id: testId,
-        book_id: selectedBook?.id
-      });
+      if (draggedItem.type === 'test') {
+        // Tek test ekle
+        await apiClient.post(`/homework/plans/${activePlan.id}/items`, {
+          plan_id: activePlan.id,
+          day_date: date,
+          item_type: 'test',
+          test_id: draggedItem.id,
+          book_id: selectedBook?.id
+        });
+        await updateTestStatus(draggedItem.id, 'assigned', true);
+      } else if (draggedItem.type === 'unit') {
+        // Tüm ünite testlerini ekle
+        for (const topic of draggedItem.topics || []) {
+          for (const test of topic.tests || []) {
+            await apiClient.post(`/homework/plans/${activePlan.id}/items`, {
+              plan_id: activePlan.id,
+              day_date: date,
+              item_type: 'test',
+              test_id: test.id,
+              book_id: selectedBook?.id
+            });
+            await updateTestStatus(test.id, 'assigned', true);
+          }
+        }
+      } else if (draggedItem.type === 'topic') {
+        // Tüm konu testlerini ekle
+        for (const test of draggedItem.tests || []) {
+          await apiClient.post(`/homework/plans/${activePlan.id}/items`, {
+            plan_id: activePlan.id,
+            day_date: date,
+            item_type: 'test',
+            test_id: test.id,
+            book_id: selectedBook?.id
+          });
+          await updateTestStatus(test.id, 'assigned', true);
+        }
+      }
+      
       fetchPlanItems(activePlan.id);
-      fetchTestProgress(selectedBook.id);
+      refreshBooks();
       toast.success('Ödev eklendi');
     } catch (error) {
       toast.error('Ödev eklenemedi');
     }
+    
+    setDraggedItem(null);
   };
 
-  // Serbest metin ödev ekle
+  // Serbest metin ödev
   const handleAddFreetext = async () => {
     if (!freetextValue.trim() || !freetextDate) return;
     
@@ -332,8 +445,140 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
-  // ============ DENEME FONKSİYONLARI ============
-  
+  // Tüm ödevleri tamamlandı yap
+  const handleMarkAllCompleted = async () => {
+    const assignedTests = getAssignedTests();
+    
+    for (const test of assignedTests) {
+      await updateTestStatus(test.id, 'completed', true);
+    }
+    
+    setHomeworkCheckDialog(false);
+    toast.success(`${assignedTests.length} ödev tamamlandı olarak işaretlendi`);
+    refreshBooks();
+  };
+
+  // Ödev verilen testleri getir
+  const getAssignedTests = () => {
+    const assigned = [];
+    Object.values(planItems).forEach(dayItems => {
+      dayItems.forEach(item => {
+        if (item.item_type === 'test' && item.test_id) {
+          const status = testProgress[item.test_id]?.status || 'not_started';
+          if (status === 'assigned') {
+            assigned.push({
+              id: item.test_id,
+              item,
+              status
+            });
+          }
+        }
+      });
+    });
+    return assigned;
+  };
+
+  // PDF Export
+  const handlePDFExport = () => {
+    const printWindow = window.open('', '_blank');
+    const planDates = getPlanDates();
+    
+    let html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Haftalık Ödev Planı - ${student?.name}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { color: #7c3aed; font-size: 24px; margin-bottom: 5px; }
+          .subtitle { color: #64748b; margin-bottom: 20px; }
+          .info { display: flex; gap: 40px; margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; }
+          .info-item { }
+          .info-label { font-size: 12px; color: #64748b; }
+          .info-value { font-weight: bold; color: #1e293b; }
+          .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+          .day-card { border: 1px solid #e2e8f0; border-radius: 8px; min-height: 150px; }
+          .day-header { padding: 8px; background: #f1f5f9; font-weight: bold; text-align: center; border-radius: 8px 8px 0 0; }
+          .day-header.today { background: #ede9fe; color: #7c3aed; }
+          .day-content { padding: 8px; }
+          .homework-item { padding: 6px 8px; margin-bottom: 4px; border-radius: 4px; font-size: 12px; }
+          .homework-test { background: #dbeafe; border-left: 3px solid #3b82f6; }
+          .homework-text { background: #fed7aa; border-left: 3px solid #f97316; }
+          .test-name { font-weight: 500; }
+          .test-info { font-size: 10px; color: #64748b; }
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Haftalık Ödev Planı</h1>
+        <p class="subtitle">${student?.name} - ${branch?.name}</p>
+        
+        <div class="info">
+          <div class="info-item">
+            <div class="info-label">Öğretmen</div>
+            <div class="info-value">${student?.teacher_name || 'Öğretmen'}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Tarih Aralığı</div>
+            <div class="info-value">${activePlan?.start_date} - ${activePlan?.end_date}</div>
+          </div>
+        </div>
+        
+        <div class="days-grid">
+    `;
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    planDates.forEach(({ date, dayName, dayNum }) => {
+      const isToday = date === today;
+      const dayItems = planItems[date] || [];
+      
+      html += `
+        <div class="day-card">
+          <div class="day-header ${isToday ? 'today' : ''}">${dayName} (${dayNum})</div>
+          <div class="day-content">
+      `;
+      
+      if (dayItems.length === 0) {
+        html += '<p style="color: #94a3b8; font-size: 11px; text-align: center;">-</p>';
+      } else {
+        dayItems.forEach(item => {
+          if (item.item_type === 'test') {
+            html += `
+              <div class="homework-item homework-test">
+                <div class="test-name">${item.test_info?.test_name || 'Test'}</div>
+                <div class="test-info">${item.test_info?.topic_name || ''}</div>
+              </div>
+            `;
+          } else {
+            html += `
+              <div class="homework-item homework-text">${item.freetext}</div>
+            `;
+          }
+        });
+      }
+      
+      html += `
+          </div>
+        </div>
+      `;
+    });
+    
+    html += `
+        </div>
+        <script>window.print();</script>
+      </body>
+      </html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  // Deneme fonksiyonları
   const openTrialDialog = (trial = null) => {
     if (trial) {
       setEditingTrial(trial);
@@ -399,15 +644,14 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
-  // ============ HIZLI DURUM DEĞİŞTİRME ============
-  
+  // Status popup
   const openStatusPopup = (e, testId) => {
     e.stopPropagation();
     const rect = e.target.getBoundingClientRect();
     setStatusPopup({
       open: true,
       testId,
-      x: rect.left,
+      x: Math.min(rect.left, window.innerWidth - 180),
       y: rect.bottom + 5
     });
   };
@@ -431,7 +675,6 @@ const TeacherHomeworkEntry = () => {
     setExpandedTopics(prev => ({ ...prev, [topicId]: !prev[topicId] }));
   };
 
-  // Plan tarihlerini hesapla
   const getPlanDates = () => {
     if (!activePlan) return [];
     
@@ -442,7 +685,7 @@ const TeacherHomeworkEntry = () => {
       const date = new Date(start);
       date.setDate(start.getDate() + i);
       const dateStr = date.toISOString().split('T')[0];
-      const dayName = DAYS_TR[date.getDay() === 0 ? 6 : date.getDay() - 1];
+      const dayName = DAYS_TR[date.getDay()];
       dates.push({ date: dateStr, dayName, dayNum: date.getDate() });
     }
     
@@ -452,15 +695,6 @@ const TeacherHomeworkEntry = () => {
   const getTestStatusInfo = (testId) => {
     const status = testProgress[testId]?.status || 'not_started';
     return TEST_STATUSES[status] || TEST_STATUSES.not_started;
-  };
-
-  // Hızlı durum değiştirme
-  const cycleTestStatus = (testId) => {
-    const currentStatus = testProgress[testId]?.status || 'not_started';
-    const statusOrder = ['not_started', 'assigned', 'completed', 'incomplete', 'needs_review', 'skipped'];
-    const currentIndex = statusOrder.indexOf(currentStatus);
-    const nextStatus = statusOrder[(currentIndex + 1) % statusOrder.length];
-    updateTestStatus(testId, nextStatus);
   };
 
   if (loading) {
@@ -473,18 +707,15 @@ const TeacherHomeworkEntry = () => {
     );
   }
 
+  const assignedTests = getAssignedTests();
+
   return (
     <TeacherLayout>
-      <div className="h-[calc(100vh-120px)] flex flex-col">
+      <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => navigate('/teacher/students')}
-              className="p-2"
-            >
+            <Button variant="ghost" size="sm" onClick={() => navigate('/teacher/students')} className="p-2">
               <ChevronLeft className="w-5 h-5" />
             </Button>
             <div>
@@ -493,7 +724,7 @@ const TeacherHomeworkEntry = () => {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {undoStack.length > 0 && (
               <Button variant="outline" size="sm" onClick={handleUndo} className="gap-1">
                 <Undo2 className="w-4 h-4" />
@@ -510,13 +741,11 @@ const TeacherHomeworkEntry = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-4 border-b border-slate-200">
+        <div className="flex gap-1 border-b border-slate-200">
           <button
             onClick={() => setActiveTab('homework')}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'homework'
-                ? 'border-purple-500 text-purple-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
+              activeTab === 'homework' ? 'border-purple-500 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
             Ödev Takip
@@ -524,305 +753,287 @@ const TeacherHomeworkEntry = () => {
           <button
             onClick={() => setActiveTab('trials')}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'trials'
-                ? 'border-purple-500 text-purple-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
+              activeTab === 'trials' ? 'border-purple-500 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
             Denemeler
           </button>
         </div>
 
-        {/* Tab Content */}
         {activeTab === 'homework' ? (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
-          {/* Sol Panel - Kitaplar */}
-          <div className="lg:col-span-3 teacher-card p-3 flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-slate-700 text-sm">Kitaplar</h2>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-7 w-7 p-0"
-                onClick={() => {
-                  fetchAvailableBooks();
-                  setAddBookDialog(true);
-                }}
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            
-            <ScrollArea className="flex-1">
-              <div className="space-y-2 pr-2">
-                {books.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400">
-                    <Book className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Henüz kitap yok</p>
+          <>
+            {/* Üst Satır - 2 Panel */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Sol Panel - Kitaplar */}
+              <div className="teacher-card p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-semibold text-slate-700 text-sm">Kitaplar</h2>
+                  <div className="flex gap-1">
                     <Button 
-                      variant="link" 
-                      size="sm"
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        setCreateBookDialog(true);
+                      }}
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Oluştur
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 text-xs"
                       onClick={() => {
                         fetchAvailableBooks();
                         setAddBookDialog(true);
                       }}
                     >
-                      Kitap Ekle
+                      <Plus className="w-3 h-3 mr-1" />
+                      Ekle
                     </Button>
                   </div>
-                ) : (
-                  books.map(book => (
-                    <div
-                      key={book.id}
-                      onClick={() => setSelectedBook(book)}
-                      className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                        selectedBook?.id === book.id
-                          ? 'border-purple-500 bg-purple-50'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <h3 className="font-medium text-slate-800 text-sm truncate">{book.name}</h3>
-                          <p className="text-xs text-slate-500 mt-0.5">{book.publisher}</p>
-                          
-                          {/* Progress bar */}
-                          <div className="mt-2">
-                            <div className="flex items-center justify-between text-xs mb-1">
-                              <span className="text-slate-500">{book.completed_tests}/{book.total_tests}</span>
-                              <span className="text-purple-600 font-medium">{book.progress_percent}%</span>
-                            </div>
-                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-purple-500 transition-all"
-                                style={{ width: `${book.progress_percent}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveBook(book.id);
-                          }}
-                          className="p-1 hover:bg-red-100 rounded text-slate-400 hover:text-red-500"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </div>
-
-          {/* Orta Panel - Kitap Ağacı */}
-          <div className="lg:col-span-5 teacher-card p-3 flex flex-col min-h-0">
-            <h2 className="font-semibold text-slate-700 text-sm mb-3">
-              {selectedBook ? selectedBook.name : 'Kitap İçeriği'}
-            </h2>
-            
-            <ScrollArea className="flex-1">
-              {!selectedBook ? (
-                <div className="text-center py-12 text-slate-400">
-                  <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>Kitap seçin</p>
                 </div>
-              ) : !bookTree ? (
-                <div className="text-center py-8 text-slate-500">Yükleniyor...</div>
-              ) : (
-                <div className="space-y-1 pr-2">
-                  {bookTree.tree.map(unit => (
-                    <div key={unit.id} className="border rounded-lg overflow-hidden">
-                      {/* Unit Header */}
-                      <div
-                        className="flex items-center gap-2 p-2 bg-slate-50 cursor-pointer hover:bg-slate-100"
-                        onClick={() => toggleUnit(unit.id)}
-                      >
-                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${!expandedUnits[unit.id] ? '-rotate-90' : ''}`} />
+                
+                <ScrollArea className="h-[200px]">
+                  <div className="space-y-2 pr-2">
+                    {books.length === 0 ? (
+                      <div className="text-center py-6 text-slate-400">
+                        <Book className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">Henüz kitap yok</p>
+                      </div>
+                    ) : (
+                      books.map(book => (
                         <div
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: unit.color || '#94a3b8' }}
-                        />
-                        <span className="text-sm font-medium text-slate-700 flex-1 truncate">{unit.name}</span>
-                      </div>
-
-                      {/* Topics */}
-                      {expandedUnits[unit.id] && (
-                        <div className="border-t">
-                          {unit.topics?.map(topic => (
-                            <div key={topic.id}>
-                              <div
-                                className="flex items-center gap-2 p-2 pl-6 cursor-pointer hover:bg-slate-50 border-b"
-                                onClick={() => toggleTopic(topic.id)}
-                              >
-                                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${!expandedTopics[topic.id] ? '-rotate-90' : ''}`} />
-                                <span className="text-sm text-slate-600 flex-1 truncate">{topic.name}</span>
-                                <span className="text-xs text-slate-400">{topic.tests?.length || 0}</span>
+                          key={book.id}
+                          onClick={() => setSelectedBook(book)}
+                          className={`p-2 rounded-lg border cursor-pointer transition-all ${
+                            selectedBook?.id === book.id ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-medium text-slate-800 text-sm truncate">{book.name}</h3>
+                              <div className="flex items-center gap-2 mt-1">
+                                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-purple-500" style={{ width: `${book.progress_percent}%` }} />
+                                </div>
+                                <span className="text-xs text-purple-600 font-medium">{book.progress_percent}%</span>
                               </div>
-
-                              {/* Tests */}
-                              {expandedTopics[topic.id] && topic.tests?.map(test => {
-                                const statusInfo = getTestStatusInfo(test.id);
-                                const StatusIcon = statusInfo.icon;
-                                
-                                return (
-                                  <div
-                                    key={test.id}
-                                    className={`flex items-center gap-2 p-2 pl-10 border-b last:border-b-0 ${statusInfo.color}`}
-                                  >
-                                    {/* Status button - tıklayınca popup açılır */}
-                                    <button
-                                      onClick={(e) => openStatusPopup(e, test.id)}
-                                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${statusInfo.color} ${statusInfo.textColor}`}
-                                    >
-                                      {StatusIcon && <StatusIcon className="w-4 h-4" />}
-                                    </button>
-                                    
-                                    <span className={`text-sm flex-1 truncate ${statusInfo.textColor}`}>
-                                      {test.name}
-                                    </span>
-                                    
-                                    {test.question_count && (
-                                      <span className="text-xs text-slate-400">{test.question_count}s</span>
-                                    )}
-                                    
-                                    {/* Plana ekle butonu */}
-                                    {activePlan && statusInfo.label !== 'Tamamlandı' && (
-                                      <select
-                                        className="text-xs border rounded px-1 py-0.5 bg-white"
-                                        onChange={(e) => {
-                                          if (e.target.value) {
-                                            handleAddTestToPlan(test.id, e.target.value);
-                                            e.target.value = '';
-                                          }
-                                        }}
-                                        defaultValue=""
-                                      >
-                                        <option value="">+ Ekle</option>
-                                        {getPlanDates().map(d => (
-                                          <option key={d.date} value={d.date}>
-                                            {d.dayName} ({d.dayNum})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    )}
-                                  </div>
-                                );
-                              })}
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </div>
-
-          {/* Sağ Panel - Haftalık Plan */}
-          <div className="lg:col-span-4 teacher-card p-3 flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-slate-700 text-sm">
-                {activePlan ? 'Haftalık Plan' : 'Plan Yok'}
-              </h2>
-              {activePlan && (
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    setFreetextDate(getPlanDates()[0]?.date || '');
-                    setFreetextDialog(true);
-                  }}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  Not
-                </Button>
-              )}
-            </div>
-            
-            <ScrollArea className="flex-1">
-              {!activePlan ? (
-                <div className="text-center py-12 text-slate-400">
-                  <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm mb-2">Henüz plan yok</p>
-                  <Button size="sm" onClick={() => setCreatePlanDialog(true)}>
-                    Plan Oluştur
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3 pr-2">
-                  {getPlanDates().map(({ date, dayName, dayNum }) => {
-                    const dayItems = planItems[date] || [];
-                    const isToday = date === new Date().toISOString().split('T')[0];
-                    
-                    return (
-                      <div 
-                        key={date} 
-                        className={`border rounded-lg overflow-hidden ${isToday ? 'border-purple-400 bg-purple-50/50' : ''}`}
-                      >
-                        <div className={`px-3 py-2 ${isToday ? 'bg-purple-100' : 'bg-slate-50'}`}>
-                          <div className="flex items-center justify-between">
-                            <span className={`text-sm font-medium ${isToday ? 'text-purple-700' : 'text-slate-700'}`}>
-                              {dayName}
-                            </span>
-                            <span className={`text-xs ${isToday ? 'text-purple-600' : 'text-slate-500'}`}>
-                              {dayNum}
-                            </span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleRemoveBook(book.id); }}
+                              className="p-1 hover:bg-red-100 rounded text-slate-400 hover:text-red-500"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           </div>
                         </div>
-                        
-                        <div className="p-2 space-y-1.5 min-h-[60px]">
-                          {dayItems.length === 0 ? (
-                            <p className="text-xs text-slate-400 text-center py-2">Boş</p>
-                          ) : (
-                            dayItems.map(item => (
-                              <div 
-                                key={item.id}
-                                className="flex items-start gap-2 p-2 bg-white rounded border text-sm group"
-                              >
-                                {item.item_type === 'test' ? (
-                                  <>
-                                    <div className="w-2 h-2 rounded-full bg-blue-400 mt-1.5 shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-medium text-slate-700 text-xs truncate">
-                                        {item.test_info?.test_name}
-                                      </p>
-                                      <p className="text-xs text-slate-400 truncate">
-                                        {item.test_info?.topic_name}
-                                      </p>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div className="w-2 h-2 rounded-full bg-orange-400 mt-1.5 shrink-0" />
-                                    <p className="flex-1 text-xs text-slate-600">{item.freetext}</p>
-                                  </>
-                                )}
-                                <button
-                                  onClick={() => handleRemovePlanItem(item.id)}
-                                  className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 rounded text-slate-400 hover:text-red-500"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ))
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* Sağ Panel - Kitap Ağacı */}
+              <div className="teacher-card p-3">
+                <h2 className="font-semibold text-slate-700 text-sm mb-3">
+                  {selectedBook ? selectedBook.name : 'Kitap İçeriği'}
+                  <span className="text-xs text-slate-400 ml-2">(sürükle-bırak ile ödev ver)</span>
+                </h2>
+                
+                <ScrollArea className="h-[200px]">
+                  {!selectedBook ? (
+                    <div className="text-center py-8 text-slate-400">
+                      <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Kitap seçin</p>
+                    </div>
+                  ) : !bookTree ? (
+                    <div className="text-center py-6 text-slate-500 text-sm">Yükleniyor...</div>
+                  ) : (
+                    <div className="space-y-1 pr-2">
+                      {bookTree.tree.map(unit => (
+                        <div key={unit.id} className="border rounded-lg overflow-hidden">
+                          {/* Unit Header - Draggable */}
+                          <div
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, unit, 'unit')}
+                            className="flex items-center gap-2 p-2 bg-slate-50 cursor-grab hover:bg-slate-100 group"
+                            onClick={() => toggleUnit(unit.id)}
+                          >
+                            <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                            <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedUnits[unit.id] ? '-rotate-90' : ''}`} />
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: unit.color || '#94a3b8' }} />
+                            <span className="text-xs font-medium text-slate-700 flex-1 truncate">{unit.name}</span>
+                          </div>
+
+                          {expandedUnits[unit.id] && (
+                            <div className="border-t">
+                              {unit.topics?.map(topic => (
+                                <div key={topic.id}>
+                                  {/* Topic - Draggable */}
+                                  <div
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, topic, 'topic')}
+                                    className="flex items-center gap-2 p-1.5 pl-6 cursor-grab hover:bg-slate-50 border-b group"
+                                    onClick={() => toggleTopic(topic.id)}
+                                  >
+                                    <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedTopics[topic.id] ? '-rotate-90' : ''}`} />
+                                    <span className="text-xs text-slate-600 flex-1 truncate">{topic.name}</span>
+                                    <span className="text-[10px] text-slate-400">{topic.tests?.length || 0}</span>
+                                  </div>
+
+                                  {/* Tests */}
+                                  {expandedTopics[topic.id] && topic.tests?.map(test => {
+                                    const statusInfo = getTestStatusInfo(test.id);
+                                    const StatusIcon = statusInfo.icon;
+                                    
+                                    return (
+                                      <div
+                                        key={test.id}
+                                        draggable
+                                        onDragStart={(e) => handleDragStart(e, test, 'test')}
+                                        className={`flex items-center gap-2 p-1.5 pl-10 border-b last:border-b-0 cursor-grab group ${statusInfo.bgClass}`}
+                                      >
+                                        <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                                        <button
+                                          onClick={(e) => openStatusPopup(e, test.id)}
+                                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${statusInfo.color} ${statusInfo.textColor}`}
+                                        >
+                                          {StatusIcon && <StatusIcon className="w-3 h-3" />}
+                                        </button>
+                                        <span className={`text-xs flex-1 truncate ${statusInfo.textColor}`}>{test.name}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+            </div>
+
+            {/* Alt Satır - Haftalık Plan (Tam genişlik) */}
+            <div className="teacher-card p-4">
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <h2 className="font-semibold text-slate-700">Haftalık Plan</h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {activePlan && assignedTests.length > 0 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => setHomeworkCheckDialog(true)}
+                      className="gap-1 border-green-300 text-green-700 hover:bg-green-50"
+                    >
+                      <ClipboardCheck className="w-4 h-4" />
+                      Ödev Kontrol ({assignedTests.length})
+                    </Button>
+                  )}
+                  {activePlan && (
+                    <>
+                      <Button variant="outline" size="sm" onClick={handlePDFExport} className="gap-1">
+                        <Download className="w-4 h-4" />
+                        PDF
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => {
+                          setFreetextDate(getPlanDates()[0]?.date || '');
+                          setFreetextDialog(true);
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Not
+                      </Button>
+                    </>
+                  )}
+                  {!activePlan && (
+                    <Button size="sm" onClick={() => setCreatePlanDialog(true)}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Plan Oluştur
+                    </Button>
+                  )}
+                </div>
+              </div>
+              
+              {!activePlan ? (
+                <div className="text-center py-8 text-slate-400">
+                  <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>Henüz plan yok</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <div className="flex gap-2 min-w-max">
+                    {getPlanDates().map(({ date, dayName, dayNum }) => {
+                      const dayItems = planItems[date] || [];
+                      const isToday = date === new Date().toISOString().split('T')[0];
+                      const isDragOver = dragOverDay === date;
+                      
+                      return (
+                        <div 
+                          key={date}
+                          onDragOver={(e) => handleDragOver(e, date)}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, date)}
+                          className={`w-36 border rounded-lg overflow-hidden transition-all ${
+                            isToday ? 'border-purple-400 bg-purple-50/50' : ''
+                          } ${isDragOver ? 'border-purple-500 bg-purple-100 scale-105' : ''}`}
+                        >
+                          <div className={`px-3 py-2 text-center ${isToday ? 'bg-purple-100' : 'bg-slate-50'}`}>
+                            <div className={`text-xs font-medium ${isToday ? 'text-purple-700' : 'text-slate-700'}`}>{dayName}</div>
+                            <div className={`text-lg font-bold ${isToday ? 'text-purple-600' : 'text-slate-600'}`}>{dayNum}</div>
+                          </div>
+                          
+                          <div className="p-2 min-h-[120px] space-y-1">
+                            {dayItems.length === 0 ? (
+                              <p className="text-[10px] text-slate-400 text-center py-4">Sürükle bırak</p>
+                            ) : (
+                              dayItems.map(item => (
+                                <div 
+                                  key={item.id}
+                                  className="flex items-start gap-1 p-1.5 bg-white rounded border text-xs group"
+                                >
+                                  {item.item_type === 'test' ? (
+                                    <>
+                                      <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1 shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-slate-700 truncate text-[10px]">{item.test_info?.test_name}</p>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1 shrink-0" />
+                                      <p className="flex-1 text-slate-600 text-[10px] truncate">{item.freetext}</p>
+                                    </>
+                                  )}
+                                  <button
+                                    onClick={() => handleRemovePlanItem(item.id)}
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 rounded text-slate-400 hover:text-red-500"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
-            </ScrollArea>
-          </div>
-        </div>
+            </div>
+          </>
         ) : (
-          /* ============ DENEME SEKMESİ ============ */
-          <div className="flex-1 teacher-card p-4 overflow-auto">
+          /* Denemeler Sekmesi */
+          <div className="teacher-card p-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-700">Deneme Sonuçları</h2>
               <Button size="sm" onClick={() => openTrialDialog()} className="gap-1">
@@ -835,20 +1046,13 @@ const TeacherHomeworkEntry = () => {
               <div className="text-center py-12 text-slate-400">
                 <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>Henüz deneme kaydı yok</p>
-                <Button 
-                  variant="link" 
-                  size="sm"
-                  onClick={() => openTrialDialog()}
-                >
-                  İlk denemeyi ekle
-                </Button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {trials.map(trial => {
                   const net = trial.correct_count - (trial.wrong_count / 4);
                   return (
-                    <div key={trial.id} className="border rounded-lg p-4 hover:border-purple-200 transition-all">
+                    <div key={trial.id} className="border rounded-lg p-4 hover:border-purple-200">
                       <div className="flex items-start justify-between gap-4 mb-3">
                         <div>
                           <h3 className="font-medium text-slate-800">{trial.exam_name}</h3>
@@ -859,58 +1063,54 @@ const TeacherHomeworkEntry = () => {
                         </Button>
                       </div>
                       
-                      <div className="grid grid-cols-4 gap-3 mb-3">
+                      <div className="grid grid-cols-4 gap-2 mb-3">
                         <div className="text-center p-2 bg-green-50 rounded">
                           <p className="text-lg font-bold text-green-600">{trial.correct_count}</p>
-                          <p className="text-xs text-slate-500">Doğru</p>
+                          <p className="text-[10px] text-slate-500">Doğru</p>
                         </div>
                         <div className="text-center p-2 bg-red-50 rounded">
                           <p className="text-lg font-bold text-red-600">{trial.wrong_count}</p>
-                          <p className="text-xs text-slate-500">Yanlış</p>
+                          <p className="text-[10px] text-slate-500">Yanlış</p>
                         </div>
                         <div className="text-center p-2 bg-slate-50 rounded">
                           <p className="text-lg font-bold text-slate-600">{trial.empty_count}</p>
-                          <p className="text-xs text-slate-500">Boş</p>
+                          <p className="text-[10px] text-slate-500">Boş</p>
                         </div>
                         <div className="text-center p-2 bg-purple-50 rounded">
                           <p className="text-lg font-bold text-purple-600">{net.toFixed(2)}</p>
-                          <p className="text-xs text-slate-500">Net</p>
+                          <p className="text-[10px] text-slate-500">Net</p>
                         </div>
                       </div>
                       
-                      <div className="flex flex-wrap gap-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                        <label className="flex items-center gap-1 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={trial.reviewed_wrong}
                             onChange={(e) => updateTrialReview(trial.id, 'reviewed_wrong', e.target.checked)}
-                            className="rounded border-slate-300"
+                            className="rounded border-slate-300 w-3 h-3"
                           />
-                          <span className="text-sm text-slate-600">Yanlışlara baktı</span>
+                          <span className="text-slate-600">Yanlışlar</span>
                         </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
+                        <label className="flex items-center gap-1 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={trial.reviewed_topics}
                             onChange={(e) => updateTrialReview(trial.id, 'reviewed_topics', e.target.checked)}
-                            className="rounded border-slate-300"
+                            className="rounded border-slate-300 w-3 h-3"
                           />
-                          <span className="text-sm text-slate-600">Eksik konuyu tekrar etti</span>
+                          <span className="text-slate-600">Eksik konular</span>
                         </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
+                        <label className="flex items-center gap-1 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={trial.found_mistakes}
                             onChange={(e) => updateTrialReview(trial.id, 'found_mistakes', e.target.checked)}
-                            className="rounded border-slate-300"
+                            className="rounded border-slate-300 w-3 h-3"
                           />
-                          <span className="text-sm text-slate-600">Kaçırdığı bilgiyi buldu</span>
+                          <span className="text-slate-600">Bilgi bulundu</span>
                         </label>
                       </div>
-                      
-                      {trial.notes && (
-                        <p className="mt-2 text-sm text-slate-500 bg-slate-50 p-2 rounded">{trial.notes}</p>
-                      )}
                     </div>
                   );
                 })}
@@ -922,37 +1122,93 @@ const TeacherHomeworkEntry = () => {
 
       {/* Status Popup */}
       {statusPopup.open && (
-        <div 
-          className="fixed z-50 bg-white rounded-lg shadow-xl border p-2 min-w-[160px]"
-          style={{ left: statusPopup.x, top: statusPopup.y }}
-        >
-          <div className="space-y-1">
-            {Object.entries(TEST_STATUSES).map(([key, info]) => {
-              const Icon = info.icon;
-              return (
-                <button
-                  key={key}
-                  onClick={() => handleQuickStatusChange(key)}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-slate-100 ${info.textColor}`}
-                >
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${info.color}`}>
-                    {Icon && <Icon className="w-3 h-3" />}
-                  </div>
-                  {info.label}
-                </button>
-              );
-            })}
+        <>
+          <div className="fixed inset-0 z-40" onClick={closeStatusPopup} />
+          <div 
+            className="fixed z-50 bg-white rounded-lg shadow-xl border p-2 min-w-[150px]"
+            style={{ left: statusPopup.x, top: statusPopup.y }}
+          >
+            <div className="space-y-0.5">
+              {Object.entries(TEST_STATUSES).map(([key, info]) => {
+                const Icon = info.icon;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleQuickStatusChange(key)}
+                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-slate-100 ${info.textColor}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${info.color}`}>
+                      {Icon && <Icon className="w-2.5 h-2.5" />}
+                    </div>
+                    {info.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
-      
-      {/* Click outside to close status popup */}
-      {statusPopup.open && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={closeStatusPopup}
-        />
-      )}
+
+      {/* Ödev Kontrol Dialog */}
+      <Dialog open={homeworkCheckDialog} onOpenChange={setHomeworkCheckDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="w-5 h-5 text-green-600" />
+              Ödev Kontrol
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-slate-500 mb-4">{assignedTests.length} adet bekleyen ödev var</p>
+            
+            <ScrollArea className="max-h-[300px]">
+              <div className="space-y-2">
+                {assignedTests.map(test => {
+                  const statusInfo = getTestStatusInfo(test.id);
+                  return (
+                    <div key={test.id} className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-800">{test.item?.test_info?.test_name}</p>
+                        <p className="text-xs text-slate-500">{test.item?.test_info?.topic_name}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => updateTestStatus(test.id, 'completed')}
+                          className="p-1.5 rounded bg-green-100 text-green-600 hover:bg-green-200"
+                          title="Tamamlandı"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => updateTestStatus(test.id, 'incomplete')}
+                          className="p-1.5 rounded bg-red-100 text-red-600 hover:bg-red-200"
+                          title="Eksik"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => updateTestStatus(test.id, 'needs_review')}
+                          className="p-1.5 rounded bg-purple-100 text-purple-600 hover:bg-purple-200"
+                          title="Tekrar Gerekli"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setHomeworkCheckDialog(false)}>Kapat</Button>
+            <Button onClick={handleMarkAllCompleted} className="gap-1 bg-green-600 hover:bg-green-700">
+              <CheckCircle2 className="w-4 h-4" />
+              Tamamı Yapıldı
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Kitap Ekleme Dialog */}
       <Dialog open={addBookDialog} onOpenChange={setAddBookDialog}>
@@ -960,12 +1216,10 @@ const TeacherHomeworkEntry = () => {
           <DialogHeader>
             <DialogTitle>Kitap Ekle</DialogTitle>
           </DialogHeader>
-          <ScrollArea className="max-h-96">
+          <ScrollArea className="max-h-80">
             <div className="space-y-2 py-2">
               {availableBooks.length === 0 ? (
-                <p className="text-center text-slate-500 py-4">
-                  Eklenebilecek kitap yok
-                </p>
+                <p className="text-center text-slate-500 py-4">Eklenebilecek kitap yok</p>
               ) : (
                 availableBooks.map(book => (
                   <div
@@ -984,6 +1238,63 @@ const TeacherHomeworkEntry = () => {
               )}
             </div>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Kitap Oluşturma Dialog */}
+      <Dialog open={createBookDialog} onOpenChange={setCreateBookDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Yeni Kitap Oluştur</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Kitap Adı *</label>
+              <Input
+                value={newBookForm.name}
+                onChange={(e) => setNewBookForm({ ...newBookForm, name: e.target.value })}
+                placeholder="Örn: Fenomen B"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Yayınevi</label>
+              <Input
+                value={newBookForm.publisher}
+                onChange={(e) => setNewBookForm({ ...newBookForm, publisher: e.target.value })}
+                placeholder="Örn: Bilgi Yayınları"
+                className="mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Sınıf</label>
+                <select
+                  value={newBookForm.level}
+                  onChange={(e) => setNewBookForm({ ...newBookForm, level: e.target.value })}
+                  className="mt-1 w-full p-2 border rounded-lg"
+                >
+                  <option value="5">5. Sınıf</option>
+                  <option value="6">6. Sınıf</option>
+                  <option value="7">7. Sınıf</option>
+                  <option value="8">8. Sınıf</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Basım Yılı</label>
+                <Input
+                  type="number"
+                  value={newBookForm.publish_year}
+                  onChange={(e) => setNewBookForm({ ...newBookForm, publish_year: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateBookDialog(false)}>İptal</Button>
+            <Button onClick={handleCreateBook}>Oluştur</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1007,9 +1318,6 @@ const TeacherHomeworkEntry = () => {
                 </Button>
               ))}
             </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Bugünden itibaren {planDuration} günlük plan oluşturulacak.
-            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreatePlanDialog(false)}>İptal</Button>
@@ -1033,9 +1341,7 @@ const TeacherHomeworkEntry = () => {
                 onChange={(e) => setFreetextDate(e.target.value)}
               >
                 {getPlanDates().map(d => (
-                  <option key={d.date} value={d.date}>
-                    {d.dayName} ({d.dayNum})
-                  </option>
+                  <option key={d.date} value={d.date}>{d.dayName} ({d.dayNum})</option>
                 ))}
               </select>
             </div>

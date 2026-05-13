@@ -20,7 +20,7 @@ const BOOK_TYPES = [
   { value: 'ozel_kaynak', label: 'Özel Kaynak' },
 ];
 
-const LEVELS = ['5', '6', '7', '8', 'TYT', 'AYT'];
+const LEVELS = ['5', '6', '7', '8'];
 
 const AdminHomeworkContent = () => {
   const [books, setBooks] = useState([]);
@@ -390,6 +390,9 @@ const AdminHomeworkContent = () => {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <h3 className="font-medium text-slate-800 truncate">{book.name}</h3>
+                          {book.publish_year && (
+                            <p className="text-xs text-blue-600 font-medium">{book.publish_year} Basım</p>
+                          )}
                           <p className="text-xs text-slate-500 mt-0.5">
                             {book.branch_name} • {book.level}. Sınıf
                           </p>
