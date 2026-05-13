@@ -8,7 +8,7 @@ import { ScrollArea } from '../../components/ui/scroll-area';
 import { 
   Book, ChevronLeft, ChevronDown, Plus, Check, X, 
   Calendar, FileText, RotateCcw, Trash2, Clock, AlertCircle,
-  Undo2, Edit, Download, CheckCircle2, GripVertical, ClipboardCheck, RefreshCw
+  Undo2, Edit, Download, CheckCircle2, GripVertical, ClipboardCheck, RefreshCw, Pencil
 } from 'lucide-react';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
@@ -65,6 +65,14 @@ const TeacherHomeworkEntry = () => {
   const [addTestDialog, setAddTestDialog] = useState(false);
   const [selectedUnitForTopic, setSelectedUnitForTopic] = useState(null);
   const [selectedTopicForTest, setSelectedTopicForTest] = useState(null);
+  
+  // Edit dialogs
+  const [editUnitDialog, setEditUnitDialog] = useState(false);
+  const [editTopicDialog, setEditTopicDialog] = useState(false);
+  const [editTestDialog, setEditTestDialog] = useState(false);
+  const [editingUnit, setEditingUnit] = useState(null);
+  const [editingTopic, setEditingTopic] = useState(null);
+  const [editingTest, setEditingTest] = useState(null);
   
   // Unit/Topic/Test forms
   const [newUnitForm, setNewUnitForm] = useState({ name: '', color: '#8b5cf6', order_num: 1 });
@@ -139,6 +147,25 @@ const TeacherHomeworkEntry = () => {
       if (plansRes.data.length > 0) {
         setActivePlan(plansRes.data[0]);
         fetchPlanItems(plansRes.data[0].id);
+      } else {
+        // Plan yoksa otomatik 7 günlük plan oluştur
+        const today = new Date().toISOString().split('T')[0];
+        try {
+          const newPlanRes = await apiClient.post('/homework/plans', {
+            student_id: studentId,
+            branch_id: branchId,
+            start_date: today,
+            duration_days: 7
+          });
+          // Yeni oluşturulan planı al
+          const newPlansRes = await apiClient.get(`/homework/students/${studentId}/plans?branch_id=${branchId}&status=active`);
+          if (newPlansRes.data.length > 0) {
+            setActivePlan(newPlansRes.data[0]);
+            fetchPlanItems(newPlansRes.data[0].id);
+          }
+        } catch (err) {
+          console.error('Auto plan create error:', err);
+        }
       }
       
       if (booksRes.data.length > 0) {
@@ -190,7 +217,13 @@ const TeacherHomeworkEntry = () => {
 
   const fetchAvailableBooks = async () => {
     try {
-      const response = await apiClient.get(`/homework/books?branch_id=${branchId}`);
+      // Öğrencinin sınıf seviyesini al
+      const studentLevel = student?.level || '';
+      // Sınıf numarasını çıkar (örn: "5. Sınıf" -> "5")
+      const levelMatch = studentLevel.match(/(\d+)/);
+      const levelNum = levelMatch ? levelMatch[1] : '';
+      
+      const response = await apiClient.get(`/homework/books?branch_id=${branchId}${levelNum ? `&level=${levelNum}` : ''}`);
       const assignedBookIds = books.map(b => b.id);
       setAvailableBooks(response.data.filter(b => !assignedBookIds.includes(b.id)));
     } catch (error) {
@@ -431,6 +464,56 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
+  // Ünite düzenle
+  const handleEditUnit = async () => {
+    if (!newUnitForm.name || !editingUnit) return;
+    try {
+      await apiClient.put(`/homework/units/${editingUnit.id}`, {
+        name: newUnitForm.name,
+        color: newUnitForm.color
+      });
+      toast.success('Ünite güncellendi');
+      setEditUnitDialog(false);
+      setEditingUnit(null);
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Ünite güncellenemedi');
+    }
+  };
+
+  // Konu düzenle
+  const handleEditTopic = async () => {
+    if (!newTopicForm.name || !editingTopic) return;
+    try {
+      await apiClient.put(`/homework/topics/${editingTopic.id}`, {
+        name: newTopicForm.name
+      });
+      toast.success('Konu güncellendi');
+      setEditTopicDialog(false);
+      setEditingTopic(null);
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Konu güncellenemedi');
+    }
+  };
+
+  // Test düzenle
+  const handleEditTest = async () => {
+    if (!newTestForm.name || !editingTest) return;
+    try {
+      await apiClient.put(`/homework/tests/${editingTest.id}`, {
+        name: newTestForm.name,
+        question_count: parseInt(newTestForm.question_count) || 10
+      });
+      toast.success('Test güncellendi');
+      setEditTestDialog(false);
+      setEditingTest(null);
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Test güncellenemedi');
+    }
+  };
+
   // Plan oluştur
   const handleCreatePlan = async () => {
     const today = new Date().toISOString().split('T')[0];
@@ -476,6 +559,23 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
+  // Plan süresini değiştir
+  const handleChangePlanDuration = async (newDuration) => {
+    if (!activePlan) return;
+    
+    try {
+      // Mevcut planı güncelle
+      await apiClient.put(`/homework/plans/${activePlan.id}`, {
+        duration_days: newDuration
+      });
+      
+      toast.success(`Plan süresi ${newDuration} güne güncellendi`);
+      fetchInitialData();
+    } catch (error) {
+      toast.error('Plan süresi güncellenemedi');
+    }
+  };
+
   // Drag & Drop handlers
   const handleDragStart = (e, item, type) => {
     setDraggedItem({ ...item, type });
@@ -497,8 +597,20 @@ const TeacherHomeworkEntry = () => {
     
     if (!activePlan || !draggedItem) return;
     
+    // Tamamlanmış test kontrolü
+    const checkIfCompleted = (testId) => {
+      const status = testProgress[testId]?.status;
+      return status === 'completed';
+    };
+    
     try {
       if (draggedItem.type === 'test') {
+        // Tamamlanmış test kontrolü
+        if (checkIfCompleted(draggedItem.id)) {
+          toast.error('Tamamlanmış testler ödev olarak verilemez');
+          setDraggedItem(null);
+          return;
+        }
         // Tek test ekle
         await apiClient.post(`/homework/plans/${activePlan.id}/items`, {
           plan_id: activePlan.id,
@@ -509,9 +621,16 @@ const TeacherHomeworkEntry = () => {
         });
         await updateTestStatus(draggedItem.id, 'assigned', true);
       } else if (draggedItem.type === 'unit') {
-        // Tüm ünite testlerini ekle
+        // Tamamlanmış testleri filtrele
+        let skippedCount = 0;
+        let addedCount = 0;
+        
         for (const topic of draggedItem.topics || []) {
           for (const test of topic.tests || []) {
+            if (checkIfCompleted(test.id)) {
+              skippedCount++;
+              continue;
+            }
             await apiClient.post(`/homework/plans/${activePlan.id}/items`, {
               plan_id: activePlan.id,
               day_date: date,
@@ -520,11 +639,27 @@ const TeacherHomeworkEntry = () => {
               book_id: selectedBook?.id
             });
             await updateTestStatus(test.id, 'assigned', true);
+            addedCount++;
           }
         }
+        
+        if (skippedCount > 0 && addedCount === 0) {
+          toast.error('Tamamlanmış testler ödev olarak verilemez');
+          setDraggedItem(null);
+          return;
+        } else if (skippedCount > 0) {
+          toast.warning(`${skippedCount} tamamlanmış test atlandı`);
+        }
       } else if (draggedItem.type === 'topic') {
-        // Tüm konu testlerini ekle
+        // Tamamlanmış testleri filtrele
+        let skippedCount = 0;
+        let addedCount = 0;
+        
         for (const test of draggedItem.tests || []) {
+          if (checkIfCompleted(test.id)) {
+            skippedCount++;
+            continue;
+          }
           await apiClient.post(`/homework/plans/${activePlan.id}/items`, {
             plan_id: activePlan.id,
             day_date: date,
@@ -533,6 +668,15 @@ const TeacherHomeworkEntry = () => {
             book_id: selectedBook?.id
           });
           await updateTestStatus(test.id, 'assigned', true);
+          addedCount++;
+        }
+        
+        if (skippedCount > 0 && addedCount === 0) {
+          toast.error('Tamamlanmış testler ödev olarak verilemez');
+          setDraggedItem(null);
+          return;
+        } else if (skippedCount > 0) {
+          toast.warning(`${skippedCount} tamamlanmış test atlandı`);
         }
       }
       
@@ -628,6 +772,15 @@ const TeacherHomeworkEntry = () => {
     const monthNames = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
     const startDate = new Date(activePlan?.start_date);
     const dateStr = `${startDate.getDate()} ${monthNames[startDate.getMonth()]} ${startDate.getFullYear()}`;
+    
+    // Branşa göre Instagram hesabı
+    const instagramAccounts = {
+      'Matematik': '@yeni.nesil.matematiik',
+      'Türkçe': '@yeni.nesil.turkce',
+      'Fen Bilimleri': '@yeni.nesil.fen.bilimleri',
+      'Fen': '@yeni.nesil.fen.bilimleri'
+    };
+    const instagramHandle = instagramAccounts[branch?.name] || '@yeni.nesil.egitim';
     
     // Tüm kitap isimlerini topla
     const allBookNames = new Set();
@@ -743,6 +896,22 @@ const TeacherHomeworkEntry = () => {
             font-weight: 800;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
             margin-bottom: 4px;
+          }
+          
+          .header .instagram {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 8px;
+            color: rgba(255,255,255,0.95);
+            font-size: 13px;
+            font-weight: 600;
+          }
+          
+          .header .instagram svg {
+            width: 18px;
+            height: 18px;
           }
           
           .header .subtitle {
@@ -968,6 +1137,10 @@ const TeacherHomeworkEntry = () => {
           <div class="header">
             <h1>📚 Haftalık Ödev Planı</h1>
             <p class="subtitle">${student?.name} • ${branch?.name}</p>
+            <div class="instagram">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+              ${instagramHandle}
+            </div>
           </div>
           
           <div class="student-info">
@@ -1417,6 +1590,18 @@ const TeacherHomeworkEntry = () => {
                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: unit.color || '#94a3b8' }} />
                             <span className="text-xs font-medium text-slate-700 flex-1 truncate" onClick={() => toggleUnit(unit.id)}>{unit.name}</span>
                             <button
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setEditingUnit(unit); 
+                                setNewUnitForm({ name: unit.name, color: unit.color || '#8b5cf6' }); 
+                                setEditUnitDialog(true); 
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200 rounded text-slate-500"
+                              title="Düzenle"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button
                               onClick={(e) => { e.stopPropagation(); setSelectedUnitForTopic(unit.id); setAddTopicDialog(true); }}
                               className="opacity-0 group-hover:opacity-100 p-1 hover:bg-purple-100 rounded text-purple-500"
                               title="Konu Ekle"
@@ -1451,6 +1636,18 @@ const TeacherHomeworkEntry = () => {
                                     </button>
                                     <span className="text-xs text-slate-600 flex-1 truncate" onClick={() => toggleTopic(topic.id)}>{topic.name}</span>
                                     <span className="text-[10px] text-slate-400">{topic.tests?.length || 0}</span>
+                                    <button
+                                      onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        setEditingTopic(topic); 
+                                        setNewTopicForm({ name: topic.name }); 
+                                        setEditTopicDialog(true); 
+                                      }}
+                                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200 rounded text-slate-500"
+                                      title="Düzenle"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setSelectedTopicForTest(topic.id); setAddTestDialog(true); }}
                                       className="opacity-0 group-hover:opacity-100 p-1 hover:bg-blue-100 rounded text-blue-500"
@@ -1492,6 +1689,18 @@ const TeacherHomeworkEntry = () => {
                                               {StatusIcon && <StatusIcon className="w-3 h-3" />}
                                             </button>
                                             <span className={`text-xs flex-1 truncate ${statusInfo.textColor}`}>{test.name}</span>
+                                            <button
+                                              onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                setEditingTest(test); 
+                                                setNewTestForm({ name: test.name, question_count: test.question_count || 10 }); 
+                                                setEditTestDialog(true); 
+                                              }}
+                                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-200 rounded text-slate-500"
+                                              title="Düzenle"
+                                            >
+                                              <Pencil className="w-3 h-3" />
+                                            </button>
                                           </div>
                                         );
                                       })}
@@ -1512,7 +1721,20 @@ const TeacherHomeworkEntry = () => {
             {/* Alt Satır - Haftalık Plan (Tam genişlik) */}
             <div className="teacher-card p-4">
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <h2 className="font-semibold text-slate-700">Haftalık Plan</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="font-semibold text-slate-700">Haftalık Plan</h2>
+                  {activePlan && (
+                    <select
+                      value={activePlan.duration_days || 7}
+                      onChange={(e) => handleChangePlanDuration(parseInt(e.target.value))}
+                      className="text-sm border rounded-md px-2 py-1 bg-white text-slate-700"
+                    >
+                      {[7,8,9,10,11,12,13,14,15,16,17,18,19,20,21].map(n => (
+                        <option key={n} value={n}>{n} gün</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {activePlan && (
                     <>
@@ -1550,12 +1772,6 @@ const TeacherHomeworkEntry = () => {
                         Not
                       </Button>
                     </>
-                  )}
-                  {!activePlan && (
-                    <Button size="sm" onClick={() => setCreatePlanDialog(true)}>
-                      <Plus className="w-4 h-4 mr-1" />
-                      Plan Oluştur
-                    </Button>
                   )}
                 </div>
               </div>
@@ -1677,36 +1893,6 @@ const TeacherHomeworkEntry = () => {
                           <p className="text-lg font-bold text-purple-600">{net.toFixed(2)}</p>
                           <p className="text-[10px] text-slate-500">Net</p>
                         </div>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={trial.reviewed_wrong}
-                            onChange={(e) => updateTrialReview(trial.id, 'reviewed_wrong', e.target.checked)}
-                            className="rounded border-slate-300 w-3 h-3"
-                          />
-                          <span className="text-slate-600">Yanlışlar</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={trial.reviewed_topics}
-                            onChange={(e) => updateTrialReview(trial.id, 'reviewed_topics', e.target.checked)}
-                            className="rounded border-slate-300 w-3 h-3"
-                          />
-                          <span className="text-slate-600">Eksik konular</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={trial.found_mistakes}
-                            onChange={(e) => updateTrialReview(trial.id, 'found_mistakes', e.target.checked)}
-                            className="rounded border-slate-300 w-3 h-3"
-                          />
-                          <span className="text-slate-600">Bilgi bulundu</span>
-                        </label>
                       </div>
                     </div>
                   );
@@ -2159,6 +2345,98 @@ const TeacherHomeworkEntry = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAddTestDialog(false); setSelectedTopicForTest(null); }}>İptal</Button>
             <Button onClick={handleAddTest}>Ekle</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ünite Düzenleme Dialog */}
+      <Dialog open={editUnitDialog} onOpenChange={setEditUnitDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Üniteyi Düzenle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Ünite Adı *</label>
+              <Input
+                value={newUnitForm.name}
+                onChange={(e) => setNewUnitForm({ ...newUnitForm, name: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Renk</label>
+              <div className="flex gap-2 mt-2">
+                {['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setNewUnitForm({ ...newUnitForm, color })}
+                    className={`w-8 h-8 rounded-full border-2 ${newUnitForm.color === color ? 'border-slate-800 scale-110' : 'border-transparent'}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditUnitDialog(false); setEditingUnit(null); }}>İptal</Button>
+            <Button onClick={handleEditUnit}>Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Konu Düzenleme Dialog */}
+      <Dialog open={editTopicDialog} onOpenChange={setEditTopicDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Konuyu Düzenle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Konu Adı *</label>
+              <Input
+                value={newTopicForm.name}
+                onChange={(e) => setNewTopicForm({ ...newTopicForm, name: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditTopicDialog(false); setEditingTopic(null); }}>İptal</Button>
+            <Button onClick={handleEditTopic}>Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Düzenleme Dialog */}
+      <Dialog open={editTestDialog} onOpenChange={setEditTestDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Testi Düzenle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Test Adı *</label>
+              <Input
+                value={newTestForm.name}
+                onChange={(e) => setNewTestForm({ ...newTestForm, name: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Soru Sayısı</label>
+              <Input
+                type="number"
+                min="1"
+                value={newTestForm.question_count}
+                onChange={(e) => setNewTestForm({ ...newTestForm, question_count: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditTestDialog(false); setEditingTest(null); }}>İptal</Button>
+            <Button onClick={handleEditTest}>Kaydet</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

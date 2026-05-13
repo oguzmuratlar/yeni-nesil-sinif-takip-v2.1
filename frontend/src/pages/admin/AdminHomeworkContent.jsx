@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Book, Plus, Edit, Trash2, ChevronRight, ChevronDown, Search, FileText, Layers, BookOpen, X } from 'lucide-react';
+import { Book, Plus, Edit, Trash2, ChevronRight, ChevronDown, Search, FileText, Layers, BookOpen, X, Copy, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -139,6 +139,44 @@ const AdminHomeworkContent = () => {
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'İşlem başarısız');
+    }
+  };
+
+  // Copy book with all content
+  const handleCopyBook = async (bookId) => {
+    try {
+      await apiClient.post(`/homework/books/${bookId}/copy`);
+      toast.success('Kitap kopyalandı');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Kopyalama başarısız');
+    }
+  };
+
+  // Reorder units
+  const handleMoveUnit = async (unitId, direction) => {
+    if (!bookTree) return;
+    
+    const units = [...bookTree.tree];
+    const currentIndex = units.findIndex(u => u.id === unitId);
+    
+    if (direction === 'up' && currentIndex > 0) {
+      [units[currentIndex], units[currentIndex - 1]] = [units[currentIndex - 1], units[currentIndex]];
+    } else if (direction === 'down' && currentIndex < units.length - 1) {
+      [units[currentIndex], units[currentIndex + 1]] = [units[currentIndex + 1], units[currentIndex]];
+    } else {
+      return;
+    }
+    
+    // Update order numbers
+    const unitOrders = units.map((u, idx) => ({ id: u.id, order: idx + 1 }));
+    
+    try {
+      await apiClient.put(`/homework/books/${selectedBook.id}/units/reorder`, unitOrders);
+      toast.success('Sıralama güncellendi');
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Sıralama güncellenemedi');
     }
   };
 
@@ -439,6 +477,14 @@ const AdminHomeworkContent = () => {
                     <Button variant="outline" size="sm" onClick={() => openBookDialog(selectedBook)}>
                       <Edit className="w-4 h-4" />
                     </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleCopyBook(selectedBook.id)}
+                      title="Kitabı Kopyala"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
                     <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700" onClick={() => openDeleteDialog('book', selectedBook)}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -473,6 +519,20 @@ const AdminHomeworkContent = () => {
                           <span className="font-medium text-slate-700 flex-1">{unit.name}</span>
                           <span className="text-xs text-slate-500">{unit.topics?.length || 0} konu</span>
                           <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                            <button
+                              className="p-1 hover:bg-slate-200 rounded"
+                              onClick={() => handleMoveUnit(unit.id, 'up')}
+                              title="Yukarı Taşı"
+                            >
+                              <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
+                            </button>
+                            <button
+                              className="p-1 hover:bg-slate-200 rounded"
+                              onClick={() => handleMoveUnit(unit.id, 'down')}
+                              title="Aşağı Taşı"
+                            >
+                              <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
+                            </button>
                             <button
                               className="p-1 hover:bg-slate-200 rounded"
                               onClick={() => openUnitDialog(unit)}

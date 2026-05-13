@@ -4900,6 +4900,73 @@ async def delete_book(book_id: str, current_user: User = Depends(get_current_use
     await db.books.delete_one({"id": book_id})
     return {"message": "Kitap ve tüm içeriği silindi"}
 
+@api_router.post("/homework/books/{book_id}/copy")
+async def copy_book(book_id: str, current_user: User = Depends(get_current_user)):
+    """Kitabı tüm içeriğiyle kopyala"""
+    # Sadece admin kopyalayabilir
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin kitap kopyalayabilir")
+    
+    # Orijinal kitabı bul
+    original_book = await db.books.find_one({"id": book_id}, {"_id": 0})
+    if not original_book:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    # Yeni kitap oluştur
+    new_book_id = str(uuid.uuid4())
+    new_book = {
+        **original_book,
+        "id": new_book_id,
+        "name": f"{original_book['name']} - kopya",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.books.insert_one(new_book)
+    
+    # Üniteleri kopyala
+    units = await db.book_units.find({"book_id": book_id}, {"_id": 0}).to_list(100)
+    unit_id_map = {}  # eski_id -> yeni_id
+    
+    for unit in units:
+        new_unit_id = str(uuid.uuid4())
+        unit_id_map[unit["id"]] = new_unit_id
+        new_unit = {
+            **unit,
+            "id": new_unit_id,
+            "book_id": new_book_id,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.book_units.insert_one(new_unit)
+    
+    # Konuları kopyala
+    topic_id_map = {}  # eski_id -> yeni_id
+    for old_unit_id, new_unit_id in unit_id_map.items():
+        topics = await db.book_topics.find({"unit_id": old_unit_id}, {"_id": 0}).to_list(100)
+        for topic in topics:
+            new_topic_id = str(uuid.uuid4())
+            topic_id_map[topic["id"]] = new_topic_id
+            new_topic = {
+                **topic,
+                "id": new_topic_id,
+                "unit_id": new_unit_id,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.book_topics.insert_one(new_topic)
+    
+    # Testleri kopyala
+    for old_topic_id, new_topic_id in topic_id_map.items():
+        tests = await db.book_tests.find({"topic_id": old_topic_id}, {"_id": 0}).to_list(100)
+        for test in tests:
+            new_test_id = str(uuid.uuid4())
+            new_test = {
+                **test,
+                "id": new_test_id,
+                "topic_id": new_topic_id,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.book_tests.insert_one(new_test)
+    
+    return {"message": "Kitap kopyalandı", "new_book_id": new_book_id}
+
 # ------------- ÜNİTE YÖNETİMİ -------------
 
 @api_router.get("/homework/books/{book_id}/units")
@@ -4958,6 +5025,18 @@ async def delete_unit(unit_id: str, current_user: User = Depends(get_current_use
         await db.book_tests.delete_many({"topic_id": topic["id"]})
     await db.book_topics.delete_many({"unit_id": unit_id})
     await db.book_units.delete_one({"id": unit_id})
+    
+    return {"message": "Ünite ve altındaki tüm içerik silindi"}
+
+@api_router.put("/homework/books/{book_id}/units/reorder")
+async def reorder_units(book_id: str, unit_orders: List[dict], current_user: User = Depends(get_current_user)):
+    """Ünitelerin sıralamasını güncelle - body: [{"id": "xxx", "order": 1}, ...]"""
+    for item in unit_orders:
+        await db.book_units.update_one(
+            {"id": item["id"], "book_id": book_id},
+            {"$set": {"order": item["order"]}}
+        )
+    return {"message": "Sıralama güncellendi"}
     
     return {"message": "Ünite ve altındaki tüm içerik silindi"}
 
@@ -5453,6 +5532,24 @@ async def delete_plan(plan_id: str, current_user: User = Depends(get_current_use
     # Sonra planı sil
     await db.homework_plans.delete_one({"id": plan_id})
     return {"message": "Plan silindi"}
+
+@api_router.put("/homework/plans/{plan_id}")
+async def update_plan(plan_id: str, duration_days: int = 7, current_user: User = Depends(get_current_user)):
+    """Plan süresini güncelle"""
+    plan = await db.homework_plans.find_one({"id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan bulunamadı")
+    
+    # Yeni bitiş tarihini hesapla
+    start_date = datetime.fromisoformat(plan["start_date"].replace('Z', '+00:00')) if isinstance(plan["start_date"], str) else plan["start_date"]
+    new_end_date = start_date + timedelta(days=duration_days - 1)
+    
+    await db.homework_plans.update_one({"id": plan_id}, {"$set": {
+        "duration_days": duration_days,
+        "end_date": new_end_date.strftime('%Y-%m-%d')
+    }})
+    
+    return {"message": "Plan güncellendi"}
 
 # ------------- DENEME MODÜLÜ -------------
 
