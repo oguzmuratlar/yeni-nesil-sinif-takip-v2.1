@@ -59,6 +59,18 @@ const TeacherHomeworkEntry = () => {
   const [homeworkCheckDialog, setHomeworkCheckDialog] = useState(false);
   const [createBookDialog, setCreateBookDialog] = useState(false);
   
+  // Ünite ve Test ekleme dialogs
+  const [addUnitDialog, setAddUnitDialog] = useState(false);
+  const [addTopicDialog, setAddTopicDialog] = useState(false);
+  const [addTestDialog, setAddTestDialog] = useState(false);
+  const [selectedUnitForTopic, setSelectedUnitForTopic] = useState(null);
+  const [selectedTopicForTest, setSelectedTopicForTest] = useState(null);
+  
+  // Unit/Topic/Test forms
+  const [newUnitForm, setNewUnitForm] = useState({ name: '', color: '#8b5cf6', order_num: 1 });
+  const [newTopicForm, setNewTopicForm] = useState({ name: '', order_num: 1 });
+  const [newTestForm, setNewTestForm] = useState({ name: '', question_count: 10, order_num: 1 });
+  
   // Tabs
   const [activeTab, setActiveTab] = useState('homework');
   
@@ -298,7 +310,7 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
-  // Yeni kitap oluştur
+  // Yeni kitap oluştur ve otomatik öğrenciye ata
   const handleCreateBook = async () => {
     if (!newBookForm.name) {
       toast.error('Kitap adı zorunludur');
@@ -306,12 +318,23 @@ const TeacherHomeworkEntry = () => {
     }
     
     try {
-      await apiClient.post('/homework/books', {
+      // Kitap oluştur
+      const bookRes = await apiClient.post('/homework/books', {
         ...newBookForm,
         branch_id: branchId,
         publish_year: parseInt(newBookForm.publish_year) || null
       });
-      toast.success('Kitap oluşturuldu');
+      
+      const bookId = bookRes.data.book_id;
+      
+      // Otomatik olarak öğrenciye ata
+      await apiClient.post(`/homework/students/${studentId}/books`, {
+        student_id: studentId,
+        book_id: bookId,
+        branch_id: branchId
+      });
+      
+      toast.success('Kitap oluşturuldu ve öğrenciye atandı');
       setCreateBookDialog(false);
       setNewBookForm({
         name: '',
@@ -320,9 +343,91 @@ const TeacherHomeworkEntry = () => {
         book_type: 'soru_bankasi',
         publish_year: new Date().getFullYear()
       });
-      fetchAvailableBooks();
+      
+      // Kitapları yenile ve yeni kitabı seç
+      await refreshBooks();
+      
+      // Yeni kitabı seç
+      const booksRes = await apiClient.get(`/homework/students/${studentId}/books?branch_id=${branchId}`);
+      const newBook = booksRes.data.find(b => b.id === bookId);
+      if (newBook) {
+        setSelectedBook(newBook);
+      }
     } catch (error) {
       toast.error('Kitap oluşturulamadı');
+    }
+  };
+
+  // Ünite ekle
+  const handleAddUnit = async () => {
+    if (!newUnitForm.name || !selectedBook) {
+      toast.error('Ünite adı zorunludur');
+      return;
+    }
+    
+    try {
+      await apiClient.post('/homework/units', {
+        book_id: selectedBook.id,
+        name: newUnitForm.name,
+        color: newUnitForm.color,
+        order_num: bookTree?.tree?.length ? bookTree.tree.length + 1 : 1
+      });
+      toast.success('Ünite eklendi');
+      setAddUnitDialog(false);
+      setNewUnitForm({ name: '', color: '#8b5cf6', order_num: 1 });
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Ünite eklenemedi');
+    }
+  };
+
+  // Konu ekle
+  const handleAddTopic = async () => {
+    if (!newTopicForm.name || !selectedUnitForTopic) {
+      toast.error('Konu adı zorunludur');
+      return;
+    }
+    
+    try {
+      const unit = bookTree?.tree?.find(u => u.id === selectedUnitForTopic);
+      await apiClient.post('/homework/topics', {
+        unit_id: selectedUnitForTopic,
+        name: newTopicForm.name,
+        order_num: unit?.topics?.length ? unit.topics.length + 1 : 1
+      });
+      toast.success('Konu eklendi');
+      setAddTopicDialog(false);
+      setNewTopicForm({ name: '', order_num: 1 });
+      setSelectedUnitForTopic(null);
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Konu eklenemedi');
+    }
+  };
+
+  // Test ekle
+  const handleAddTest = async () => {
+    if (!newTestForm.name || !selectedTopicForTest) {
+      toast.error('Test adı zorunludur');
+      return;
+    }
+    
+    try {
+      const unit = bookTree?.tree?.find(u => u.topics?.some(t => t.id === selectedTopicForTest));
+      const topic = unit?.topics?.find(t => t.id === selectedTopicForTest);
+      await apiClient.post('/homework/tests', {
+        topic_id: selectedTopicForTest,
+        name: newTestForm.name,
+        question_count: parseInt(newTestForm.question_count) || 10,
+        order_num: topic?.tests?.length ? topic.tests.length + 1 : 1
+      });
+      toast.success('Test eklendi');
+      setAddTestDialog(false);
+      setNewTestForm({ name: '', question_count: 10, order_num: 1 });
+      setSelectedTopicForTest(null);
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Test eklenemedi');
     }
   };
 
@@ -478,84 +583,394 @@ const TeacherHomeworkEntry = () => {
     return assigned;
   };
 
-  // PDF Export
+  // PDF Export - Öğrenci dostu renkli tasarım
   const handlePDFExport = () => {
-    const printWindow = window.open('', '_blank');
     const planDates = getPlanDates();
+    const monthNames = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    const startDate = new Date(activePlan?.start_date);
+    const monthYear = `${monthNames[startDate.getMonth()]} ${startDate.getFullYear()}`;
+    
+    // Kitapları ve ödevleri grupla
+    const bookHomework = {};
+    Object.entries(planItems).forEach(([date, items]) => {
+      items.forEach(item => {
+        if (item.item_type === 'test' && item.test_info) {
+          const bookName = item.test_info.book_name || selectedBook?.name || 'Kitap';
+          if (!bookHomework[bookName]) bookHomework[bookName] = [];
+          bookHomework[bookName].push({
+            ...item,
+            date,
+            dayName: DAYS_TR[new Date(date).getDay()]
+          });
+        }
+      });
+    });
     
     let html = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Haftalık Ödev Planı - ${student?.name}</title>
+        <title>Ödev Planı - ${student?.name}</title>
         <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          h1 { color: #7c3aed; font-size: 24px; margin-bottom: 5px; }
-          .subtitle { color: #64748b; margin-bottom: 20px; }
-          .info { display: flex; gap: 40px; margin-bottom: 20px; padding: 15px; background: #f8fafc; border-radius: 8px; }
-          .info-item { }
-          .info-label { font-size: 12px; color: #64748b; }
-          .info-value { font-weight: bold; color: #1e293b; }
-          .days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
-          .day-card { border: 1px solid #e2e8f0; border-radius: 8px; min-height: 150px; }
-          .day-header { padding: 8px; background: #f1f5f9; font-weight: bold; text-align: center; border-radius: 8px 8px 0 0; }
-          .day-header.today { background: #ede9fe; color: #7c3aed; }
-          .day-content { padding: 8px; }
-          .homework-item { padding: 6px 8px; margin-bottom: 4px; border-radius: 4px; font-size: 12px; }
-          .homework-test { background: #dbeafe; border-left: 3px solid #3b82f6; }
-          .homework-text { background: #fed7aa; border-left: 3px solid #f97316; }
-          .test-name { font-weight: 500; }
-          .test-info { font-size: 10px; color: #64748b; }
+          @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
+          
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          
+          body { 
+            font-family: 'Nunito', sans-serif;
+            background: linear-gradient(135deg, #fce7f3 0%, #ede9fe 50%, #e0f2fe 100%);
+            min-height: 100vh;
+            padding: 30px;
+          }
+          
+          .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            overflow: hidden;
+          }
+          
+          .header {
+            background: linear-gradient(135deg, #c084fc 0%, #818cf8 50%, #60a5fa 100%);
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+          }
+          
+          .header::before {
+            content: '✨';
+            position: absolute;
+            top: 10px;
+            left: 20px;
+            font-size: 24px;
+          }
+          
+          .header::after {
+            content: '⭐';
+            position: absolute;
+            top: 15px;
+            right: 25px;
+            font-size: 20px;
+          }
+          
+          .header h1 {
+            color: white;
+            font-size: 28px;
+            font-weight: 800;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            margin-bottom: 5px;
+          }
+          
+          .header .subtitle {
+            color: rgba(255,255,255,0.9);
+            font-size: 16px;
+            font-weight: 600;
+          }
+          
+          .student-info {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            padding: 20px;
+            background: linear-gradient(90deg, #fdf4ff 0%, #f5f3ff 50%, #eff6ff 100%);
+            border-bottom: 2px dashed #e9d5ff;
+          }
+          
+          .info-card {
+            text-align: center;
+            padding: 15px 25px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+          }
+          
+          .info-card .label {
+            font-size: 11px;
+            color: #a855f7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 700;
+          }
+          
+          .info-card .value {
+            font-size: 16px;
+            color: #6b21a8;
+            font-weight: 700;
+            margin-top: 4px;
+          }
+          
+          .content {
+            padding: 25px;
+          }
+          
+          .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #e9d5ff;
+          }
+          
+          .section-title .icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #f0abfc, #c084fc);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+          }
+          
+          .section-title h2 {
+            color: #7c3aed;
+            font-size: 20px;
+            font-weight: 700;
+          }
+          
+          .week-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            margin-bottom: 30px;
+          }
+          
+          .day-card {
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            transition: transform 0.2s;
+          }
+          
+          .day-card.mon { background: linear-gradient(180deg, #fecaca 0%, #fff 30%); }
+          .day-card.tue { background: linear-gradient(180deg, #fed7aa 0%, #fff 30%); }
+          .day-card.wed { background: linear-gradient(180deg, #fef08a 0%, #fff 30%); }
+          .day-card.thu { background: linear-gradient(180deg, #bbf7d0 0%, #fff 30%); }
+          .day-card.fri { background: linear-gradient(180deg, #a5f3fc 0%, #fff 30%); }
+          .day-card.sat { background: linear-gradient(180deg, #c4b5fd 0%, #fff 30%); }
+          .day-card.sun { background: linear-gradient(180deg, #fbcfe8 0%, #fff 30%); }
+          
+          .day-header {
+            padding: 12px 8px;
+            text-align: center;
+          }
+          
+          .day-name {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6b7280;
+          }
+          
+          .day-num {
+            font-size: 24px;
+            font-weight: 800;
+            color: #374151;
+          }
+          
+          .day-content {
+            padding: 8px;
+            min-height: 80px;
+          }
+          
+          .homework-item {
+            background: white;
+            border-radius: 8px;
+            padding: 8px;
+            margin-bottom: 6px;
+            border-left: 4px solid #8b5cf6;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+          }
+          
+          .homework-item .name {
+            font-size: 11px;
+            font-weight: 700;
+            color: #4c1d95;
+          }
+          
+          .homework-item .topic {
+            font-size: 9px;
+            color: #7c3aed;
+            margin-top: 2px;
+          }
+          
+          .freetext-item {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+          }
+          
+          .freetext-item .name { color: #92400e; }
+          
+          .books-section {
+            background: linear-gradient(135deg, #fdf4ff 0%, #f5f3ff 100%);
+            border-radius: 20px;
+            padding: 20px;
+            margin-top: 20px;
+          }
+          
+          .book-card {
+            background: white;
+            border-radius: 16px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+          }
+          
+          .book-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #a78bfa, #818cf8);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+          }
+          
+          .book-info h3 {
+            font-size: 14px;
+            font-weight: 700;
+            color: #4c1d95;
+          }
+          
+          .book-info .tasks {
+            font-size: 12px;
+            color: #7c3aed;
+            margin-top: 4px;
+          }
+          
+          .task-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+          }
+          
+          .task-badge {
+            background: #ede9fe;
+            color: #6d28d9;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+          }
+          
+          .footer {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(90deg, #fdf4ff 0%, #f5f3ff 50%, #eff6ff 100%);
+            border-top: 2px dashed #e9d5ff;
+          }
+          
+          .footer p {
+            color: #9333ea;
+            font-size: 12px;
+            font-weight: 600;
+          }
+          
+          .motivation {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border-radius: 16px;
+            padding: 15px 20px;
+            margin: 20px 0;
+            text-align: center;
+            border: 2px dashed #fbbf24;
+          }
+          
+          .motivation p {
+            color: #92400e;
+            font-size: 14px;
+            font-weight: 700;
+          }
+          
+          .motivation .emoji {
+            font-size: 24px;
+            margin: 0 5px;
+          }
+          
           @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important;
+              background: white !important;
+            }
+            .container { box-shadow: none; }
           }
         </style>
       </head>
       <body>
-        <h1>Haftalık Ödev Planı</h1>
-        <p class="subtitle">${student?.name} - ${branch?.name}</p>
-        
-        <div class="info">
-          <div class="info-item">
-            <div class="info-label">Öğretmen</div>
-            <div class="info-value">${student?.teacher_name || 'Öğretmen'}</div>
+        <div class="container">
+          <div class="header">
+            <h1>📚 Haftalık Ödev Planı</h1>
+            <p class="subtitle">${student?.name} • ${branch?.name}</p>
           </div>
-          <div class="info-item">
-            <div class="info-label">Tarih Aralığı</div>
-            <div class="info-value">${activePlan?.start_date} - ${activePlan?.end_date}</div>
+          
+          <div class="student-info">
+            <div class="info-card">
+              <div class="label">📅 Tarih</div>
+              <div class="value">${monthYear}</div>
+            </div>
+            <div class="info-card">
+              <div class="label">📆 Hafta</div>
+              <div class="value">${startDate.getDate()} - ${new Date(activePlan?.end_date).getDate()}</div>
+            </div>
+            <div class="info-card">
+              <div class="label">📖 Kitap</div>
+              <div class="value">${selectedBook?.name || 'Tüm Kitaplar'}</div>
+            </div>
           </div>
-        </div>
-        
-        <div class="days-grid">
+          
+          <div class="content">
+            <div class="section-title">
+              <div class="icon">📋</div>
+              <h2>Bu Hafta Yapılacaklar</h2>
+            </div>
+            
+            <div class="week-grid">
     `;
     
-    const today = new Date().toISOString().split('T')[0];
+    const dayClasses = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     
     planDates.forEach(({ date, dayName, dayNum }) => {
-      const isToday = date === today;
       const dayItems = planItems[date] || [];
+      const dayOfWeek = new Date(date).getDay();
+      const dayClass = dayClasses[dayOfWeek];
       
       html += `
-        <div class="day-card">
-          <div class="day-header ${isToday ? 'today' : ''}">${dayName} (${dayNum})</div>
+        <div class="day-card ${dayClass}">
+          <div class="day-header">
+            <div class="day-name">${dayName}</div>
+            <div class="day-num">${dayNum}</div>
+          </div>
           <div class="day-content">
       `;
       
       if (dayItems.length === 0) {
-        html += '<p style="color: #94a3b8; font-size: 11px; text-align: center;">-</p>';
+        html += '<p style="color: #9ca3af; font-size: 10px; text-align: center; padding: 10px;">-</p>';
       } else {
         dayItems.forEach(item => {
           if (item.item_type === 'test') {
             html += `
-              <div class="homework-item homework-test">
-                <div class="test-name">${item.test_info?.test_name || 'Test'}</div>
-                <div class="test-info">${item.test_info?.topic_name || ''}</div>
+              <div class="homework-item">
+                <div class="name">${item.test_info?.test_name || 'Test'}</div>
+                <div class="topic">${item.test_info?.topic_name || ''}</div>
               </div>
             `;
           } else {
             html += `
-              <div class="homework-item homework-text">${item.freetext}</div>
+              <div class="homework-item freetext-item">
+                <div class="name">${item.freetext}</div>
+              </div>
             `;
           }
         });
@@ -568,14 +983,81 @@ const TeacherHomeworkEntry = () => {
     });
     
     html += `
+            </div>
+            
+            <div class="motivation">
+              <p><span class="emoji">💪</span> Başarı çalışmakla gelir! <span class="emoji">🌟</span></p>
+            </div>
+    `;
+    
+    // Kitap bazlı ödev listesi
+    if (Object.keys(bookHomework).length > 0) {
+      html += `
+            <div class="books-section">
+              <div class="section-title">
+                <div class="icon">📖</div>
+                <h2>Kitap Görevleri</h2>
+              </div>
+      `;
+      
+      Object.entries(bookHomework).forEach(([bookName, tasks]) => {
+        html += `
+              <div class="book-card">
+                <div class="book-icon">📕</div>
+                <div class="book-info">
+                  <h3>${bookName}</h3>
+                  <div class="tasks">${tasks.length} görev planlandı</div>
+                  <div class="task-list">
+        `;
+        
+        tasks.slice(0, 5).forEach(task => {
+          html += `<span class="task-badge">${task.dayName}: ${task.test_info?.test_name || 'Test'}</span>`;
+        });
+        
+        if (tasks.length > 5) {
+          html += `<span class="task-badge">+${tasks.length - 5} daha</span>`;
+        }
+        
+        html += `
+                  </div>
+                </div>
+              </div>
+        `;
+      });
+      
+      html += `
+            </div>
+      `;
+    }
+    
+    html += `
+          </div>
+          
+          <div class="footer">
+            <p>🎯 Hedefine odaklan, başarı senin! 🎯</p>
+          </div>
         </div>
-        <script>window.print();</script>
+        
+        <script>
+          // Sayfa yüklenince otomatik print dialog aç
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 500);
+          };
+        </script>
       </body>
       </html>
     `;
     
-    printWindow.document.write(html);
-    printWindow.document.close();
+    // Yeni pencere aç ve içeriği yaz
+    const printWindow = window.open('', '_blank', 'width=900,height=700');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+    } else {
+      toast.error('Pop-up engelleyici aktif olabilir');
+    }
   };
 
   // Deneme fonksiyonları
@@ -837,10 +1319,23 @@ const TeacherHomeworkEntry = () => {
 
               {/* Sağ Panel - Kitap Ağacı */}
               <div className="teacher-card p-3">
-                <h2 className="font-semibold text-slate-700 text-sm mb-3">
-                  {selectedBook ? selectedBook.name : 'Kitap İçeriği'}
-                  <span className="text-xs text-slate-400 ml-2">(sürükle-bırak ile ödev ver)</span>
-                </h2>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-semibold text-slate-700 text-sm">
+                    {selectedBook ? selectedBook.name : 'Kitap İçeriği'}
+                    <span className="text-xs text-slate-400 ml-2">(sürükle-bırak ile ödev ver)</span>
+                  </h2>
+                  {selectedBook && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 text-xs"
+                      onClick={() => setAddUnitDialog(true)}
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Ünite
+                    </Button>
+                  )}
+                </div>
                 
                 <ScrollArea className="h-[200px]">
                   {!selectedBook ? (
@@ -850,6 +1345,19 @@ const TeacherHomeworkEntry = () => {
                     </div>
                   ) : !bookTree ? (
                     <div className="text-center py-6 text-slate-500 text-sm">Yükleniyor...</div>
+                  ) : bookTree.tree.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400">
+                      <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm mb-2">Henüz ünite yok</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setAddUnitDialog(true)}
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        İlk Üniteyi Ekle
+                      </Button>
+                    </div>
                   ) : (
                     <div className="space-y-1 pr-2">
                       {bookTree.tree.map(unit => (
@@ -859,16 +1367,34 @@ const TeacherHomeworkEntry = () => {
                             draggable
                             onDragStart={(e) => handleDragStart(e, unit, 'unit')}
                             className="flex items-center gap-2 p-2 bg-slate-50 cursor-grab hover:bg-slate-100 group"
-                            onClick={() => toggleUnit(unit.id)}
                           >
                             <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
-                            <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedUnits[unit.id] ? '-rotate-90' : ''}`} />
+                            <button onClick={() => toggleUnit(unit.id)}>
+                              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedUnits[unit.id] ? '-rotate-90' : ''}`} />
+                            </button>
                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: unit.color || '#94a3b8' }} />
-                            <span className="text-xs font-medium text-slate-700 flex-1 truncate">{unit.name}</span>
+                            <span className="text-xs font-medium text-slate-700 flex-1 truncate" onClick={() => toggleUnit(unit.id)}>{unit.name}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSelectedUnitForTopic(unit.id); setAddTopicDialog(true); }}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-purple-100 rounded text-purple-500"
+                              title="Konu Ekle"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
                           </div>
 
                           {expandedUnits[unit.id] && (
                             <div className="border-t">
+                              {unit.topics?.length === 0 && (
+                                <div className="text-center py-3 text-slate-400 text-xs">
+                                  <button
+                                    onClick={() => { setSelectedUnitForTopic(unit.id); setAddTopicDialog(true); }}
+                                    className="text-purple-500 hover:text-purple-700"
+                                  >
+                                    + Konu Ekle
+                                  </button>
+                                </div>
+                              )}
                               {unit.topics?.map(topic => (
                                 <div key={topic.id}>
                                   {/* Topic - Draggable */}
@@ -876,37 +1402,59 @@ const TeacherHomeworkEntry = () => {
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, topic, 'topic')}
                                     className="flex items-center gap-2 p-1.5 pl-6 cursor-grab hover:bg-slate-50 border-b group"
-                                    onClick={() => toggleTopic(topic.id)}
                                   >
                                     <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
-                                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedTopics[topic.id] ? '-rotate-90' : ''}`} />
-                                    <span className="text-xs text-slate-600 flex-1 truncate">{topic.name}</span>
+                                    <button onClick={() => toggleTopic(topic.id)}>
+                                      <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedTopics[topic.id] ? '-rotate-90' : ''}`} />
+                                    </button>
+                                    <span className="text-xs text-slate-600 flex-1 truncate" onClick={() => toggleTopic(topic.id)}>{topic.name}</span>
                                     <span className="text-[10px] text-slate-400">{topic.tests?.length || 0}</span>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setSelectedTopicForTest(topic.id); setAddTestDialog(true); }}
+                                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-blue-100 rounded text-blue-500"
+                                      title="Test Ekle"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                    </button>
                                   </div>
 
                                   {/* Tests */}
-                                  {expandedTopics[topic.id] && topic.tests?.map(test => {
-                                    const statusInfo = getTestStatusInfo(test.id);
-                                    const StatusIcon = statusInfo.icon;
-                                    
-                                    return (
-                                      <div
-                                        key={test.id}
-                                        draggable
-                                        onDragStart={(e) => handleDragStart(e, test, 'test')}
-                                        className={`flex items-center gap-2 p-1.5 pl-10 border-b last:border-b-0 cursor-grab group ${statusInfo.bgClass}`}
-                                      >
-                                        <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
-                                        <button
-                                          onClick={(e) => openStatusPopup(e, test.id)}
-                                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${statusInfo.color} ${statusInfo.textColor}`}
-                                        >
-                                          {StatusIcon && <StatusIcon className="w-3 h-3" />}
-                                        </button>
-                                        <span className={`text-xs flex-1 truncate ${statusInfo.textColor}`}>{test.name}</span>
-                                      </div>
-                                    );
-                                  })}
+                                  {expandedTopics[topic.id] && (
+                                    <>
+                                      {topic.tests?.length === 0 && (
+                                        <div className="text-center py-2 text-slate-400 text-xs pl-10">
+                                          <button
+                                            onClick={() => { setSelectedTopicForTest(topic.id); setAddTestDialog(true); }}
+                                            className="text-blue-500 hover:text-blue-700"
+                                          >
+                                            + Test Ekle
+                                          </button>
+                                        </div>
+                                      )}
+                                      {topic.tests?.map(test => {
+                                        const statusInfo = getTestStatusInfo(test.id);
+                                        const StatusIcon = statusInfo.icon;
+                                        
+                                        return (
+                                          <div
+                                            key={test.id}
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, test, 'test')}
+                                            className={`flex items-center gap-2 p-1.5 pl-10 border-b last:border-b-0 cursor-grab group ${statusInfo.bgClass}`}
+                                          >
+                                            <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                                            <button
+                                              onClick={(e) => openStatusPopup(e, test.id)}
+                                              className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${statusInfo.color} ${statusInfo.textColor}`}
+                                            >
+                                              {StatusIcon && <StatusIcon className="w-3 h-3" />}
+                                            </button>
+                                            <span className={`text-xs flex-1 truncate ${statusInfo.textColor}`}>{test.name}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1432,6 +1980,101 @@ const TeacherHomeworkEntry = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTrialDialogOpen(false)}>İptal</Button>
             <Button onClick={handleSaveTrial}>Kaydet</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ünite Ekleme Dialog */}
+      <Dialog open={addUnitDialog} onOpenChange={setAddUnitDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Yeni Ünite Ekle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Ünite Adı *</label>
+              <Input
+                value={newUnitForm.name}
+                onChange={(e) => setNewUnitForm({ ...newUnitForm, name: e.target.value })}
+                placeholder="Örn: Yazım Kuralları"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Renk</label>
+              <div className="flex gap-2 mt-2">
+                {['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setNewUnitForm({ ...newUnitForm, color })}
+                    className={`w-8 h-8 rounded-full border-2 ${newUnitForm.color === color ? 'border-slate-800 scale-110' : 'border-transparent'}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddUnitDialog(false)}>İptal</Button>
+            <Button onClick={handleAddUnit}>Ekle</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Konu Ekleme Dialog */}
+      <Dialog open={addTopicDialog} onOpenChange={setAddTopicDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Yeni Konu Ekle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Konu Adı *</label>
+              <Input
+                value={newTopicForm.name}
+                onChange={(e) => setNewTopicForm({ ...newTopicForm, name: e.target.value })}
+                placeholder="Örn: Büyük Harflerin Yazımı"
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAddTopicDialog(false); setSelectedUnitForTopic(null); }}>İptal</Button>
+            <Button onClick={handleAddTopic}>Ekle</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Ekleme Dialog */}
+      <Dialog open={addTestDialog} onOpenChange={setAddTestDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Yeni Test Ekle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Test Adı *</label>
+              <Input
+                value={newTestForm.name}
+                onChange={(e) => setNewTestForm({ ...newTestForm, name: e.target.value })}
+                placeholder="Örn: Test 1"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Soru Sayısı</label>
+              <Input
+                type="number"
+                min="1"
+                value={newTestForm.question_count}
+                onChange={(e) => setNewTestForm({ ...newTestForm, question_count: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAddTestDialog(false); setSelectedTopicForTest(null); }}>İptal</Button>
+            <Button onClick={handleAddTest}>Ekle</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

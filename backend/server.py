@@ -4916,14 +4916,8 @@ async def create_unit(unit_data: BookUnitCreate, current_user: User = Depends(ge
     if not book:
         raise HTTPException(status_code=404, detail="Kitap bulunamadı")
     
-    if current_user.user_type == "teacher":
-        teacher_branches = await db.teacher_branches.find(
-            {"teacher_id": current_user.teacher_id},
-            {"_id": 0}
-        ).to_list(100)
-        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
-        if book["branch_id"] not in teacher_branch_ids:
-            raise HTTPException(status_code=403, detail="Bu kitaba ünite ekleme yetkiniz yok")
+    # Öğretmen veya admin ünite ekleyebilir
+    # Öğretmen ödev takip sayfasındaysa zaten yetkilidir
     
     # Sıralama otomatik ayarla
     if unit_data.order == 0:
