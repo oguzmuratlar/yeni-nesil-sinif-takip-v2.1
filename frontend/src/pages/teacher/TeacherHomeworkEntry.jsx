@@ -1829,7 +1829,9 @@ const TeacherHomeworkEntry = () => {
                                     <>
                                       <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1 shrink-0" />
                                       <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-slate-700 truncate text-[10px]">{item.test_info?.test_name}</p>
+                                        <p className="font-medium text-slate-700 truncate text-[10px]">
+                                          {item.test_info?.book_name}-{item.test_info?.unit_name}-{item.test_info?.topic_name}
+                                        </p>
                                       </div>
                                     </>
                                   ) : (
@@ -2351,16 +2353,6 @@ const TeacherHomeworkEntry = () => {
                 className="mt-1"
               />
             </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700">Soru Sayısı</label>
-              <Input
-                type="number"
-                min="1"
-                value={newTestForm.question_count}
-                onChange={(e) => setNewTestForm({ ...newTestForm, question_count: e.target.value })}
-                className="mt-1"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAddTestDialog(false); setSelectedTopicForTest(null); }}>İptal</Button>
@@ -2440,16 +2432,6 @@ const TeacherHomeworkEntry = () => {
               <Input
                 value={newTestForm.name}
                 onChange={(e) => setNewTestForm({ ...newTestForm, name: e.target.value })}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700">Soru Sayısı</label>
-              <Input
-                type="number"
-                min="1"
-                value={newTestForm.question_count}
-                onChange={(e) => setNewTestForm({ ...newTestForm, question_count: e.target.value })}
                 className="mt-1"
               />
             </div>
