@@ -590,23 +590,36 @@ const TeacherHomeworkEntry = () => {
   };
 
   // Ödev verilen testleri getir
-  const getAssignedTests = () => {
-    const assigned = [];
-    Object.values(planItems).forEach(dayItems => {
+  // Tüm haftalık plandaki ödevleri getir (kitap, ünite, konu, test detaylarıyla)
+  const getAllPlanHomework = () => {
+    const homework = [];
+    Object.entries(planItems).forEach(([date, dayItems]) => {
       dayItems.forEach(item => {
         if (item.item_type === 'test' && item.test_id) {
           const status = testProgress[item.test_id]?.status || 'not_started';
-          if (status === 'assigned') {
-            assigned.push({
-              id: item.test_id,
-              item,
-              status
-            });
-          }
+          homework.push({
+            id: item.test_id,
+            item,
+            date,
+            dayName: DAYS_TR[new Date(date).getDay()],
+            dayNum: new Date(date).getDate(),
+            bookName: item.test_info?.book_name || 'Kitap',
+            unitName: item.test_info?.unit_name || '',
+            topicName: item.test_info?.topic_name || '',
+            testName: item.test_info?.test_name || 'Test',
+            status
+          });
         }
       });
     });
-    return assigned;
+    // Tarihe göre sırala
+    homework.sort((a, b) => new Date(a.date) - new Date(b.date));
+    return homework;
+  };
+
+  // Bekleyen (assigned) ödevleri getir
+  const getAssignedTests = () => {
+    return getAllPlanHomework().filter(h => h.status === 'assigned');
   };
 
   // PDF Export - Öğrenci dostu renkli tasarım
@@ -1510,7 +1523,7 @@ const TeacherHomeworkEntry = () => {
                         className="gap-1 border-green-300 text-green-700 hover:bg-green-50"
                       >
                         <ClipboardCheck className="w-4 h-4" />
-                        Ödev Kontrol {assignedTests.length > 0 && `(${assignedTests.length})`}
+                        Ödev Kontrol {getAllPlanHomework().length > 0 && `(${getAllPlanHomework().length})`}
                       </Button>
                       <Button variant="outline" size="sm" onClick={handlePDFExport} className="gap-1">
                         <Download className="w-4 h-4" />
@@ -1735,61 +1748,96 @@ const TeacherHomeworkEntry = () => {
 
       {/* Ödev Kontrol Dialog */}
       <Dialog open={homeworkCheckDialog} onOpenChange={setHomeworkCheckDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ClipboardCheck className="w-5 h-5 text-green-600" />
-              Ödev Kontrol
+              Haftalık Ödev Kontrolü
             </DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <p className="text-sm text-slate-500 mb-4">{assignedTests.length} adet bekleyen ödev var</p>
-            
-            <ScrollArea className="max-h-[300px]">
-              <div className="space-y-2">
-                {assignedTests.map(test => {
-                  const statusInfo = getTestStatusInfo(test.id);
-                  return (
-                    <div key={test.id} className="flex items-center gap-3 p-2 bg-slate-50 rounded-lg">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-slate-800">{test.item?.test_info?.test_name}</p>
-                        <p className="text-xs text-slate-500">{test.item?.test_info?.topic_name}</p>
-                      </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => updateTestStatus(test.id, 'completed')}
-                          className="p-1.5 rounded bg-green-100 text-green-600 hover:bg-green-200"
-                          title="Tamamlandı"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => updateTestStatus(test.id, 'incomplete')}
-                          className="p-1.5 rounded bg-red-100 text-red-600 hover:bg-red-200"
-                          title="Eksik"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => updateTestStatus(test.id, 'needs_review')}
-                          className="p-1.5 rounded bg-purple-100 text-purple-600 hover:bg-purple-200"
-                          title="Tekrar Gerekli"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </button>
-                      </div>
+            {(() => {
+              const allHomework = getAllPlanHomework();
+              const pendingCount = allHomework.filter(h => h.status === 'assigned').length;
+              
+              return (
+                <>
+                  <div className="flex gap-4 mb-4 text-sm">
+                    <span className="text-slate-600">Toplam: <strong>{allHomework.length}</strong> ödev</span>
+                    <span className="text-yellow-600">Bekleyen: <strong>{pendingCount}</strong></span>
+                    <span className="text-green-600">Tamamlanan: <strong>{allHomework.filter(h => h.status === 'completed').length}</strong></span>
+                  </div>
+                  
+                  <ScrollArea className="max-h-[400px]">
+                    <div className="space-y-2">
+                      {allHomework.length === 0 ? (
+                        <p className="text-center text-slate-500 py-8">Henüz ödev atanmamış</p>
+                      ) : (
+                        allHomework.map(hw => {
+                          const statusInfo = TEST_STATUSES[hw.status] || TEST_STATUSES.not_started;
+                          const StatusIcon = statusInfo.icon;
+                          
+                          return (
+                            <div key={`${hw.id}-${hw.date}`} className={`p-3 rounded-lg border ${statusInfo.bgClass}`}>
+                              <div className="flex items-start gap-3">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                                      {hw.dayName} {hw.dayNum}
+                                    </span>
+                                    {StatusIcon && (
+                                      <span className={`flex items-center gap-1 text-xs ${statusInfo.textColor}`}>
+                                        <StatusIcon className="w-3 h-3" />
+                                        {statusInfo.label}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm font-bold text-slate-800">{hw.bookName}</p>
+                                  <p className="text-xs text-purple-600">{hw.unitName} {hw.topicName && `• ${hw.topicName}`}</p>
+                                  <p className="text-xs text-slate-600 mt-0.5">{hw.testName}</p>
+                                </div>
+                                <div className="flex gap-1 shrink-0">
+                                  <button
+                                    onClick={() => updateTestStatus(hw.id, 'completed')}
+                                    className={`p-1.5 rounded ${hw.status === 'completed' ? 'bg-green-500 text-white' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
+                                    title="Tamamlandı"
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => updateTestStatus(hw.id, 'incomplete')}
+                                    className={`p-1.5 rounded ${hw.status === 'incomplete' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                    title="Eksik"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => updateTestStatus(hw.id, 'needs_review')}
+                                    className={`p-1.5 rounded ${hw.status === 'needs_review' ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-600 hover:bg-purple-200'}`}
+                                    title="Tekrar Gerekli"
+                                  >
+                                    <RotateCcw className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
+                  </ScrollArea>
+                </>
+              );
+            })()}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setHomeworkCheckDialog(false)}>Kapat</Button>
-            <Button onClick={handleMarkAllCompleted} className="gap-1 bg-green-600 hover:bg-green-700">
-              <CheckCircle2 className="w-4 h-4" />
-              Tamamı Yapıldı
-            </Button>
+            {getAssignedTests().length > 0 && (
+              <Button onClick={handleMarkAllCompleted} className="gap-1 bg-green-600 hover:bg-green-700">
+                <CheckCircle2 className="w-4 h-4" />
+                Bekleyenleri Tamamla ({getAssignedTests().length})
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
