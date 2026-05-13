@@ -5445,6 +5445,15 @@ async def delete_plan_item(item_id: str, current_user: User = Depends(get_curren
     await db.homework_plan_items.delete_one({"id": item_id})
     return {"message": "Öğe silindi"}
 
+@api_router.delete("/homework/plans/{plan_id}")
+async def delete_plan(plan_id: str, current_user: User = Depends(get_current_user)):
+    """Planı ve tüm öğelerini sil"""
+    # Önce plan öğelerini sil
+    await db.homework_plan_items.delete_many({"plan_id": plan_id})
+    # Sonra planı sil
+    await db.homework_plans.delete_one({"id": plan_id})
+    return {"message": "Plan silindi"}
+
 # ------------- DENEME MODÜLÜ -------------
 
 @api_router.get("/homework/students/{student_id}/trials")

@@ -8,7 +8,7 @@ import { ScrollArea } from '../../components/ui/scroll-area';
 import { 
   Book, ChevronLeft, ChevronDown, Plus, Check, X, 
   Calendar, FileText, RotateCcw, Trash2, Clock, AlertCircle,
-  Undo2, Edit, Download, CheckCircle2, GripVertical, ClipboardCheck
+  Undo2, Edit, Download, CheckCircle2, GripVertical, ClipboardCheck, RefreshCw
 } from 'lucide-react';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
@@ -450,6 +450,32 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
+  // Yeni Plan - mevcut ödevleri temizle ve yeni plan oluştur
+  const handleNewPlan = async () => {
+    if (!window.confirm('Mevcut haftalık plandaki tüm ödevler silinecek. Emin misiniz?')) return;
+    
+    try {
+      // Mevcut plan varsa sil
+      if (activePlan) {
+        await apiClient.delete(`/homework/plans/${activePlan.id}`);
+      }
+      
+      // Yeni plan oluştur
+      const today = new Date().toISOString().split('T')[0];
+      await apiClient.post('/homework/plans', {
+        student_id: studentId,
+        branch_id: branchId,
+        start_date: today,
+        duration_days: 7
+      });
+      
+      toast.success('Yeni plan oluşturuldu');
+      fetchInitialData();
+    } catch (error) {
+      toast.error('Yeni plan oluşturulamadı');
+    }
+  };
+
   // Drag & Drop handlers
   const handleDragStart = (e, item, type) => {
     setDraggedItem({ ...item, type });
@@ -588,23 +614,62 @@ const TeacherHomeworkEntry = () => {
     const planDates = getPlanDates();
     const monthNames = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
     const startDate = new Date(activePlan?.start_date);
-    const monthYear = `${monthNames[startDate.getMonth()]} ${startDate.getFullYear()}`;
+    const dateStr = `${startDate.getDate()} ${monthNames[startDate.getMonth()]} ${startDate.getFullYear()}`;
     
-    // Kitapları ve ödevleri grupla
-    const bookHomework = {};
+    // Tüm kitap isimlerini topla
+    const allBookNames = new Set();
+    
+    // Günlere göre ödevleri grupla - Kitap > Ünite > Konu > Testler
+    const dayHomework = {};
+    Object.entries(planItems).forEach(([date, items]) => {
+      if (!dayHomework[date]) dayHomework[date] = {};
+      
+      items.forEach(item => {
+        if (item.item_type === 'test' && item.test_info) {
+          const bookName = item.test_info.book_name || selectedBook?.name || 'Kitap';
+          const unitName = item.test_info.unit_name || '';
+          const topicName = item.test_info.topic_name || '';
+          const testName = item.test_info.test_name || 'Test';
+          
+          allBookNames.add(bookName);
+          
+          const key = `${bookName}|${unitName}|${topicName}`;
+          if (!dayHomework[date][key]) {
+            dayHomework[date][key] = {
+              bookName,
+              unitName,
+              topicName,
+              tests: []
+            };
+          }
+          dayHomework[date][key].tests.push(testName);
+        } else if (item.item_type === 'freetext') {
+          const key = `freetext_${item.id}`;
+          dayHomework[date][key] = {
+            isFreetext: true,
+            text: item.freetext
+          };
+        }
+      });
+    });
+    
+    // Kitap görevleri - Kitap > Ünite - Konular
+    const bookTasks = {};
     Object.entries(planItems).forEach(([date, items]) => {
       items.forEach(item => {
         if (item.item_type === 'test' && item.test_info) {
           const bookName = item.test_info.book_name || selectedBook?.name || 'Kitap';
-          if (!bookHomework[bookName]) bookHomework[bookName] = [];
-          bookHomework[bookName].push({
-            ...item,
-            date,
-            dayName: DAYS_TR[new Date(date).getDay()]
-          });
+          const unitName = item.test_info.unit_name || '';
+          const topicName = item.test_info.topic_name || '';
+          
+          if (!bookTasks[bookName]) bookTasks[bookName] = {};
+          if (!bookTasks[bookName][unitName]) bookTasks[bookName][unitName] = new Set();
+          if (topicName) bookTasks[bookName][unitName].add(topicName);
         }
       });
     });
+    
+    const bookNamesStr = Array.from(allBookNames).join(', ') || 'Kitap seçilmedi';
     
     let html = `
       <!DOCTYPE html>
@@ -615,30 +680,32 @@ const TeacherHomeworkEntry = () => {
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap');
           
+          @page {
+            margin: 0;
+            size: A4;
+          }
+          
           * { box-sizing: border-box; margin: 0; padding: 0; }
           
           body { 
             font-family: 'Nunito', sans-serif;
             background: linear-gradient(135deg, #fce7f3 0%, #ede9fe 50%, #e0f2fe 100%);
             min-height: 100vh;
-            padding: 30px;
+            padding: 0;
+            margin: 0;
           }
           
           .container {
-            max-width: 900px;
-            margin: 0 auto;
+            width: 100%;
+            min-height: 100vh;
             background: white;
-            border-radius: 24px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
-            overflow: hidden;
           }
           
           .header {
             background: linear-gradient(135deg, #c084fc 0%, #818cf8 50%, #60a5fa 100%);
-            padding: 30px;
+            padding: 25px 30px;
             text-align: center;
             position: relative;
-            overflow: hidden;
           }
           
           .header::before {
@@ -646,50 +713,50 @@ const TeacherHomeworkEntry = () => {
             position: absolute;
             top: 10px;
             left: 20px;
-            font-size: 24px;
+            font-size: 20px;
           }
           
           .header::after {
             content: '⭐';
             position: absolute;
-            top: 15px;
-            right: 25px;
-            font-size: 20px;
+            top: 12px;
+            right: 22px;
+            font-size: 18px;
           }
           
           .header h1 {
             color: white;
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 800;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-            margin-bottom: 5px;
+            margin-bottom: 4px;
           }
           
           .header .subtitle {
             color: rgba(255,255,255,0.9);
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
           }
           
           .student-info {
             display: flex;
             justify-content: center;
-            gap: 40px;
-            padding: 20px;
+            gap: 30px;
+            padding: 15px;
             background: linear-gradient(90deg, #fdf4ff 0%, #f5f3ff 50%, #eff6ff 100%);
             border-bottom: 2px dashed #e9d5ff;
           }
           
           .info-card {
             text-align: center;
-            padding: 15px 25px;
+            padding: 12px 20px;
             background: white;
-            border-radius: 16px;
+            border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
           }
           
           .info-card .label {
-            font-size: 11px;
+            font-size: 10px;
             color: #a855f7;
             text-transform: uppercase;
             letter-spacing: 1px;
@@ -697,214 +764,189 @@ const TeacherHomeworkEntry = () => {
           }
           
           .info-card .value {
-            font-size: 16px;
+            font-size: 13px;
             color: #6b21a8;
             font-weight: 700;
-            margin-top: 4px;
+            margin-top: 3px;
           }
           
           .content {
-            padding: 25px;
+            padding: 20px 25px;
           }
           
           .section-title {
             display: flex;
             align-items: center;
             gap: 10px;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
             border-bottom: 3px solid #e9d5ff;
           }
           
           .section-title .icon {
-            width: 40px;
-            height: 40px;
+            width: 35px;
+            height: 35px;
             background: linear-gradient(135deg, #f0abfc, #c084fc);
-            border-radius: 12px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 18px;
           }
           
           .section-title h2 {
             color: #7c3aed;
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 700;
           }
           
-          .week-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 8px;
-            margin-bottom: 30px;
+          .days-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 25px;
           }
           
-          .day-card {
-            border-radius: 16px;
-            overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            transition: transform 0.2s;
+          .day-row {
+            display: flex;
+            gap: 15px;
+            padding: 12px 15px;
+            border-radius: 12px;
+            background: #fafafa;
+            border-left: 4px solid;
           }
           
-          .day-card.mon { background: linear-gradient(180deg, #fecaca 0%, #fff 30%); }
-          .day-card.tue { background: linear-gradient(180deg, #fed7aa 0%, #fff 30%); }
-          .day-card.wed { background: linear-gradient(180deg, #fef08a 0%, #fff 30%); }
-          .day-card.thu { background: linear-gradient(180deg, #bbf7d0 0%, #fff 30%); }
-          .day-card.fri { background: linear-gradient(180deg, #a5f3fc 0%, #fff 30%); }
-          .day-card.sat { background: linear-gradient(180deg, #c4b5fd 0%, #fff 30%); }
-          .day-card.sun { background: linear-gradient(180deg, #fbcfe8 0%, #fff 30%); }
+          .day-row.mon { border-left-color: #ef4444; background: linear-gradient(90deg, #fef2f2 0%, #fff 100%); }
+          .day-row.tue { border-left-color: #f97316; background: linear-gradient(90deg, #fff7ed 0%, #fff 100%); }
+          .day-row.wed { border-left-color: #eab308; background: linear-gradient(90deg, #fefce8 0%, #fff 100%); }
+          .day-row.thu { border-left-color: #22c55e; background: linear-gradient(90deg, #f0fdf4 0%, #fff 100%); }
+          .day-row.fri { border-left-color: #06b6d4; background: linear-gradient(90deg, #ecfeff 0%, #fff 100%); }
+          .day-row.sat { border-left-color: #8b5cf6; background: linear-gradient(90deg, #f5f3ff 0%, #fff 100%); }
+          .day-row.sun { border-left-color: #ec4899; background: linear-gradient(90deg, #fdf2f8 0%, #fff 100%); }
           
-          .day-header {
-            padding: 12px 8px;
+          .day-label {
+            min-width: 100px;
             text-align: center;
           }
           
-          .day-name {
+          .day-label .day-name {
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1px;
             color: #6b7280;
           }
           
-          .day-num {
-            font-size: 24px;
+          .day-label .day-num {
+            font-size: 22px;
             font-weight: 800;
             color: #374151;
           }
           
-          .day-content {
-            padding: 8px;
-            min-height: 80px;
+          .day-tasks {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
           }
           
-          .homework-item {
+          .task-group {
             background: white;
             border-radius: 8px;
-            padding: 8px;
-            margin-bottom: 6px;
-            border-left: 4px solid #8b5cf6;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            padding: 10px 12px;
+            border: 1px solid #e5e7eb;
           }
           
-          .homework-item .name {
-            font-size: 11px;
+          .task-book {
+            font-size: 13px;
             font-weight: 700;
             color: #4c1d95;
+            margin-bottom: 3px;
           }
           
-          .homework-item .topic {
-            font-size: 9px;
+          .task-unit-topic {
+            font-size: 11px;
             color: #7c3aed;
-            margin-top: 2px;
+            margin-bottom: 4px;
           }
           
-          .freetext-item {
+          .task-tests {
+            font-size: 10px;
+            color: #6b7280;
+            font-style: italic;
+          }
+          
+          .freetext-task {
             background: #fef3c7;
-            border-left-color: #f59e0b;
+            border-color: #fbbf24;
           }
           
-          .freetext-item .name { color: #92400e; }
+          .freetext-task .task-book {
+            color: #92400e;
+          }
+          
+          .empty-day {
+            color: #9ca3af;
+            font-size: 12px;
+            font-style: italic;
+          }
           
           .books-section {
             background: linear-gradient(135deg, #fdf4ff 0%, #f5f3ff 100%);
-            border-radius: 20px;
-            padding: 20px;
+            border-radius: 16px;
+            padding: 15px;
             margin-top: 20px;
           }
           
           .book-card {
             background: white;
-            border-radius: 16px;
-            padding: 15px;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-          }
-          
-          .book-icon {
-            width: 50px;
-            height: 50px;
-            background: linear-gradient(135deg, #a78bfa, #818cf8);
             border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            color: white;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
           }
           
-          .book-info h3 {
+          .book-card:last-child {
+            margin-bottom: 0;
+          }
+          
+          .book-name {
             font-size: 14px;
             font-weight: 700;
             color: #4c1d95;
-          }
-          
-          .book-info .tasks {
-            font-size: 12px;
-            color: #7c3aed;
-            margin-top: 4px;
-          }
-          
-          .task-list {
+            margin-bottom: 6px;
             display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px;
+            align-items: center;
+            gap: 8px;
           }
           
-          .task-badge {
-            background: #ede9fe;
-            color: #6d28d9;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 10px;
+          .book-name::before {
+            content: '📕';
+          }
+          
+          .book-units {
+            font-size: 11px;
+            color: #6b7280;
+            line-height: 1.6;
+          }
+          
+          .book-unit-name {
             font-weight: 600;
-          }
-          
-          .footer {
-            text-align: center;
-            padding: 20px;
-            background: linear-gradient(90deg, #fdf4ff 0%, #f5f3ff 50%, #eff6ff 100%);
-            border-top: 2px dashed #e9d5ff;
-          }
-          
-          .footer p {
-            color: #9333ea;
-            font-size: 12px;
-            font-weight: 600;
-          }
-          
-          .motivation {
-            background: linear-gradient(135deg, #fef3c7, #fde68a);
-            border-radius: 16px;
-            padding: 15px 20px;
-            margin: 20px 0;
-            text-align: center;
-            border: 2px dashed #fbbf24;
-          }
-          
-          .motivation p {
-            color: #92400e;
-            font-size: 14px;
-            font-weight: 700;
-          }
-          
-          .motivation .emoji {
-            font-size: 24px;
-            margin: 0 5px;
+            color: #7c3aed;
           }
           
           @media print {
-            body { 
+            html, body { 
               -webkit-print-color-adjust: exact !important; 
               print-color-adjust: exact !important;
               background: white !important;
+              margin: 0 !important;
+              padding: 0 !important;
             }
-            .container { box-shadow: none; }
+            .container { 
+              box-shadow: none;
+              width: 100%;
+              min-height: auto;
+            }
           }
         </style>
       </head>
@@ -918,15 +960,11 @@ const TeacherHomeworkEntry = () => {
           <div class="student-info">
             <div class="info-card">
               <div class="label">📅 Tarih</div>
-              <div class="value">${monthYear}</div>
+              <div class="value">${dateStr}</div>
             </div>
             <div class="info-card">
-              <div class="label">📆 Hafta</div>
-              <div class="value">${startDate.getDate()} - ${new Date(activePlan?.end_date).getDate()}</div>
-            </div>
-            <div class="info-card">
-              <div class="label">📖 Kitap</div>
-              <div class="value">${selectedBook?.name || 'Tüm Kitaplar'}</div>
+              <div class="label">📖 Kitaplar</div>
+              <div class="value">${bookNamesStr}</div>
             </div>
           </div>
           
@@ -936,40 +974,44 @@ const TeacherHomeworkEntry = () => {
               <h2>Bu Hafta Yapılacaklar</h2>
             </div>
             
-            <div class="week-grid">
+            <div class="days-list">
     `;
     
     const dayClasses = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     
     planDates.forEach(({ date, dayName, dayNum }) => {
-      const dayItems = planItems[date] || [];
       const dayOfWeek = new Date(date).getDay();
       const dayClass = dayClasses[dayOfWeek];
+      const dayTasks = dayHomework[date] || {};
+      const taskKeys = Object.keys(dayTasks);
       
       html += `
-        <div class="day-card ${dayClass}">
-          <div class="day-header">
+        <div class="day-row ${dayClass}">
+          <div class="day-label">
             <div class="day-name">${dayName}</div>
             <div class="day-num">${dayNum}</div>
           </div>
-          <div class="day-content">
+          <div class="day-tasks">
       `;
       
-      if (dayItems.length === 0) {
-        html += '<p style="color: #9ca3af; font-size: 10px; text-align: center; padding: 10px;">-</p>';
+      if (taskKeys.length === 0) {
+        html += '<p class="empty-day">Ödev yok</p>';
       } else {
-        dayItems.forEach(item => {
-          if (item.item_type === 'test') {
+        taskKeys.forEach(key => {
+          const task = dayTasks[key];
+          if (task.isFreetext) {
             html += `
-              <div class="homework-item">
-                <div class="name">${item.test_info?.test_name || 'Test'}</div>
-                <div class="topic">${item.test_info?.topic_name || ''}</div>
+              <div class="task-group freetext-task">
+                <div class="task-book">${task.text}</div>
               </div>
             `;
           } else {
+            const testsStr = task.tests.join(', ');
             html += `
-              <div class="homework-item freetext-item">
-                <div class="name">${item.freetext}</div>
+              <div class="task-group">
+                <div class="task-book">${task.bookName}</div>
+                <div class="task-unit-topic">${task.unitName}${task.topicName ? ' • ' + task.topicName : ''}</div>
+                <div class="task-tests">${testsStr}</div>
               </div>
             `;
           }
@@ -984,14 +1026,10 @@ const TeacherHomeworkEntry = () => {
     
     html += `
             </div>
-            
-            <div class="motivation">
-              <p><span class="emoji">💪</span> Başarı çalışmakla gelir! <span class="emoji">🌟</span></p>
-            </div>
     `;
     
-    // Kitap bazlı ödev listesi
-    if (Object.keys(bookHomework).length > 0) {
+    // Kitap görevleri bölümü
+    if (Object.keys(bookTasks).length > 0) {
       html += `
             <div class="books-section">
               <div class="section-title">
@@ -1000,26 +1038,22 @@ const TeacherHomeworkEntry = () => {
               </div>
       `;
       
-      Object.entries(bookHomework).forEach(([bookName, tasks]) => {
+      Object.entries(bookTasks).forEach(([bookName, units]) => {
         html += `
               <div class="book-card">
-                <div class="book-icon">📕</div>
-                <div class="book-info">
-                  <h3>${bookName}</h3>
-                  <div class="tasks">${tasks.length} görev planlandı</div>
-                  <div class="task-list">
+                <div class="book-name">${bookName}</div>
+                <div class="book-units">
         `;
         
-        tasks.slice(0, 5).forEach(task => {
-          html += `<span class="task-badge">${task.dayName}: ${task.test_info?.test_name || 'Test'}</span>`;
+        const unitEntries = Object.entries(units);
+        unitEntries.forEach(([unitName, topics], idx) => {
+          const topicsArr = Array.from(topics);
+          const topicsStr = topicsArr.length > 0 ? ' - ' + topicsArr.join(', ') : '';
+          html += `<span class="book-unit-name">${unitName}</span>${topicsStr}`;
+          if (idx < unitEntries.length - 1) html += '<br/>';
         });
         
-        if (tasks.length > 5) {
-          html += `<span class="task-badge">+${tasks.length - 5} daha</span>`;
-        }
-        
         html += `
-                  </div>
                 </div>
               </div>
         `;
@@ -1032,14 +1066,9 @@ const TeacherHomeworkEntry = () => {
     
     html += `
           </div>
-          
-          <div class="footer">
-            <p>🎯 Hedefine odaklan, başarı senin! 🎯</p>
-          </div>
         </div>
         
         <script>
-          // Sayfa yüklenince otomatik print dialog aç
           window.onload = function() {
             setTimeout(function() {
               window.print();
@@ -1472,22 +1501,29 @@ const TeacherHomeworkEntry = () => {
               <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <h2 className="font-semibold text-slate-700">Haftalık Plan</h2>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {activePlan && assignedTests.length > 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => setHomeworkCheckDialog(true)}
-                      className="gap-1 border-green-300 text-green-700 hover:bg-green-50"
-                    >
-                      <ClipboardCheck className="w-4 h-4" />
-                      Ödev Kontrol ({assignedTests.length})
-                    </Button>
-                  )}
                   {activePlan && (
                     <>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setHomeworkCheckDialog(true)}
+                        className="gap-1 border-green-300 text-green-700 hover:bg-green-50"
+                      >
+                        <ClipboardCheck className="w-4 h-4" />
+                        Ödev Kontrol {assignedTests.length > 0 && `(${assignedTests.length})`}
+                      </Button>
                       <Button variant="outline" size="sm" onClick={handlePDFExport} className="gap-1">
                         <Download className="w-4 h-4" />
                         PDF
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleNewPlan}
+                        className="gap-1 border-orange-300 text-orange-700 hover:bg-orange-50"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        Yeni Plan
                       </Button>
                       <Button 
                         variant="ghost" 
