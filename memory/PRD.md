@@ -279,53 +279,51 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Gelecek Görevler
 
+### P0 - Ödev Takip Sistemi Devam (Aktif Geliştirme)
+- Aşama 4: Test durum sistemi (renk kodları, auto-save, undo)
+- Aşama 5: Haftalık plan sistemi & PDF export
+- Aşama 6: Deneme modülü
+- Aşama 7: Mobile UX optimizasyonu
+
 ### P1 - Öncelikli
-- Backend refactoring (server.py ~3000 satır)
-- Performance optimizasyonları (N+1 query, pagination)
+- iOS App / PWA Dönüşümü
+- Backend refactoring (server.py ~5600 satır)
 
 ### P2 - Normal
-- Branş bazlı öğrenci alt menüleri oluşturma
-- Öğrenci profil sayfasına finans detayı widget'ı
-
-### P3 - Gelecek
 - WordPress entegrasyonu
 - SMS hatırlatıcıları
+- Branş bazlı öğrenci alt menüleri
+
+### P3 - Gelecek
 - Raporlama modülü
 
 ---
 
 ## Test Bilgileri
 - **Admin**: admin / test123
+- **Teacher**: ilknur.uzunal / test123
 - **URL**: https://quirky-ride-4.preview.emergentagent.com
 
 ---
 
 ## Son Güncelleme
 - Tarih: 2026-05-13
-- Versiyon: 4.8
+- Versiyon: 5.0
 - Değişiklikler:
-  1. **Audit Log UI/UX İyileştirmeleri** (YENİ - 13 Mayıs 2026):
+  1. **ÖDEV TAKİP SİSTEMİ - AŞAMA 1-3** (YENİ - 13 Mayıs 2026):
+     - 10+ yeni MongoDB koleksiyonu ve veri modeli
+     - Backend: 20+ yeni endpoint (kitap, ünite, konu, test CRUD)
+     - Admin "İçerik Yönetimi" sayfası - kitap/ünite/konu/test ağaç yapısı
+     - Öğretmen "Ödev Girişi" butonu ve 3 panelli ödev takip ekranı
+     - Öğrenciye kitap atama, tree view ile içerik görüntüleme
+     - Branş bazlı kitap havuzu
+  2. **Admin Sidebar Reorganizasyonu** (13 Mayıs 2026):
+     - Dersler grubu (collapsible)
+     - Muhasebe grubu (collapsible)
+     - Ayrı bölümde: İçerik Yönetimi, Rozetler, Günlük Değişiklikler
+  3. **Audit Log UI/UX İyileştirmeleri** (13 Mayıs 2026):
      - Grup işlemlerinde öğrenci isimleri parantez içinde gösteriliyor
-     - İngilizce key'ler Türkçe'ye çevrildi (Tarih, Ders Sayısı, Ay, Bu Ay Ders Yok, Mesaj Atıldı)
-     - İç kullanım alanları gizlendi (is_free_lesson, student_count, teacher_rate)
+     - İngilizce key'ler Türkçe'ye çevrildi
      - Boolean değerler Türkçe (Evet/Hayır)
-  2. **Grup Planlama Audit Log Düzeltmesi** (YENİ - 13 Mayıs 2026):
-     - Yeni endpoint'ler: PUT/DELETE /api/group-planned-lessons
-     - Grup güncelleme/silme işlemleri artık tek audit log kaydı oluşturuyor
-     - Frontend bu yeni endpoint'leri kullanacak şekilde güncellendi
-  3. **Audit Log / İşlem Takip Sistemi** (13 Mayıs 2026):
-     - Öğretmen işlemleri loglanıyor (ders girişi, planlama - add/update/delete)
-     - Admin login popup'ı: Son login'den beri yapılan değişiklikleri gösteriyor
-     - Yeni sayfa: "Günlük Değişiklikler" (tarih filtresi, pagination 10/25/50/100)
-     - Grup işlemlerinde öğrenci snapshot'ı kaydediliyor
-     - Eski/yeni veri karşılaştırması
-     - Okundu mantığı: Popup kapandığında loglar okunmuş sayılıyor
-  4. **Öğretmen Grup Dersi Silme Özelliği** (13 Mayıs 2026):
-     - Öğretmen kendi grubunun geçmiş derslerini silebiliyor
-     - Backend role kontrolü: Teacher sadece kendi grubunu silebilir
-     - Silme sonrası liste ve bakiye güncelleniyor
-  5. **Mobil UI/UX Geliştirmeleri** (10 Mayıs 2026)
-  6. **Pasif Öğrenci/Grup Filtrelemesi** (27 Nisan 2026)
-  7. **Öğrenci Ders Düzenleme Özelliği** (27 Nisan 2026)
-  8. **Önceki Güncellemeler**: Kutlama Animasyonu, Planlama Ustası Gamification
+  4. **Önceki Güncellemeler**: Audit Log sistemi, Grup dersi silme, Mobil UI/UX
 

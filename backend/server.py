@@ -435,6 +435,232 @@ class AuditLog(BaseModel):
     new_data: Optional[dict] = None  # Değişiklik sonrası veri
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+# ============= ÖDEV TAKİP SİSTEMİ MODELLERİ =============
+
+class BookType:
+    """Kitap tipleri"""
+    SORU_BANKASI = "soru_bankasi"
+    PARAGRAF_KITABI = "paragraf_kitabi"
+    BRANS_DENEMESI = "brans_denemesi"
+    FASIKUL = "fasikul"
+    MEB_KAYNAGI = "meb_kaynagi"
+    KAMP_KITABI = "kamp_kitabi"
+    OZEL_KAYNAK = "ozel_kaynak"
+
+class TestStatus:
+    """Test durumları"""
+    NOT_STARTED = "not_started"      # Başlanmadı - Beyaz
+    ASSIGNED = "assigned"             # Ödev verildi - Sarı
+    COMPLETED = "completed"           # Tamamlandı - Yeşil
+    INCOMPLETE = "incomplete"         # Eksik - Kırmızı
+    NEEDS_REVIEW = "needs_review"     # Tekrar gerekli - Mor
+    SKIPPED = "skipped"               # Pas geçildi - Gri
+
+class Book(BaseModel):
+    """Kitap modeli - Branş bazlı ortak havuz"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str  # Kitap adı
+    publisher: Optional[str] = None  # Yayınevi
+    branch_id: str  # Branş (Fen, Türkçe, Matematik vb.)
+    level: str  # Sınıf (5, 6, 7, 8 vb.)
+    book_type: str  # Kitap tipi (soru_bankasi, paragraf_kitabi vb.)
+    publish_year: Optional[int] = None  # Basım yılı
+    cover_image: Optional[str] = None  # Kapak görseli URL
+    status: str = "active"  # active / inactive
+    created_by: Optional[str] = None  # Oluşturan öğretmen ID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class BookCreate(BaseModel):
+    name: str
+    publisher: Optional[str] = None
+    branch_id: str
+    level: str
+    book_type: str
+    publish_year: Optional[int] = None
+    cover_image: Optional[str] = None
+    status: Optional[str] = "active"
+
+class BookUnit(BaseModel):
+    """Ünite modeli"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    book_id: str
+    name: str  # Ünite adı
+    order: int = 0  # Sıralama
+    color: Optional[str] = None  # Renk (opsiyonel)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class BookUnitCreate(BaseModel):
+    book_id: str
+    name: str
+    order: Optional[int] = 0
+    color: Optional[str] = None
+
+class BookTopic(BaseModel):
+    """Konu modeli"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    unit_id: str
+    name: str  # Konu adı
+    order: int = 0  # Sıralama
+    total_tests: int = 0  # Toplam test sayısı (auto-calculated)
+    total_questions: Optional[int] = None  # Toplam soru sayısı (opsiyonel)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class BookTopicCreate(BaseModel):
+    unit_id: str
+    name: str
+    order: Optional[int] = 0
+    total_questions: Optional[int] = None
+
+class BookTest(BaseModel):
+    """Test modeli"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    topic_id: str
+    name: str  # Test adı (Test 1, Test 2, Tekrar Testi vb.)
+    question_count: Optional[int] = None  # Soru sayısı
+    difficulty: Optional[str] = None  # Zorluk (kolay, orta, zor)
+    test_type: Optional[str] = None  # Test tipi
+    order: int = 0  # Sıralama
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class BookTestCreate(BaseModel):
+    topic_id: str
+    name: str
+    question_count: Optional[int] = None
+    difficulty: Optional[str] = None
+    test_type: Optional[str] = None
+    order: Optional[int] = 0
+
+class StudentBookAssignment(BaseModel):
+    """Öğrenci-Kitap ataması"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    book_id: str
+    branch_id: str  # Hangi branşta atandı
+    assigned_by: str  # Atayan öğretmen ID
+    status: str = "active"  # active / removed
+    assigned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    removed_at: Optional[datetime] = None
+
+class StudentBookAssignmentCreate(BaseModel):
+    student_id: str
+    book_id: str
+    branch_id: str
+
+class StudentTestProgress(BaseModel):
+    """Öğrenci test ilerleme durumu"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    book_id: str
+    test_id: str
+    status: str = "not_started"  # TestStatus değerleri
+    correct_count: Optional[int] = None  # Doğru sayısı
+    wrong_count: Optional[int] = None  # Yanlış sayısı
+    empty_count: Optional[int] = None  # Boş sayısı
+    notes: Optional[str] = None  # Öğretmen notu
+    updated_by: Optional[str] = None  # Son güncelleyen öğretmen
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class StudentTestProgressUpdate(BaseModel):
+    status: Optional[str] = None
+    correct_count: Optional[int] = None
+    wrong_count: Optional[int] = None
+    empty_count: Optional[int] = None
+    notes: Optional[str] = None
+
+class HomeworkPlan(BaseModel):
+    """Haftalık ödev planı"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    branch_id: str  # Hangi branş için
+    teacher_id: str  # Planı oluşturan öğretmen
+    start_date: str  # Plan başlangıç tarihi (YYYY-MM-DD)
+    end_date: str  # Plan bitiş tarihi
+    duration_days: int = 7  # Kaç günlük plan
+    status: str = "active"  # active / completed / cancelled
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class HomeworkPlanCreate(BaseModel):
+    student_id: str
+    branch_id: str
+    start_date: str
+    duration_days: Optional[int] = 7
+
+class HomeworkPlanItem(BaseModel):
+    """Plan öğesi - test veya serbest metin"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    plan_id: str
+    day_date: str  # Hangi gün için (YYYY-MM-DD)
+    item_type: str  # "test" veya "freetext"
+    test_id: Optional[str] = None  # Test ise
+    book_id: Optional[str] = None  # Test ise kitap ID
+    freetext: Optional[str] = None  # Serbest metin ise
+    order: int = 0  # Gün içi sıralama
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class HomeworkPlanItemCreate(BaseModel):
+    plan_id: str
+    day_date: str
+    item_type: str
+    test_id: Optional[str] = None
+    book_id: Optional[str] = None
+    freetext: Optional[str] = None
+    order: Optional[int] = 0
+
+class TrialExam(BaseModel):
+    """Deneme sınavı kaydı"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    branch_id: str
+    teacher_id: str  # Kaydeden öğretmen
+    exam_name: str  # Deneme adı
+    exam_date: str  # Tarih (YYYY-MM-DD)
+    correct_count: int = 0
+    wrong_count: int = 0
+    empty_count: int = 0
+    net_score: Optional[float] = None  # Net puan
+    reviewed_wrong: bool = False  # Yanlışlara tekrar baktı
+    reviewed_topics: bool = False  # Eksik konuyu tekrar etti
+    found_mistakes: bool = False  # Kaçırdığı bilgiyi buldu
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class TrialExamCreate(BaseModel):
+    student_id: str
+    branch_id: str
+    exam_name: str
+    exam_date: str
+    correct_count: int = 0
+    wrong_count: int = 0
+    empty_count: int = 0
+    notes: Optional[str] = None
+
+class DailyNote(BaseModel):
+    """Günlük yoğunluk notu"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    branch_id: str
+    teacher_id: str
+    note_date: str  # YYYY-MM-DD
+    note: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class DailyNoteCreate(BaseModel):
+    student_id: str
+    branch_id: str
+    note_date: str
+    note: str
+
 # ============= AUTH HELPERS =============
 
 def verify_password(plain_password, hashed_password):
@@ -4549,6 +4775,807 @@ async def delete_group_lessons(group_id: str, date: str, current_user: User = De
         "message": f"Deleted {result.deleted_count} lessons for group on {date}",
         "deleted_count": result.deleted_count
     }
+
+
+# ============= ÖDEV TAKİP SİSTEMİ ENDPOINTS =============
+
+# ------------- KİTAP YÖNETİMİ -------------
+
+@api_router.get("/homework/books")
+async def get_books(
+    branch_id: Optional[str] = None,
+    level: Optional[str] = None,
+    status: Optional[str] = "active",
+    current_user: User = Depends(get_current_user)
+):
+    """Kitapları listele - branş bazlı filtreleme"""
+    query = {}
+    
+    if status:
+        query["status"] = status
+    if level:
+        query["level"] = level
+    
+    # Branş ID belirtilmişse direkt kullan
+    if branch_id:
+        query["branch_id"] = branch_id
+    elif current_user.user_type == "teacher":
+        # Öğretmenin branşlarını bul - sadece branch_id belirtilmemişse
+        teacher_branches = await db.teacher_branches.find(
+            {"teacher_id": current_user.teacher_id},
+            {"_id": 0}
+        ).to_list(100)
+        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
+        
+        if teacher_branch_ids:
+            query["branch_id"] = {"$in": teacher_branch_ids}
+        # Eğer öğretmenin branş ataması yoksa tüm kitapları göster (yeni öğretmen için)
+    
+    books = await db.books.find(query, {"_id": 0}).sort("name", 1).to_list(500)
+    
+    # Branş bilgilerini ekle
+    for book in books:
+        branch = await db.branches.find_one({"id": book["branch_id"]}, {"_id": 0})
+        book["branch_name"] = branch["name"] if branch else "Bilinmiyor"
+    
+    return books
+
+@api_router.get("/homework/books/{book_id}")
+async def get_book(book_id: str, current_user: User = Depends(get_current_user)):
+    """Tek kitap detayı"""
+    book = await db.books.find_one({"id": book_id}, {"_id": 0})
+    if not book:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    # Öğretmen yetki kontrolü
+    if current_user.user_type == "teacher":
+        teacher_branches = await db.teacher_branches.find(
+            {"teacher_id": current_user.teacher_id},
+            {"_id": 0}
+        ).to_list(100)
+        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
+        if book["branch_id"] not in teacher_branch_ids:
+            raise HTTPException(status_code=403, detail="Bu kitaba erişim yetkiniz yok")
+    
+    branch = await db.branches.find_one({"id": book["branch_id"]}, {"_id": 0})
+    book["branch_name"] = branch["name"] if branch else "Bilinmiyor"
+    
+    return book
+
+@api_router.post("/homework/books")
+async def create_book(book_data: BookCreate, current_user: User = Depends(get_current_user)):
+    """Yeni kitap oluştur"""
+    # Öğretmen yetki kontrolü
+    if current_user.user_type == "teacher":
+        teacher_branches = await db.teacher_branches.find(
+            {"teacher_id": current_user.teacher_id},
+            {"_id": 0}
+        ).to_list(100)
+        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
+        if book_data.branch_id not in teacher_branch_ids:
+            raise HTTPException(status_code=403, detail="Bu branşa kitap ekleme yetkiniz yok")
+    
+    book = Book(
+        **book_data.model_dump(),
+        created_by=current_user.teacher_id if current_user.user_type == "teacher" else None
+    )
+    doc = book.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.books.insert_one(doc)
+    
+    return {"message": "Kitap oluşturuldu", "book_id": book.id}
+
+@api_router.put("/homework/books/{book_id}")
+async def update_book(book_id: str, book_data: BookCreate, current_user: User = Depends(get_current_user)):
+    """Kitap güncelle"""
+    existing = await db.books.find_one({"id": book_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    # Öğretmen yetki kontrolü
+    if current_user.user_type == "teacher":
+        teacher_branches = await db.teacher_branches.find(
+            {"teacher_id": current_user.teacher_id},
+            {"_id": 0}
+        ).to_list(100)
+        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
+        if existing["branch_id"] not in teacher_branch_ids:
+            raise HTTPException(status_code=403, detail="Bu kitabı düzenleme yetkiniz yok")
+    
+    await db.books.update_one({"id": book_id}, {"$set": book_data.model_dump()})
+    return {"message": "Kitap güncellendi"}
+
+@api_router.delete("/homework/books/{book_id}")
+async def delete_book(book_id: str, current_user: User = Depends(get_current_user)):
+    """Kitap sil - sadece admin"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Kitap silme yetkisi sadece admin'e aittir")
+    
+    # Cascade delete: üniteler, konular, testler
+    units = await db.book_units.find({"book_id": book_id}, {"_id": 0}).to_list(1000)
+    for unit in units:
+        topics = await db.book_topics.find({"unit_id": unit["id"]}, {"_id": 0}).to_list(1000)
+        for topic in topics:
+            await db.book_tests.delete_many({"topic_id": topic["id"]})
+        await db.book_topics.delete_many({"unit_id": unit["id"]})
+    await db.book_units.delete_many({"book_id": book_id})
+    
+    # İlerleme kayıtlarını sil
+    await db.student_test_progress.delete_many({"book_id": book_id})
+    await db.student_book_assignments.delete_many({"book_id": book_id})
+    
+    await db.books.delete_one({"id": book_id})
+    return {"message": "Kitap ve tüm içeriği silindi"}
+
+# ------------- ÜNİTE YÖNETİMİ -------------
+
+@api_router.get("/homework/books/{book_id}/units")
+async def get_book_units(book_id: str, current_user: User = Depends(get_current_user)):
+    """Kitabın ünitelerini listele"""
+    units = await db.book_units.find({"book_id": book_id}, {"_id": 0}).sort("order", 1).to_list(100)
+    return units
+
+@api_router.post("/homework/units")
+async def create_unit(unit_data: BookUnitCreate, current_user: User = Depends(get_current_user)):
+    """Yeni ünite oluştur"""
+    # Kitap erişim kontrolü
+    book = await db.books.find_one({"id": unit_data.book_id}, {"_id": 0})
+    if not book:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    if current_user.user_type == "teacher":
+        teacher_branches = await db.teacher_branches.find(
+            {"teacher_id": current_user.teacher_id},
+            {"_id": 0}
+        ).to_list(100)
+        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
+        if book["branch_id"] not in teacher_branch_ids:
+            raise HTTPException(status_code=403, detail="Bu kitaba ünite ekleme yetkiniz yok")
+    
+    # Sıralama otomatik ayarla
+    if unit_data.order == 0:
+        last_unit = await db.book_units.find_one(
+            {"book_id": unit_data.book_id},
+            {"_id": 0},
+            sort=[("order", -1)]
+        )
+        unit_data.order = (last_unit["order"] + 1) if last_unit else 1
+    
+    unit = BookUnit(**unit_data.model_dump())
+    doc = unit.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.book_units.insert_one(doc)
+    
+    return {"message": "Ünite oluşturuldu", "unit_id": unit.id}
+
+@api_router.put("/homework/units/{unit_id}")
+async def update_unit(unit_id: str, unit_data: BookUnitCreate, current_user: User = Depends(get_current_user)):
+    """Ünite güncelle"""
+    existing = await db.book_units.find_one({"id": unit_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Ünite bulunamadı")
+    
+    await db.book_units.update_one({"id": unit_id}, {"$set": {
+        "name": unit_data.name,
+        "order": unit_data.order,
+        "color": unit_data.color
+    }})
+    return {"message": "Ünite güncellendi"}
+
+@api_router.delete("/homework/units/{unit_id}")
+async def delete_unit(unit_id: str, current_user: User = Depends(get_current_user)):
+    """Ünite sil - cascade"""
+    # Altındaki konuları ve testleri sil
+    topics = await db.book_topics.find({"unit_id": unit_id}, {"_id": 0}).to_list(1000)
+    for topic in topics:
+        await db.book_tests.delete_many({"topic_id": topic["id"]})
+    await db.book_topics.delete_many({"unit_id": unit_id})
+    await db.book_units.delete_one({"id": unit_id})
+    
+    return {"message": "Ünite ve altındaki tüm içerik silindi"}
+
+# ------------- KONU YÖNETİMİ -------------
+
+@api_router.get("/homework/units/{unit_id}/topics")
+async def get_unit_topics(unit_id: str, current_user: User = Depends(get_current_user)):
+    """Ünitenin konularını listele"""
+    topics = await db.book_topics.find({"unit_id": unit_id}, {"_id": 0}).sort("order", 1).to_list(100)
+    return topics
+
+@api_router.post("/homework/topics")
+async def create_topic(topic_data: BookTopicCreate, current_user: User = Depends(get_current_user)):
+    """Yeni konu oluştur"""
+    unit = await db.book_units.find_one({"id": topic_data.unit_id}, {"_id": 0})
+    if not unit:
+        raise HTTPException(status_code=404, detail="Ünite bulunamadı")
+    
+    # Sıralama otomatik ayarla
+    if topic_data.order == 0:
+        last_topic = await db.book_topics.find_one(
+            {"unit_id": topic_data.unit_id},
+            {"_id": 0},
+            sort=[("order", -1)]
+        )
+        topic_data.order = (last_topic["order"] + 1) if last_topic else 1
+    
+    topic = BookTopic(**topic_data.model_dump())
+    doc = topic.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.book_topics.insert_one(doc)
+    
+    return {"message": "Konu oluşturuldu", "topic_id": topic.id}
+
+@api_router.put("/homework/topics/{topic_id}")
+async def update_topic(topic_id: str, topic_data: BookTopicCreate, current_user: User = Depends(get_current_user)):
+    """Konu güncelle"""
+    await db.book_topics.update_one({"id": topic_id}, {"$set": {
+        "name": topic_data.name,
+        "order": topic_data.order,
+        "total_questions": topic_data.total_questions
+    }})
+    return {"message": "Konu güncellendi"}
+
+@api_router.delete("/homework/topics/{topic_id}")
+async def delete_topic(topic_id: str, current_user: User = Depends(get_current_user)):
+    """Konu sil - cascade"""
+    await db.book_tests.delete_many({"topic_id": topic_id})
+    await db.book_topics.delete_one({"id": topic_id})
+    return {"message": "Konu ve altındaki testler silindi"}
+
+# ------------- TEST YÖNETİMİ -------------
+
+@api_router.get("/homework/topics/{topic_id}/tests")
+async def get_topic_tests(topic_id: str, current_user: User = Depends(get_current_user)):
+    """Konunun testlerini listele"""
+    tests = await db.book_tests.find({"topic_id": topic_id}, {"_id": 0}).sort("order", 1).to_list(100)
+    return tests
+
+@api_router.post("/homework/tests")
+async def create_test(test_data: BookTestCreate, current_user: User = Depends(get_current_user)):
+    """Yeni test oluştur"""
+    topic = await db.book_topics.find_one({"id": test_data.topic_id}, {"_id": 0})
+    if not topic:
+        raise HTTPException(status_code=404, detail="Konu bulunamadı")
+    
+    # Sıralama otomatik ayarla
+    if test_data.order == 0:
+        last_test = await db.book_tests.find_one(
+            {"topic_id": test_data.topic_id},
+            {"_id": 0},
+            sort=[("order", -1)]
+        )
+        test_data.order = (last_test["order"] + 1) if last_test else 1
+    
+    test = BookTest(**test_data.model_dump())
+    doc = test.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.book_tests.insert_one(doc)
+    
+    # Konu total_tests güncelle
+    test_count = await db.book_tests.count_documents({"topic_id": test_data.topic_id})
+    await db.book_topics.update_one({"id": test_data.topic_id}, {"$set": {"total_tests": test_count}})
+    
+    return {"message": "Test oluşturuldu", "test_id": test.id}
+
+@api_router.put("/homework/tests/{test_id}")
+async def update_test(test_id: str, test_data: BookTestCreate, current_user: User = Depends(get_current_user)):
+    """Test güncelle"""
+    await db.book_tests.update_one({"id": test_id}, {"$set": {
+        "name": test_data.name,
+        "question_count": test_data.question_count,
+        "difficulty": test_data.difficulty,
+        "test_type": test_data.test_type,
+        "order": test_data.order
+    }})
+    return {"message": "Test güncellendi"}
+
+@api_router.delete("/homework/tests/{test_id}")
+async def delete_test(test_id: str, current_user: User = Depends(get_current_user)):
+    """Test sil"""
+    test = await db.book_tests.find_one({"id": test_id}, {"_id": 0})
+    if test:
+        await db.book_tests.delete_one({"id": test_id})
+        # Konu total_tests güncelle
+        test_count = await db.book_tests.count_documents({"topic_id": test["topic_id"]})
+        await db.book_topics.update_one({"id": test["topic_id"]}, {"$set": {"total_tests": test_count}})
+    return {"message": "Test silindi"}
+
+# ------------- KİTAP AĞACI (TREE) -------------
+
+@api_router.get("/homework/books/{book_id}/tree")
+async def get_book_tree(book_id: str, current_user: User = Depends(get_current_user)):
+    """Kitabın tam ağaç yapısını getir (ünite → konu → test)"""
+    book = await db.books.find_one({"id": book_id}, {"_id": 0})
+    if not book:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    units = await db.book_units.find({"book_id": book_id}, {"_id": 0}).sort("order", 1).to_list(100)
+    
+    tree = []
+    total_tests = 0
+    
+    for unit in units:
+        topics = await db.book_topics.find({"unit_id": unit["id"]}, {"_id": 0}).sort("order", 1).to_list(100)
+        unit_topics = []
+        
+        for topic in topics:
+            tests = await db.book_tests.find({"topic_id": topic["id"]}, {"_id": 0}).sort("order", 1).to_list(100)
+            total_tests += len(tests)
+            unit_topics.append({
+                **topic,
+                "tests": tests
+            })
+        
+        tree.append({
+            **unit,
+            "topics": unit_topics
+        })
+    
+    return {
+        "book": book,
+        "tree": tree,
+        "total_tests": total_tests
+    }
+
+# ------------- ÖĞRENCİ KİTAP ATAMALARI -------------
+
+@api_router.get("/homework/students/{student_id}/books")
+async def get_student_books(
+    student_id: str,
+    branch_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin kitaplarını listele"""
+    query = {"student_id": student_id, "status": "active"}
+    if branch_id:
+        query["branch_id"] = branch_id
+    
+    assignments = await db.student_book_assignments.find(query, {"_id": 0}).to_list(100)
+    
+    result = []
+    for assignment in assignments:
+        book = await db.books.find_one({"id": assignment["book_id"]}, {"_id": 0})
+        if book:
+            # İlerleme hesapla
+            total_tests = await db.book_tests.count_documents({
+                "topic_id": {"$in": [t["id"] for t in await db.book_topics.find({
+                    "unit_id": {"$in": [u["id"] for u in await db.book_units.find({"book_id": book["id"]}, {"_id": 0, "id": 1}).to_list(100)]}
+                }, {"_id": 0, "id": 1}).to_list(1000)]}
+            })
+            
+            completed_count = await db.student_test_progress.count_documents({
+                "student_id": student_id,
+                "book_id": book["id"],
+                "status": {"$in": ["completed", "skipped"]}
+            })
+            
+            assigned_count = await db.student_test_progress.count_documents({
+                "student_id": student_id,
+                "book_id": book["id"],
+                "status": "assigned"
+            })
+            
+            branch = await db.branches.find_one({"id": book["branch_id"]}, {"_id": 0})
+            
+            result.append({
+                **book,
+                "branch_name": branch["name"] if branch else "Bilinmiyor",
+                "assignment_id": assignment["id"],
+                "assigned_at": assignment["assigned_at"],
+                "total_tests": total_tests,
+                "completed_tests": completed_count,
+                "assigned_tests": assigned_count,
+                "remaining_tests": total_tests - completed_count,
+                "progress_percent": round((completed_count / total_tests * 100) if total_tests > 0 else 0, 1)
+            })
+    
+    return result
+
+@api_router.post("/homework/students/{student_id}/books")
+async def assign_book_to_student(
+    student_id: str,
+    assignment_data: StudentBookAssignmentCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrenciye kitap ata"""
+    # Aynı kitap aynı basım yılı kontrolü
+    book = await db.books.find_one({"id": assignment_data.book_id}, {"_id": 0})
+    if not book:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    existing = await db.student_book_assignments.find_one({
+        "student_id": student_id,
+        "book_id": assignment_data.book_id,
+        "status": "active"
+    }, {"_id": 0})
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu kitap zaten öğrenciye atanmış")
+    
+    # Daha önce kaldırılmış mı kontrol et (restore)
+    removed = await db.student_book_assignments.find_one({
+        "student_id": student_id,
+        "book_id": assignment_data.book_id,
+        "status": "removed"
+    }, {"_id": 0})
+    
+    if removed:
+        # Restore et
+        await db.student_book_assignments.update_one(
+            {"id": removed["id"]},
+            {"$set": {"status": "active", "removed_at": None}}
+        )
+        return {"message": "Kitap geri yüklendi, eski ilerleme korundu", "restored": True}
+    
+    # Yeni atama
+    assignment = StudentBookAssignment(
+        student_id=student_id,
+        book_id=assignment_data.book_id,
+        branch_id=assignment_data.branch_id,
+        assigned_by=current_user.teacher_id if current_user.user_type == "teacher" else "admin"
+    )
+    doc = assignment.model_dump()
+    doc['assigned_at'] = doc['assigned_at'].isoformat()
+    await db.student_book_assignments.insert_one(doc)
+    
+    return {"message": "Kitap öğrenciye atandı", "assignment_id": assignment.id}
+
+@api_router.delete("/homework/students/{student_id}/books/{book_id}")
+async def remove_book_from_student(
+    student_id: str,
+    book_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrenciden kitap kaldır (sistemden silmez, sadece ataması kaldırılır)"""
+    await db.student_book_assignments.update_one(
+        {"student_id": student_id, "book_id": book_id, "status": "active"},
+        {"$set": {"status": "removed", "removed_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Kitap öğrenciden kaldırıldı"}
+
+# ------------- TEST İLERLEME DURUMU -------------
+
+@api_router.get("/homework/students/{student_id}/books/{book_id}/progress")
+async def get_student_book_progress(
+    student_id: str,
+    book_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin bir kitaptaki tüm test ilerlemelerini getir"""
+    progress_records = await db.student_test_progress.find({
+        "student_id": student_id,
+        "book_id": book_id
+    }, {"_id": 0}).to_list(10000)
+    
+    # test_id'ye göre dictionary oluştur
+    progress_map = {p["test_id"]: p for p in progress_records}
+    
+    return progress_map
+
+@api_router.put("/homework/students/{student_id}/tests/{test_id}/status")
+async def update_test_status(
+    student_id: str,
+    test_id: str,
+    update_data: StudentTestProgressUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Test durumunu güncelle (auto-save için)"""
+    test = await db.book_tests.find_one({"id": test_id}, {"_id": 0})
+    if not test:
+        raise HTTPException(status_code=404, detail="Test bulunamadı")
+    
+    topic = await db.book_topics.find_one({"id": test["topic_id"]}, {"_id": 0})
+    unit = await db.book_units.find_one({"id": topic["unit_id"]}, {"_id": 0})
+    
+    existing = await db.student_test_progress.find_one({
+        "student_id": student_id,
+        "test_id": test_id
+    }, {"_id": 0})
+    
+    now = datetime.now(timezone.utc).isoformat()
+    
+    if existing:
+        # Güncelle
+        update_fields = {"updated_at": now}
+        if update_data.status is not None:
+            update_fields["status"] = update_data.status
+        if update_data.correct_count is not None:
+            update_fields["correct_count"] = update_data.correct_count
+        if update_data.wrong_count is not None:
+            update_fields["wrong_count"] = update_data.wrong_count
+        if update_data.empty_count is not None:
+            update_fields["empty_count"] = update_data.empty_count
+        if update_data.notes is not None:
+            update_fields["notes"] = update_data.notes
+        
+        update_fields["updated_by"] = current_user.teacher_id if current_user.user_type == "teacher" else "admin"
+        
+        await db.student_test_progress.update_one(
+            {"id": existing["id"]},
+            {"$set": update_fields}
+        )
+        return {"message": "İlerleme güncellendi", "progress_id": existing["id"]}
+    else:
+        # Yeni kayıt
+        progress = StudentTestProgress(
+            student_id=student_id,
+            book_id=unit["book_id"],
+            test_id=test_id,
+            status=update_data.status or "not_started",
+            correct_count=update_data.correct_count,
+            wrong_count=update_data.wrong_count,
+            empty_count=update_data.empty_count,
+            notes=update_data.notes,
+            updated_by=current_user.teacher_id if current_user.user_type == "teacher" else "admin"
+        )
+        doc = progress.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        doc['updated_at'] = doc['updated_at'].isoformat()
+        await db.student_test_progress.insert_one(doc)
+        return {"message": "İlerleme kaydı oluşturuldu", "progress_id": progress.id}
+
+# ------------- HAFTALIK PLAN -------------
+
+@api_router.get("/homework/students/{student_id}/plans")
+async def get_student_plans(
+    student_id: str,
+    branch_id: Optional[str] = None,
+    status: Optional[str] = "active",
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin planlarını listele"""
+    query = {"student_id": student_id}
+    if branch_id:
+        query["branch_id"] = branch_id
+    if status:
+        query["status"] = status
+    
+    plans = await db.homework_plans.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return plans
+
+@api_router.get("/homework/plans/{plan_id}")
+async def get_plan_detail(plan_id: str, current_user: User = Depends(get_current_user)):
+    """Plan detayı ve öğelerini getir"""
+    plan = await db.homework_plans.find_one({"id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan bulunamadı")
+    
+    items = await db.homework_plan_items.find({"plan_id": plan_id}, {"_id": 0}).sort([("day_date", 1), ("order", 1)]).to_list(1000)
+    
+    # Gün bazlı grupla
+    days = {}
+    for item in items:
+        day = item["day_date"]
+        if day not in days:
+            days[day] = []
+        
+        # Test bilgilerini ekle
+        if item["item_type"] == "test" and item.get("test_id"):
+            test = await db.book_tests.find_one({"id": item["test_id"]}, {"_id": 0})
+            if test:
+                topic = await db.book_topics.find_one({"id": test["topic_id"]}, {"_id": 0})
+                unit = await db.book_units.find_one({"id": topic["unit_id"]}, {"_id": 0}) if topic else None
+                book = await db.books.find_one({"id": item.get("book_id")}, {"_id": 0})
+                item["test_info"] = {
+                    "test_name": test["name"],
+                    "topic_name": topic["name"] if topic else "",
+                    "unit_name": unit["name"] if unit else "",
+                    "book_name": book["name"] if book else ""
+                }
+        
+        days[day].append(item)
+    
+    return {
+        "plan": plan,
+        "days": days
+    }
+
+@api_router.post("/homework/plans")
+async def create_homework_plan(
+    plan_data: HomeworkPlanCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Yeni haftalık plan oluştur"""
+    # Eski aktif planı kapat
+    await db.homework_plans.update_many(
+        {"student_id": plan_data.student_id, "branch_id": plan_data.branch_id, "status": "active"},
+        {"$set": {"status": "cancelled"}}
+    )
+    
+    # Bitiş tarihi hesapla
+    from datetime import datetime as dt
+    start = dt.strptime(plan_data.start_date, "%Y-%m-%d")
+    end = start + timedelta(days=plan_data.duration_days - 1)
+    
+    plan = HomeworkPlan(
+        student_id=plan_data.student_id,
+        branch_id=plan_data.branch_id,
+        teacher_id=current_user.teacher_id if current_user.user_type == "teacher" else "admin",
+        start_date=plan_data.start_date,
+        end_date=end.strftime("%Y-%m-%d"),
+        duration_days=plan_data.duration_days
+    )
+    doc = plan.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.homework_plans.insert_one(doc)
+    
+    return {"message": "Plan oluşturuldu", "plan_id": plan.id}
+
+@api_router.post("/homework/plans/{plan_id}/items")
+async def add_plan_item(
+    plan_id: str,
+    item_data: HomeworkPlanItemCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Plana öğe ekle (test veya serbest metin)"""
+    plan = await db.homework_plans.find_one({"id": plan_id}, {"_id": 0})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan bulunamadı")
+    
+    item = HomeworkPlanItem(**item_data.model_dump())
+    doc = item.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.homework_plan_items.insert_one(doc)
+    
+    # Eğer test ise, durumu "assigned" yap
+    if item_data.item_type == "test" and item_data.test_id:
+        existing_progress = await db.student_test_progress.find_one({
+            "student_id": plan["student_id"],
+            "test_id": item_data.test_id
+        }, {"_id": 0})
+        
+        if existing_progress:
+            # Sadece "not_started" durumundaysa güncelle
+            if existing_progress.get("status") == "not_started":
+                await db.student_test_progress.update_one(
+                    {"id": existing_progress["id"]},
+                    {"$set": {"status": "assigned", "updated_at": datetime.now(timezone.utc).isoformat()}}
+                )
+        else:
+            # Yeni progress kaydı oluştur
+            test = await db.book_tests.find_one({"id": item_data.test_id}, {"_id": 0})
+            if test:
+                topic = await db.book_topics.find_one({"id": test["topic_id"]}, {"_id": 0})
+                unit = await db.book_units.find_one({"id": topic["unit_id"]}, {"_id": 0}) if topic else None
+                
+                progress = StudentTestProgress(
+                    student_id=plan["student_id"],
+                    book_id=unit["book_id"] if unit else item_data.book_id,
+                    test_id=item_data.test_id,
+                    status="assigned",
+                    updated_by=current_user.teacher_id if current_user.user_type == "teacher" else "admin"
+                )
+                progress_doc = progress.model_dump()
+                progress_doc['created_at'] = progress_doc['created_at'].isoformat()
+                progress_doc['updated_at'] = progress_doc['updated_at'].isoformat()
+                await db.student_test_progress.insert_one(progress_doc)
+    
+    return {"message": "Öğe eklendi", "item_id": item.id}
+
+@api_router.delete("/homework/plan-items/{item_id}")
+async def delete_plan_item(item_id: str, current_user: User = Depends(get_current_user)):
+    """Plan öğesini sil"""
+    await db.homework_plan_items.delete_one({"id": item_id})
+    return {"message": "Öğe silindi"}
+
+# ------------- DENEME MODÜLÜ -------------
+
+@api_router.get("/homework/students/{student_id}/trials")
+async def get_student_trials(
+    student_id: str,
+    branch_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin denemelerini listele"""
+    query = {"student_id": student_id}
+    if branch_id:
+        query["branch_id"] = branch_id
+    
+    trials = await db.trial_exams.find(query, {"_id": 0}).sort("exam_date", -1).to_list(100)
+    return trials
+
+@api_router.post("/homework/trials")
+async def create_trial_exam(
+    trial_data: TrialExamCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Deneme kaydı oluştur"""
+    net = trial_data.correct_count - (trial_data.wrong_count / 4)
+    
+    trial = TrialExam(
+        **trial_data.model_dump(),
+        teacher_id=current_user.teacher_id if current_user.user_type == "teacher" else "admin",
+        net_score=round(net, 2)
+    )
+    doc = trial.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.trial_exams.insert_one(doc)
+    
+    return {"message": "Deneme kaydedildi", "trial_id": trial.id}
+
+@api_router.put("/homework/trials/{trial_id}")
+async def update_trial_exam(
+    trial_id: str,
+    trial_data: TrialExamCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Deneme güncelle"""
+    net = trial_data.correct_count - (trial_data.wrong_count / 4)
+    
+    await db.trial_exams.update_one({"id": trial_id}, {"$set": {
+        **trial_data.model_dump(),
+        "net_score": round(net, 2)
+    }})
+    return {"message": "Deneme güncellendi"}
+
+@api_router.put("/homework/trials/{trial_id}/review")
+async def update_trial_review(
+    trial_id: str,
+    reviewed_wrong: Optional[bool] = None,
+    reviewed_topics: Optional[bool] = None,
+    found_mistakes: Optional[bool] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Deneme review checkbox'larını güncelle"""
+    update_fields = {}
+    if reviewed_wrong is not None:
+        update_fields["reviewed_wrong"] = reviewed_wrong
+    if reviewed_topics is not None:
+        update_fields["reviewed_topics"] = reviewed_topics
+    if found_mistakes is not None:
+        update_fields["found_mistakes"] = found_mistakes
+    
+    if update_fields:
+        await db.trial_exams.update_one({"id": trial_id}, {"$set": update_fields})
+    
+    return {"message": "Deneme güncellendi"}
+
+# ------------- GÜNLÜK NOTLAR -------------
+
+@api_router.get("/homework/students/{student_id}/daily-notes")
+async def get_student_daily_notes(
+    student_id: str,
+    branch_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin günlük notlarını getir"""
+    query = {"student_id": student_id}
+    if branch_id:
+        query["branch_id"] = branch_id
+    
+    notes = await db.daily_notes.find(query, {"_id": 0}).sort("note_date", -1).to_list(100)
+    return notes
+
+@api_router.post("/homework/daily-notes")
+async def create_daily_note(
+    note_data: DailyNoteCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Günlük not oluştur/güncelle"""
+    # Aynı gün için var mı kontrol et
+    existing = await db.daily_notes.find_one({
+        "student_id": note_data.student_id,
+        "branch_id": note_data.branch_id,
+        "note_date": note_data.note_date
+    }, {"_id": 0})
+    
+    if existing:
+        # Güncelle
+        await db.daily_notes.update_one(
+            {"id": existing["id"]},
+            {"$set": {"note": note_data.note}}
+        )
+        return {"message": "Not güncellendi", "note_id": existing["id"]}
+    
+    note = DailyNote(
+        **note_data.model_dump(),
+        teacher_id=current_user.teacher_id if current_user.user_type == "teacher" else "admin"
+    )
+    doc = note.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.daily_notes.insert_one(doc)
+    
+    return {"message": "Not eklendi", "note_id": note.id}
 
 
 # ============= INCLUDE ROUTER =============

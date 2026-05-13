@@ -21,7 +21,8 @@ import {
   ChevronDown,
   ChevronRight,
   GraduationCap as LessonsIcon,
-  Calculator
+  Calculator,
+  Library
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -99,6 +100,7 @@ const AdminLayout = ({ children }) => {
       }
     ],
     bottom: [
+      { path: '/admin/homework-content', label: 'İçerik Yönetimi', icon: Library },
       { path: '/admin/badges', label: 'Rozetler', icon: Trophy },
       { path: '/admin/audit-logs', label: 'Günlük Değişiklikler', icon: Clock },
     ]

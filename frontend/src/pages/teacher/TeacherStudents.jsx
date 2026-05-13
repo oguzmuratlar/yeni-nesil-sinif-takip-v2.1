@@ -5,7 +5,8 @@ import apiClient from '../../api/axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Book, Calendar, Search, User, Users, ChevronRight, Edit, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { Book, Calendar, Search, User, Users, ChevronRight, Edit, X, ClipboardList } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TeacherStudents = () => {
@@ -18,6 +19,7 @@ const TeacherStudents = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState(null); // { type: 'student' | 'group', data: {...} }
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'individual', 'groups'
+  const [groupStudentDialog, setGroupStudentDialog] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -111,6 +113,32 @@ const TeacherStudents = () => {
     } else {
       // Navigate to group lesson planning
       navigate(`/teacher/groups/${selectedItem.data.id}/planned-lessons`);
+    }
+  };
+
+  const handleHomeworkEntry = () => {
+    if (!selectedItem) return;
+    
+    if (selectedItem.type === 'student') {
+      // Birebir öğrenci için direkt ödev takip sayfasına git
+      const studentCourse = courses.find(c => c.student_id === selectedItem.data.id);
+      if (studentCourse) {
+        navigate(`/teacher/students/${selectedItem.data.id}/homework/${studentCourse.branch_id}`);
+      } else {
+        toast.error('Öğrenciye ait kurs bulunamadı');
+      }
+    } else {
+      // Grup için önce öğrenci seç
+      setGroupStudentDialog(true);
+    }
+  };
+
+  const handleSelectGroupStudent = (student) => {
+    // Grup içindeki öğrenciyi seç ve ödev takip sayfasına yönlendir
+    setGroupStudentDialog(false);
+    const branch = branches.find(b => b.id === selectedItem.data.branch_id);
+    if (branch) {
+      navigate(`/teacher/students/${student.id}/homework/${branch.id}`);
     }
   };
 
@@ -340,7 +368,16 @@ const TeacherStudents = () => {
                     className="rounded-full flex-1 sm:flex-none px-4 py-2"
                   >
                     <Calendar size={16} className="mr-2" />
-                    Ders Planlama
+                    Planlama
+                  </Button>
+                  <Button
+                    onClick={handleHomeworkEntry}
+                    data-testid="homework-entry-btn"
+                    variant="outline"
+                    className="rounded-full flex-1 sm:flex-none px-4 py-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                  >
+                    <ClipboardList size={16} className="mr-2" />
+                    Ödev
                   </Button>
                   <Button
                     onClick={() => setSelectedItem(null)}
@@ -355,6 +392,38 @@ const TeacherStudents = () => {
             </div>
           </div>
         )}
+
+        {/* Group Student Selection Dialog */}
+        <Dialog open={groupStudentDialog} onOpenChange={setGroupStudentDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Öğrenci Seçin</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2 py-4">
+              <p className="text-sm text-slate-500 mb-4">
+                {selectedItem?.data?.name} grubundan ödev takibi yapılacak öğrenciyi seçin
+              </p>
+              {selectedItem?.type === 'group' && students
+                .filter(s => selectedItem.data.student_ids?.includes(s.id))
+                .map(student => (
+                  <div
+                    key={student.id}
+                    onClick={() => handleSelectGroupStudent(student)}
+                    className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 cursor-pointer hover:border-purple-300 hover:bg-purple-50 transition-all"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                      <User size={20} className="text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-800">{student.name}</p>
+                      <p className="text-sm text-slate-500">{student.school}</p>
+                    </div>
+                    <ChevronRight className="ml-auto text-slate-400" size={20} />
+                  </div>
+                ))}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </TeacherLayout>
   );

@@ -39,6 +39,7 @@ import AdminCashboxes from "./pages/admin/AdminCashboxes";
 import AdminStudentsByBranch from "./pages/admin/AdminStudentsByBranch";
 import AdminBadges from "./pages/admin/AdminBadges";
 import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
+import AdminHomeworkContent from "./pages/admin/AdminHomeworkContent";
 
 // Teacher Pages
 import TeacherStudents from "./pages/teacher/TeacherStudents";
@@ -54,6 +55,7 @@ import TeacherYoutube from "./pages/teacher/TeacherYoutube";
 import TeacherLessonIncomeDetail from "./pages/teacher/TeacherLessonIncomeDetail";
 import TeacherCampIncomeDetail from "./pages/teacher/TeacherCampIncomeDetail";
 import TeacherYoutubeIncomeDetail from "./pages/teacher/TeacherYoutubeIncomeDetail";
+import TeacherHomeworkEntry from "./pages/teacher/TeacherHomeworkEntry";
 
 // Production'da aynı origin kullan, development'ta .env'den al
 const getBaseUrl = () => {
@@ -267,6 +269,11 @@ function App() {
                 <AdminAuditLogs />
               </ProtectedRoute>
             } />
+            <Route path="/admin/homework-content" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminHomeworkContent />
+              </ProtectedRoute>
+            } />
 
             {/* Teacher Routes */}
             <Route path="/teacher/dashboard" element={
@@ -337,6 +344,11 @@ function App() {
             <Route path="/teacher/youtube-income" element={
               <ProtectedRoute requiredRole="teacher">
                 <TeacherYoutubeIncomeDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/teacher/students/:studentId/homework/:branchId" element={
+              <ProtectedRoute requiredRole="teacher">
+                <TeacherHomeworkEntry />
               </ProtectedRoute>
             } />
           </Routes>
