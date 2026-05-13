@@ -154,25 +154,18 @@ const TeacherGroupPlannedLessons = () => {
     }
 
     try {
-      // Gruptaki tüm aynı planlı dersleri bul ve güncelle
-      const matchingPlans = plannedLessons.filter(p => 
-        p.month === selectedPlan.month && 
-        p.dates === selectedPlan.dates && 
-        p.number_of_lessons === selectedPlan.number_of_lessons
-      );
+      // Grup planlama güncelleme - tek API çağrısı
+      await apiClient.put('/group-planned-lessons', {
+        group_id: groupId,
+        old_month: selectedPlan.month,
+        old_dates: selectedPlan.dates,
+        old_number_of_lessons: selectedPlan.number_of_lessons,
+        new_dates: editPlan.dates,
+        new_number_of_lessons: parseInt(editPlan.number_of_lessons),
+        new_month: editPlan.month
+      });
 
-      // Her birini güncelle
-      await Promise.all(matchingPlans.map(plan => 
-        apiClient.put(`/planned-lessons/${plan.id}`, {
-          student_course_id: plan.student_course_id,
-          dates: editPlan.dates,
-          number_of_lessons: parseInt(editPlan.number_of_lessons),
-          month: editPlan.month,
-          messaged: plan.messaged || false
-        })
-      ));
-
-      toast.success(`${matchingPlans.length} öğrenci için plan güncellendi`);
+      toast.success('Grup planı güncellendi');
       setEditDialogOpen(false);
       setSelectedPlan(null);
       fetchData();
@@ -188,22 +181,20 @@ const TeacherGroupPlannedLessons = () => {
     setDeleteDialogOpen(true);
   };
 
-  // Planı sil - gruptaki tüm öğrenciler için
+  // Planı sil - gruptaki tüm öğrenciler için tek API çağrısı
   const handleDeletePlan = async () => {
     try {
-      // Gruptaki tüm aynı planlı dersleri bul ve sil
-      const matchingPlans = plannedLessons.filter(p => 
-        p.month === selectedPlan.month && 
-        p.dates === selectedPlan.dates && 
-        p.number_of_lessons === selectedPlan.number_of_lessons
-      );
+      // Grup planlama silme - tek API çağrısı
+      await apiClient.delete('/group-planned-lessons', {
+        data: {
+          group_id: groupId,
+          month: selectedPlan.month,
+          dates: selectedPlan.dates,
+          number_of_lessons: selectedPlan.number_of_lessons
+        }
+      });
 
-      // Her birini sil
-      await Promise.all(matchingPlans.map(plan => 
-        apiClient.delete(`/planned-lessons/${plan.id}`)
-      ));
-
-      toast.success(`${matchingPlans.length} öğrenci için plan silindi`);
+      toast.success('Grup planı silindi');
       setDeleteDialogOpen(false);
       setSelectedPlan(null);
       fetchData();

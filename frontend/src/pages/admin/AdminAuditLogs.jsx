@@ -6,6 +6,42 @@ import { Input } from '../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import apiClient from '../../api/axios';
 
+// İngilizce key'leri Türkçe'ye çevir
+const keyTranslations = {
+  'date': 'Tarih',
+  'number_of_lessons': 'Ders Sayısı',
+  'dates': 'Tarihler',
+  'month': 'Ay',
+  'no_lesson_this_month': 'Bu Ay Ders Yok',
+  'messaged': 'Mesaj Atıldı'
+};
+
+// Gizlenecek alanlar
+const hiddenKeys = ['is_free_lesson', 'student_count', 'teacher_rate'];
+
+// Key'i Türkçe'ye çevir
+const translateKey = (key) => keyTranslations[key] || key;
+
+// Değeri formatla
+const formatValue = (key, value) => {
+  if (typeof value === 'boolean') {
+    return value ? 'Evet' : 'Hayır';
+  }
+  return String(value);
+};
+
+// Data nesnesinden gizli alanları çıkar ve formatla
+const filterAndFormatData = (data) => {
+  if (!data) return null;
+  const filtered = {};
+  Object.entries(data).forEach(([key, value]) => {
+    if (!hiddenKeys.includes(key)) {
+      filtered[key] = value;
+    }
+  });
+  return Object.keys(filtered).length > 0 ? filtered : null;
+};
+
 const AdminAuditLogs = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -199,9 +235,14 @@ const AdminAuditLogs = () => {
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-sm text-slate-600">
                           {log.group_id ? (
-                            <span className="flex items-center gap-1">
-                              <Users className="w-4 h-4" />
-                              {log.group_name || 'Grup'}
+                            <span className="flex items-center gap-1 flex-wrap">
+                              <Users className="w-4 h-4 shrink-0" />
+                              <span>{log.group_name || 'Grup'}</span>
+                              {log.group_students_snapshot && log.group_students_snapshot.length > 0 && (
+                                <span className="text-slate-500">
+                                  ({log.group_students_snapshot.map(s => s.name).join(', ')})
+                                </span>
+                              )}
                             </span>
                           ) : (
                             <span className="flex items-center gap-1">
@@ -226,33 +267,19 @@ const AdminAuditLogs = () => {
                 {/* Expanded Details */}
                 {expandedLog === log.id && (
                   <div className="border-t bg-white/80 p-4 space-y-3">
-                    {/* Grup öğrencileri */}
-                    {log.group_students_snapshot && log.group_students_snapshot.length > 0 && (
-                      <div className="bg-slate-50 p-3 rounded-lg">
-                        <span className="text-slate-600 font-medium text-sm">Grup Öğrencileri:</span>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {log.group_students_snapshot.map((s, i) => (
-                            <span key={i} className="px-2 py-1 bg-white rounded text-xs text-slate-700">
-                              {s.name}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {/* Eski Veri */}
-                      {log.old_data && (
+                      {filterAndFormatData(log.old_data) && (
                         <div className="bg-red-50 p-3 rounded-lg border border-red-100">
                           <span className="text-red-700 font-medium text-xs uppercase flex items-center gap-1">
                             <Trash2 className="w-3 h-3" /> Eski Veri
                           </span>
                           <div className="mt-2 space-y-1">
-                            {Object.entries(log.old_data).map(([key, value]) => (
+                            {Object.entries(filterAndFormatData(log.old_data)).map(([key, value]) => (
                               <div key={key} className="flex justify-between text-sm">
-                                <span className="text-slate-600">{key}:</span>
+                                <span className="text-slate-600">{translateKey(key)}:</span>
                                 <span className="text-slate-800 font-medium break-all text-right max-w-[60%]">
-                                  {String(value)}
+                                  {formatValue(key, value)}
                                 </span>
                               </div>
                             ))}
@@ -261,17 +288,17 @@ const AdminAuditLogs = () => {
                       )}
 
                       {/* Yeni Veri */}
-                      {log.new_data && (
+                      {filterAndFormatData(log.new_data) && (
                         <div className="bg-green-50 p-3 rounded-lg border border-green-100">
                           <span className="text-green-700 font-medium text-xs uppercase flex items-center gap-1">
                             <Plus className="w-3 h-3" /> Yeni Veri
                           </span>
                           <div className="mt-2 space-y-1">
-                            {Object.entries(log.new_data).map(([key, value]) => (
+                            {Object.entries(filterAndFormatData(log.new_data)).map(([key, value]) => (
                               <div key={key} className="flex justify-between text-sm">
-                                <span className="text-slate-600">{key}:</span>
+                                <span className="text-slate-600">{translateKey(key)}:</span>
                                 <span className="text-slate-800 font-medium break-all text-right max-w-[60%]">
-                                  {String(value)}
+                                  {formatValue(key, value)}
                                 </span>
                               </div>
                             ))}

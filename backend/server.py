@@ -2056,6 +2056,140 @@ async def create_group_planned_lesson(data: GroupPlannedLessonCreate, current_us
         "planning_master_badge": badge_result
     }
 
+class GroupPlannedLessonUpdate(BaseModel):
+    group_id: str
+    old_month: str  # Mevcut planın ay'ı
+    old_dates: str  # Mevcut planın tarihleri
+    old_number_of_lessons: int  # Mevcut planın ders sayısı
+    new_dates: str
+    new_number_of_lessons: int
+    new_month: str
+
+@api_router.put("/group-planned-lessons")
+async def update_group_planned_lesson(data: GroupPlannedLessonUpdate, current_user: User = Depends(get_current_user)):
+    """Grup için planlı dersleri toplu güncelle - tek audit log kaydı oluşturur"""
+    group = await db.student_groups.find_one({"id": data.group_id}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    if current_user.user_type == "teacher" and group.get("teacher_id") != current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Gruptaki öğrencilerin course'larını bul
+    student_courses = []
+    for student_id in group["student_ids"]:
+        course = await db.student_courses.find_one({
+            "student_id": student_id,
+            "branch_id": group["branch_id"],
+            "teacher_id": group.get("teacher_id")
+        }, {"_id": 0})
+        if course:
+            student_courses.append(course)
+    
+    # Eşleşen planları bul ve güncelle
+    updated_count = 0
+    for course in student_courses:
+        existing_plan = await db.planned_lessons.find_one({
+            "student_course_id": course["id"],
+            "month": data.old_month,
+            "dates": data.old_dates,
+            "number_of_lessons": data.old_number_of_lessons
+        }, {"_id": 0})
+        
+        if existing_plan:
+            await db.planned_lessons.update_one(
+                {"id": existing_plan["id"]},
+                {"$set": {
+                    "dates": data.new_dates,
+                    "number_of_lessons": data.new_number_of_lessons,
+                    "month": data.new_month
+                }}
+            )
+            updated_count += 1
+    
+    # Tek audit log kaydı oluştur
+    if current_user.user_type == "teacher" and updated_count > 0:
+        await create_audit_log(
+            action_type=AuditLogActionType.UPDATE,
+            category=AuditLogCategory.LESSON_PLANNING,
+            teacher_id=current_user.teacher_id,
+            entity_id=data.group_id,
+            student_id=None,
+            group_id=data.group_id,
+            old_data={
+                "dates": data.old_dates,
+                "number_of_lessons": data.old_number_of_lessons,
+                "month": data.old_month
+            },
+            new_data={
+                "dates": data.new_dates,
+                "number_of_lessons": data.new_number_of_lessons,
+                "month": data.new_month
+            }
+        )
+    
+    return {"message": f"Updated {updated_count} planned lessons for group", "count": updated_count}
+
+class GroupPlannedLessonDelete(BaseModel):
+    group_id: str
+    month: str
+    dates: str
+    number_of_lessons: int
+
+@api_router.delete("/group-planned-lessons")
+async def delete_group_planned_lesson(data: GroupPlannedLessonDelete, current_user: User = Depends(get_current_user)):
+    """Grup için planlı dersleri toplu sil - tek audit log kaydı oluşturur"""
+    group = await db.student_groups.find_one({"id": data.group_id}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    if current_user.user_type == "teacher" and group.get("teacher_id") != current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Eski veriyi kaydet (audit log için)
+    old_data = {
+        "dates": data.dates,
+        "number_of_lessons": data.number_of_lessons,
+        "month": data.month
+    }
+    
+    # Gruptaki öğrencilerin course'larını bul
+    student_courses = []
+    for student_id in group["student_ids"]:
+        course = await db.student_courses.find_one({
+            "student_id": student_id,
+            "branch_id": group["branch_id"],
+            "teacher_id": group.get("teacher_id")
+        }, {"_id": 0})
+        if course:
+            student_courses.append(course)
+    
+    # Eşleşen planları sil
+    deleted_count = 0
+    for course in student_courses:
+        result = await db.planned_lessons.delete_one({
+            "student_course_id": course["id"],
+            "month": data.month,
+            "dates": data.dates,
+            "number_of_lessons": data.number_of_lessons
+        })
+        deleted_count += result.deleted_count
+    
+    # Tek audit log kaydı oluştur
+    if current_user.user_type == "teacher" and deleted_count > 0:
+        await create_audit_log(
+            action_type=AuditLogActionType.DELETE,
+            category=AuditLogCategory.LESSON_PLANNING,
+            teacher_id=current_user.teacher_id,
+            entity_id=data.group_id,
+            student_id=None,
+            group_id=data.group_id,
+            old_data=old_data,
+            new_data=None
+        )
+    
+    return {"message": f"Deleted {deleted_count} planned lessons for group", "count": deleted_count}
+
 @api_router.get("/all-planned-lessons")
 async def get_all_planned_lessons(month: Optional[str] = None, current_user: User = Depends(get_current_user)):
     """Tüm planlı dersleri detaylı bilgiyle getir (Aylık Program için)"""
