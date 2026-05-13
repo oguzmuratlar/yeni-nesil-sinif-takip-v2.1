@@ -1332,6 +1332,18 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
+  const handleDeleteTrial = async (trialId) => {
+    if (!window.confirm('Bu denemeyi silmek istediğinize emin misiniz?')) return;
+    
+    try {
+      await apiClient.delete(`/homework/trials/${trialId}`);
+      toast.success('Deneme silindi');
+      fetchTrials();
+    } catch (error) {
+      toast.error('Deneme silinemedi');
+    }
+  };
+
   const updateTrialReview = async (trialId, field, value) => {
     try {
       await apiClient.put(`/homework/trials/${trialId}/review?${field}=${value}`);
@@ -1871,9 +1883,19 @@ const TeacherHomeworkEntry = () => {
                           <h3 className="font-medium text-slate-800">{trial.exam_name}</h3>
                           <p className="text-sm text-slate-500">{trial.exam_date}</p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => openTrialDialog(trial)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => openTrialDialog(trial)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDeleteTrial(trial.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                       
                       <div className="grid grid-cols-4 gap-2 mb-3">
@@ -1941,21 +1963,20 @@ const TeacherHomeworkEntry = () => {
               Haftalık Ödev Kontrolü
             </DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4" style={{ maxHeight: '60vh', overflow: 'auto' }}>
             {(() => {
               const allHomework = getAllPlanHomework();
               const pendingCount = allHomework.filter(h => h.status === 'assigned').length;
               
               return (
                 <>
-                  <div className="flex gap-4 mb-4 text-sm">
+                  <div className="flex gap-4 mb-4 text-sm sticky top-0 bg-white pb-2 border-b">
                     <span className="text-slate-600">Toplam: <strong>{allHomework.length}</strong> ödev</span>
                     <span className="text-yellow-600">Bekleyen: <strong>{pendingCount}</strong></span>
                     <span className="text-green-600">Tamamlanan: <strong>{allHomework.filter(h => h.status === 'completed').length}</strong></span>
                   </div>
                   
-                  <ScrollArea className="max-h-[400px]">
-                    <div className="space-y-2">
+                  <div className="space-y-2">
                       {allHomework.length === 0 ? (
                         <p className="text-center text-slate-500 py-8">Henüz ödev atanmamış</p>
                       ) : (
@@ -2011,7 +2032,6 @@ const TeacherHomeworkEntry = () => {
                         })
                       )}
                     </div>
-                  </ScrollArea>
                 </>
               );
             })()}

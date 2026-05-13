@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -5534,11 +5534,13 @@ async def delete_plan(plan_id: str, current_user: User = Depends(get_current_use
     return {"message": "Plan silindi"}
 
 @api_router.put("/homework/plans/{plan_id}")
-async def update_plan(plan_id: str, duration_days: int = 7, current_user: User = Depends(get_current_user)):
+async def update_plan(plan_id: str, data: dict = Body(...), current_user: User = Depends(get_current_user)):
     """Plan süresini güncelle"""
     plan = await db.homework_plans.find_one({"id": plan_id}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan bulunamadı")
+    
+    duration_days = data.get("duration_days", 7)
     
     # Yeni bitiş tarihini hesapla
     start_date = datetime.fromisoformat(plan["start_date"].replace('Z', '+00:00')) if isinstance(plan["start_date"], str) else plan["start_date"]
@@ -5600,6 +5602,12 @@ async def update_trial_exam(
         "net_score": round(net, 2)
     }})
     return {"message": "Deneme güncellendi"}
+
+@api_router.delete("/homework/trials/{trial_id}")
+async def delete_trial(trial_id: str, current_user: User = Depends(get_current_user)):
+    """Deneme kaydı sil"""
+    await db.trial_exams.delete_one({"id": trial_id})
+    return {"message": "Deneme silindi"}
 
 @api_router.put("/homework/trials/{trial_id}/review")
 async def update_trial_review(
