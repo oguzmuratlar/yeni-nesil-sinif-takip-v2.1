@@ -101,6 +101,21 @@ const TeacherGroupLessons = () => {
     }
   };
 
+  // Belirli tarihteki grup derslerini sil
+  const handleDeleteLessons = async (date) => {
+    if (!window.confirm(`${formatDateTurkish(date)} tarihindeki grup derslerini silmek istediğinizden emin misiniz?`)) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/group-lessons/${groupId}/${date}`);
+      toast.success('Grup dersleri silindi');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Dersler silinemedi');
+    }
+  };
+
   const branch = group ? branches.find(b => b.id === group.branch_id) : null;
   const groupStudentsList = group ? students.filter(s => group.student_ids?.includes(s.id)) : [];
 
@@ -253,15 +268,32 @@ const TeacherGroupLessons = () => {
               {Object.entries(lessonsByDate).sort((a, b) => b[0].localeCompare(a[0])).map(([date, dateLessons]) => {
                 // İlk öğrencinin ders sayısını al (tüm öğrencilerde aynı)
                 const lessonCount = dateLessons[0]?.number_of_lessons || 0;
+                const isFreeLesson = dateLessons[0]?.is_free_lesson || false;
                 return (
                   <div key={date} className="border-b pb-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-semibold text-slate-800">{formatDateTurkish(date)}</p>
+                        <p className="font-semibold text-slate-800">
+                          {formatDateTurkish(date)}
+                          {isFreeLesson && (
+                            <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                              Ücretsiz
+                            </span>
+                          )}
+                        </p>
                         <p className="text-sm text-slate-600">
                           {dateLessons.length} öğrenci • {lessonCount} ders
                         </p>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteLessons(date)}
+                      >
+                        <Trash2 size={16} className="mr-1" />
+                        Sil
+                      </Button>
                     </div>
                   </div>
                 );

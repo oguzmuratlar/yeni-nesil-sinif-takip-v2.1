@@ -301,19 +301,21 @@ group_id: str (optional)  # YENİ - Grup dersi için
 ---
 
 ## Son Güncelleme
-- Tarih: 2026-05-10
-- Versiyon: 4.6
+- Tarih: 2026-05-13
+- Versiyon: 4.7
 - Değişiklikler:
-  1. **Mobil UI/UX Geliştirmeleri** (YENİ - 10 Mayıs 2026):
-     - Login ekranı logo güncellendi (EY → Yeni Nesil Sınıf logosu)
-     - Dialog/Modal bileşenleri mobil uyumlu hale getirildi (ortalanmış, max-height, overflow-scroll)
-     - AlertDialog bileşeni mobil uyumlu güncellendi
-     - Ödemeler ekranına Banka Hesabı filtresi ve Sıralama (Baştan Sona/Sondan Başa) eklendi
-     - Aylık Program detay alanı responsive grid yapıldı (mobilde alt alta kırılıyor)
-     - Admin/Teacher modal'ları mobilde düzgün görünüyor
-  2. **Pasif Öğrenci/Grup Filtrelemesi** (27 Nisan 2026)
-  3. **Öğrenci Ders Düzenleme Özelliği** (27 Nisan 2026)
-  4. **Ders Silme Lokasyonu Değişikliği** (27 Nisan 2026)
-  5. **Admin Öğretmen Kazanç Detay Yönetimi** (27 Nisan 2026)
-  6. **Pasif Grup Yönetimi** (27 Nisan 2026)
-  7. **Önceki Güncellemeler**: Kutlama Animasyonu, Planlama Ustası Gamification
+  1. **Audit Log / İşlem Takip Sistemi** (YENİ - 13 Mayıs 2026):
+     - Öğretmen işlemleri loglanıyor (ders girişi, planlama - add/update/delete)
+     - Admin login popup'ı: Son login'den beri yapılan değişiklikleri gösteriyor
+     - Yeni sayfa: "Günlük Değişiklikler" (tarih filtresi, pagination 10/25/50/100)
+     - Grup işlemlerinde öğrenci snapshot'ı kaydediliyor
+     - Eski/yeni veri karşılaştırması
+     - Okundu mantığı: Popup kapandığında loglar okunmuş sayılıyor
+  2. **Öğretmen Grup Dersi Silme Özelliği** (YENİ - 13 Mayıs 2026):
+     - Öğretmen kendi grubunun geçmiş derslerini silebiliyor
+     - Backend role kontrolü: Teacher sadece kendi grubunu silebilir
+     - Silme sonrası liste ve bakiye güncelleniyor
+  3. **Mobil UI/UX Geliştirmeleri** (10 Mayıs 2026)
+  4. **Pasif Öğrenci/Grup Filtrelemesi** (27 Nisan 2026)
+  5. **Öğrenci Ders Düzenleme Özelliği** (27 Nisan 2026)
+  6. **Önceki Güncellemeler**: Kutlama Animasyonu, Planlama Ustası Gamification

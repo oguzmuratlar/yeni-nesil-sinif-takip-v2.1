@@ -406,6 +406,35 @@ class YouTubeContentUpdate(BaseModel):
     status: Optional[str] = None
     season_id: Optional[str] = None
 
+# ============= AUDIT LOG MODELS =============
+
+class AuditLogActionType:
+    ADD = "add"
+    UPDATE = "update"
+    DELETE = "delete"
+
+class AuditLogCategory:
+    LESSON_ENTRY = "lesson_entry"
+    LESSON_PLANNING = "lesson_planning"
+
+class AuditLog(BaseModel):
+    """Öğretmen işlem logları için model"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    action_type: str  # add, update, delete
+    category: str  # lesson_entry, lesson_planning
+    teacher_id: str  # İşlemi yapan öğretmen
+    teacher_name: Optional[str] = None  # Öğretmen adı (snapshot)
+    student_id: Optional[str] = None  # Birebir ders için öğrenci
+    student_name: Optional[str] = None  # Öğrenci adı (snapshot)
+    group_id: Optional[str] = None  # Grup dersi için grup
+    group_name: Optional[str] = None  # Grup adı (snapshot)
+    group_students_snapshot: Optional[List[dict]] = None  # Grup öğrencileri snapshot [{id, name}]
+    entity_id: str  # Lesson veya PlannedLesson ID
+    old_data: Optional[dict] = None  # Değişiklik öncesi veri
+    new_data: Optional[dict] = None  # Değişiklik sonrası veri
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 # ============= AUTH HELPERS =============
 
 def verify_password(plain_password, hashed_password):
@@ -478,6 +507,74 @@ async def calculate_teacher_earning_rate(
     return fallback.get("price", 0) if fallback else 0
 
 # ============================================================
+# AUDIT LOG HELPER FUNCTIONS
+# ============================================================
+
+async def create_audit_log(
+    action_type: str,
+    category: str,
+    teacher_id: str,
+    entity_id: str,
+    student_id: str = None,
+    group_id: str = None,
+    old_data: dict = None,
+    new_data: dict = None
+):
+    """
+    Öğretmen işlemlerini loglar.
+    Sadece teacher işlemleri loglanır, admin işlemleri loglanmaz.
+    """
+    try:
+        # Öğretmen bilgisi
+        teacher = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
+        teacher_name = teacher.get("name") if teacher else "Bilinmeyen Öğretmen"
+        
+        # Öğrenci veya grup bilgisi
+        student_name = None
+        group_name = None
+        group_students_snapshot = None
+        
+        if student_id:
+            student = await db.students.find_one({"id": student_id}, {"_id": 0})
+            student_name = student.get("name") if student else None
+        
+        if group_id:
+            group = await db.student_groups.find_one({"id": group_id}, {"_id": 0})
+            if group:
+                group_name = group.get("name")
+                # Grup öğrencilerini snapshot olarak al
+                student_ids = group.get("student_ids", [])
+                if student_ids:
+                    students = await db.students.find(
+                        {"id": {"$in": student_ids}},
+                        {"_id": 0, "id": 1, "name": 1}
+                    ).to_list(100)
+                    group_students_snapshot = [{"id": s.get("id"), "name": s.get("name")} for s in students]
+        
+        # Log kaydı oluştur
+        log_entry = {
+            "id": str(uuid.uuid4()),
+            "action_type": action_type,
+            "category": category,
+            "teacher_id": teacher_id,
+            "teacher_name": teacher_name,
+            "student_id": student_id,
+            "student_name": student_name,
+            "group_id": group_id,
+            "group_name": group_name,
+            "group_students_snapshot": group_students_snapshot,
+            "entity_id": entity_id,
+            "old_data": old_data,
+            "new_data": new_data,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        await db.audit_logs.insert_one(log_entry)
+        logging.info(f"Audit log created: {action_type} {category} by teacher {teacher_name}")
+    except Exception as e:
+        logging.error(f"Failed to create audit log: {str(e)}")
+
+# ============================================================
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     credentials_exception = HTTPException(
@@ -520,6 +617,9 @@ async def login(login_data: LoginRequest):
             )
     
     access_token = create_access_token(data={"sub": user["username"]})
+    
+    # Admin login zamanını KAYDETME - sadece popup kapatıldığında mark-read ile kaydedilecek
+    
     return Token(
         access_token=access_token,
         token_type="bearer",
@@ -1158,6 +1258,24 @@ async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(
     doc = lesson.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     await db.lessons.insert_one(doc)
+    
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher":
+        await create_audit_log(
+            action_type=AuditLogActionType.ADD,
+            category=AuditLogCategory.LESSON_ENTRY,
+            teacher_id=current_user.teacher_id,
+            entity_id=lesson.id,
+            student_id=course["student_id"],
+            group_id=None,
+            old_data=None,
+            new_data={
+                "date": lesson_data.date,
+                "number_of_lessons": lesson_data.number_of_lessons,
+                "teacher_rate": teacher_rate
+            }
+        )
+    
     return lesson
 
 @api_router.delete("/lessons/{lesson_id}")
@@ -1168,8 +1286,27 @@ async def delete_lesson(lesson_id: str, current_user: User = Depends(get_current
     
     # Check access
     course = await db.student_courses.find_one({"id": lesson["student_course_id"]}, {"_id": 0})
-    if current_user.user_type == "teacher" and course["teacher_id"] != current_user.teacher_id:
+    if current_user.user_type == "teacher" and course and course["teacher_id"] != current_user.teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher":
+        student_id = lesson.get("student_id") or (course.get("student_id") if course else None)
+        await create_audit_log(
+            action_type=AuditLogActionType.DELETE,
+            category=AuditLogCategory.LESSON_ENTRY,
+            teacher_id=current_user.teacher_id,
+            entity_id=lesson_id,
+            student_id=student_id,
+            group_id=lesson.get("group_id"),
+            old_data={
+                "date": lesson.get("date"),
+                "number_of_lessons": lesson.get("number_of_lessons"),
+                "teacher_rate": lesson.get("teacher_rate"),
+                "is_free_lesson": lesson.get("is_free_lesson", False)
+            },
+            new_data=None
+        )
     
     await db.lessons.delete_one({"id": lesson_id})
     return {"message": "Lesson deleted successfully"}
@@ -1208,6 +1345,25 @@ async def create_planned_lesson(planned_data: PlannedLessonCreate, current_user:
     doc['created_at'] = doc['created_at'].isoformat()
     await db.planned_lessons.insert_one(doc)
     
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher":
+        await create_audit_log(
+            action_type=AuditLogActionType.ADD,
+            category=AuditLogCategory.LESSON_PLANNING,
+            teacher_id=current_user.teacher_id,
+            entity_id=planned.id,
+            student_id=course.get("student_id"),
+            group_id=None,
+            old_data=None,
+            new_data={
+                "dates": planned_data.dates,
+                "number_of_lessons": planned_data.number_of_lessons,
+                "month": planned_data.month,
+                "no_lesson_this_month": planned_data.no_lesson_this_month,
+                "messaged": planned_data.messaged
+            }
+        )
+    
     # Planlama tamamlandı mı kontrol et ve puan ver
     badge_result = await check_and_award_planning_master(course["teacher_id"])
     
@@ -1235,8 +1391,36 @@ async def update_planned_lesson(planned_id: str, planned_data: PlannedLessonCrea
     if current_user.user_type == "teacher" and course["teacher_id"] != current_user.teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
+    # Eski veriyi kaydet (audit log için)
+    old_data = {
+        "dates": existing.get("dates"),
+        "number_of_lessons": existing.get("number_of_lessons"),
+        "month": existing.get("month"),
+        "no_lesson_this_month": existing.get("no_lesson_this_month"),
+        "messaged": existing.get("messaged")
+    }
+    
     update_data = planned_data.model_dump()
     await db.planned_lessons.update_one({"id": planned_id}, {"$set": update_data})
+    
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher":
+        await create_audit_log(
+            action_type=AuditLogActionType.UPDATE,
+            category=AuditLogCategory.LESSON_PLANNING,
+            teacher_id=current_user.teacher_id,
+            entity_id=planned_id,
+            student_id=course.get("student_id"),
+            group_id=None,
+            old_data=old_data,
+            new_data={
+                "dates": planned_data.dates,
+                "number_of_lessons": planned_data.number_of_lessons,
+                "month": planned_data.month,
+                "no_lesson_this_month": planned_data.no_lesson_this_month,
+                "messaged": planned_data.messaged
+            }
+        )
     
     updated = await db.planned_lessons.find_one({"id": planned_id}, {"_id": 0})
     if isinstance(updated.get('created_at'), str):
@@ -1256,6 +1440,25 @@ async def delete_planned_lesson(planned_id: str, current_user: User = Depends(ge
     course = await db.student_courses.find_one({"id": planned["student_course_id"]}, {"_id": 0})
     if current_user.user_type == "teacher" and course["teacher_id"] != current_user.teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher":
+        await create_audit_log(
+            action_type=AuditLogActionType.DELETE,
+            category=AuditLogCategory.LESSON_PLANNING,
+            teacher_id=current_user.teacher_id,
+            entity_id=planned_id,
+            student_id=course.get("student_id") if course else None,
+            group_id=None,
+            old_data={
+                "dates": planned.get("dates"),
+                "number_of_lessons": planned.get("number_of_lessons"),
+                "month": planned.get("month"),
+                "no_lesson_this_month": planned.get("no_lesson_this_month"),
+                "messaged": planned.get("messaged")
+            },
+            new_data=None
+        )
     
     await db.planned_lessons.delete_one({"id": planned_id})
     return {"message": "Planned lesson deleted successfully"}
@@ -1764,6 +1967,25 @@ async def create_group_lesson(
             await db.lessons.insert_one(doc)
             created_lessons.append(lesson)
     
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher" and created_lessons:
+        await create_audit_log(
+            action_type=AuditLogActionType.ADD,
+            category=AuditLogCategory.LESSON_ENTRY,
+            teacher_id=current_user.teacher_id,
+            entity_id=created_lessons[0].id if created_lessons else group_id,
+            student_id=None,
+            group_id=group_id,
+            old_data=None,
+            new_data={
+                "date": date,
+                "number_of_lessons": number_of_lessons,
+                "teacher_rate": teacher_rate,
+                "is_free_lesson": is_free_lesson,
+                "student_count": len(created_lessons)
+            }
+        )
+    
     return {"message": f"Created {len(created_lessons)} lessons for group", "count": len(created_lessons), "is_free_lesson": is_free_lesson}
 
 # ============= GROUP PLANNED LESSON =============
@@ -1804,6 +2026,24 @@ async def create_group_planned_lesson(data: GroupPlannedLessonCreate, current_us
             doc['created_at'] = doc['created_at'].isoformat()
             await db.planned_lessons.insert_one(doc)
             created_plans.append(planned)
+    
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher" and created_plans:
+        await create_audit_log(
+            action_type=AuditLogActionType.ADD,
+            category=AuditLogCategory.LESSON_PLANNING,
+            teacher_id=current_user.teacher_id,
+            entity_id=created_plans[0].id if created_plans else data.group_id,
+            student_id=None,
+            group_id=data.group_id,
+            old_data=None,
+            new_data={
+                "dates": data.dates,
+                "number_of_lessons": data.number_of_lessons,
+                "month": data.month,
+                "student_count": len(created_plans)
+            }
+        )
     
     # Planlama tamamlandı mı kontrol et ve puan ver
     badge_result = None
@@ -4015,6 +4255,165 @@ async def planning_master_season_end(
         "new_season": new_season,
         "teachers_processed": created_count,
         "note": "Geçmiş sezon verileri korunmuştur."
+    }
+
+
+# ============= AUDIT LOG ENDPOINTS =============
+
+@api_router.get("/admin/audit-logs/recent")
+async def get_recent_audit_logs(current_user: User = Depends(get_current_user)):
+    """
+    Admin login sonrası son login'den beri yapılan değişiklikleri getir.
+    Sadece teacher işlemleri döner, admin işlemleri filtrelenir.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access audit logs")
+    
+    # Admin'in son login zamanını bul
+    admin_login = await db.admin_login_times.find_one(
+        {"username": current_user.username},
+        {"_id": 0}
+    )
+    
+    # Eğer login kaydı yoksa veya first login ise, tüm logları getir (son 7 gün)
+    if admin_login and admin_login.get("last_login"):
+        last_login = admin_login["last_login"]
+        query = {"created_at": {"$gt": last_login}}
+    else:
+        # İlk kez giriş - son 7 günün loglarını göster
+        seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        query = {"created_at": {"$gt": seven_days_ago}}
+    
+    # Logları getir (en yeni en üstte)
+    logs = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    
+    return {
+        "logs": logs,
+        "total_count": len(logs),
+        "has_new_changes": len(logs) > 0
+    }
+
+@api_router.get("/admin/audit-logs")
+async def get_audit_logs(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Günlük Değişiklikler ekranı için pagination destekli audit log listesi.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access audit logs")
+    
+    query = {}
+    
+    # Tarih filtreleri
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            date_query["$gte"] = start_date
+        if end_date:
+            # End date'e 1 gün ekle (o günün sonuna kadar dahil etmek için)
+            date_query["$lte"] = end_date + "T23:59:59"
+        query["created_at"] = date_query
+    
+    # Toplam sayı
+    total_count = await db.audit_logs.count_documents(query)
+    
+    # Pagination
+    skip = (page - 1) * page_size
+    logs = await db.audit_logs.find(query, {"_id": 0}).sort("created_at", -1).skip(skip).limit(page_size).to_list(page_size)
+    
+    return {
+        "logs": logs,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total_count + page_size - 1) // page_size if total_count > 0 else 1
+    }
+
+@api_router.post("/admin/audit-logs/mark-read")
+async def mark_audit_logs_read(current_user: User = Depends(get_current_user)):
+    """
+    Admin'in logları okuduğunu işaretle (son login zamanını güncelle).
+    Bu endpoint admin popup'ı kapattığında çağrılır.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+    
+    await db.admin_login_times.update_one(
+        {"username": current_user.username},
+        {
+            "$set": {
+                "last_login": datetime.now(timezone.utc).isoformat(),
+                "username": current_user.username
+            }
+        },
+        upsert=True
+    )
+    
+    return {"message": "Audit logs marked as read"}
+
+# ============= GRUP DERSİ SİLME ENDPOINT =============
+
+@api_router.delete("/group-lessons/{group_id}/{date}")
+async def delete_group_lessons(group_id: str, date: str, current_user: User = Depends(get_current_user)):
+    """
+    Belirli bir grup için belirli bir tarihteki tüm dersleri sil.
+    Teacher sadece kendi grubunun derslerini silebilir.
+    """
+    # Get group
+    group = await db.student_groups.find_one({"id": group_id}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Check access - teacher sadece kendi grubunu silebilir
+    if current_user.user_type == "teacher" and group.get("teacher_id") != current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied - you can only delete lessons from your own groups")
+    
+    # O gün için grup derslerini bul
+    lessons = await db.lessons.find({
+        "group_id": group_id,
+        "date": date
+    }, {"_id": 0}).to_list(100)
+    
+    if not lessons:
+        raise HTTPException(status_code=404, detail="No lessons found for this date")
+    
+    # Audit log için eski veriyi kaydet
+    first_lesson = lessons[0] if lessons else {}
+    old_data = {
+        "date": date,
+        "number_of_lessons": first_lesson.get("number_of_lessons"),
+        "teacher_rate": first_lesson.get("teacher_rate"),
+        "is_free_lesson": first_lesson.get("is_free_lesson", False),
+        "student_count": len(lessons)
+    }
+    
+    # Tüm dersleri sil
+    result = await db.lessons.delete_many({
+        "group_id": group_id,
+        "date": date
+    })
+    
+    # Audit log - sadece teacher işlemleri loglanır
+    if current_user.user_type == "teacher":
+        await create_audit_log(
+            action_type=AuditLogActionType.DELETE,
+            category=AuditLogCategory.LESSON_ENTRY,
+            teacher_id=current_user.teacher_id,
+            entity_id=first_lesson.get("id", group_id),
+            student_id=None,
+            group_id=group_id,
+            old_data=old_data,
+            new_data=None
+        )
+    
+    return {
+        "message": f"Deleted {result.deleted_count} lessons for group on {date}",
+        "deleted_count": result.deleted_count
     }
 
 

@@ -13,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
+import AuditLogPopup from '../../components/admin/AuditLogPopup';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
 import { formatMoney } from '../../lib/utils';
@@ -22,10 +23,23 @@ const AdminDashboard = () => {
   const [yearEndDialogOpen, setYearEndDialogOpen] = useState(false);
   const [yearEndLoading, setYearEndLoading] = useState(false);
   const [bankAccounts, setBankAccounts] = useState([]);
+  const [auditLogPopupOpen, setAuditLogPopupOpen] = useState(false);
 
   useEffect(() => {
     fetchBankAccounts();
+    checkForAuditLogs();
   }, []);
+
+  const checkForAuditLogs = async () => {
+    try {
+      const response = await apiClient.get('/admin/audit-logs/recent');
+      if (response.data.has_new_changes) {
+        setAuditLogPopupOpen(true);
+      }
+    } catch (error) {
+      console.error('Audit logs kontrol edilemedi');
+    }
+  };
 
   const fetchBankAccounts = async () => {
     try {
@@ -200,6 +214,12 @@ const AdminDashboard = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Audit Log Popup */}
+        <AuditLogPopup 
+          open={auditLogPopupOpen} 
+          onClose={() => setAuditLogPopupOpen(false)} 
+        />
       </div>
     </AdminLayout>
   );

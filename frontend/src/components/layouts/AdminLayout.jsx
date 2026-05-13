@@ -17,7 +17,8 @@ import {
   Menu,
   X,
   Wallet,
-  Trophy
+  Trophy,
+  Clock
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -58,6 +59,7 @@ const AdminLayout = ({ children }) => {
     { path: '/admin/bank-accounts', label: 'Banka Hesapları', icon: Landmark },
     { path: '/admin/monthly-program', label: 'Aylık Program', icon: Calendar },
     { path: '/admin/badges', label: 'Rozetler', icon: Trophy },
+    { path: '/admin/audit-logs', label: 'Günlük Değişiklikler', icon: Clock },
     { path: '/admin/users/new', label: 'Kullanıcı Ekle', icon: UserPlus },
   ];
 
