@@ -279,15 +279,19 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Gelecek Görevler
 
-### P0 - Ödev Takip Sistemi Devam (Aktif Geliştirme)
-- Aşama 4: Test durum sistemi (renk kodları, auto-save, undo)
-- Aşama 5: Haftalık plan sistemi & PDF export
-- Aşama 6: Deneme modülü
-- Aşama 7: Mobile UX optimizasyonu
+### P0 - Ödev Takip Sistemi (TAMAMLANDI ✅)
+- ✅ Aşama 1: Veri modeli & Backend temeli
+- ✅ Aşama 2: Admin İçerik Yönetimi
+- ✅ Aşama 3: Öğretmen Ödev Girişi
+- ✅ Aşama 4: Test durum sistemi (6 renk, popup, auto-save, undo)
+- ✅ Aşama 5: Haftalık plan sistemi (7/14/21 gün, serbest metin ödev)
+- ✅ Aşama 6: Deneme modülü (D/Y/B, net hesaplama, checkbox'lar)
+- ✅ Aşama 7: Mobile-first UX (responsive layout)
 
-### P1 - Öncelikli
+### P1 - Öncelikli (Sonraki İşler)
+- PDF Export özelliği (haftalık plan için)
 - iOS App / PWA Dönüşümü
-- Backend refactoring (server.py ~5600 satır)
+- Backend refactoring (server.py ~5600+ satır)
 
 ### P2 - Normal
 - WordPress entegrasyonu
@@ -296,6 +300,7 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ### P3 - Gelecek
 - Raporlama modülü
+- Deneme analizi (zayıf konular)
 
 ---
 
@@ -308,22 +313,20 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Son Güncelleme
 - Tarih: 2026-05-13
-- Versiyon: 5.0
+- Versiyon: 5.1
 - Değişiklikler:
-  1. **ÖDEV TAKİP SİSTEMİ - AŞAMA 1-3** (YENİ - 13 Mayıs 2026):
+  1. **ÖDEV TAKİP SİSTEMİ - TAM SÜRÜM** (13 Mayıs 2026):
      - 10+ yeni MongoDB koleksiyonu ve veri modeli
-     - Backend: 20+ yeni endpoint (kitap, ünite, konu, test CRUD)
-     - Admin "İçerik Yönetimi" sayfası - kitap/ünite/konu/test ağaç yapısı
-     - Öğretmen "Ödev Girişi" butonu ve 3 panelli ödev takip ekranı
-     - Öğrenciye kitap atama, tree view ile içerik görüntüleme
-     - Branş bazlı kitap havuzu
-  2. **Admin Sidebar Reorganizasyonu** (13 Mayıs 2026):
-     - Dersler grubu (collapsible)
-     - Muhasebe grubu (collapsible)
-     - Ayrı bölümde: İçerik Yönetimi, Rozetler, Günlük Değişiklikler
-  3. **Audit Log UI/UX İyileştirmeleri** (13 Mayıs 2026):
-     - Grup işlemlerinde öğrenci isimleri parantez içinde gösteriliyor
-     - İngilizce key'ler Türkçe'ye çevrildi
-     - Boolean değerler Türkçe (Evet/Hayır)
+     - Backend: 25+ yeni endpoint
+     - Admin "İçerik Yönetimi" sayfası - Kitap/Ünite/Konu/Test CRUD
+     - Öğretmen 3 panelli ödev takip ekranı
+     - 6 renkli test durum sistemi (popup ile hızlı değiştirme)
+     - Auto-save ve Undo sistemi
+     - Haftalık plan oluşturma (7/14/21 gün)
+     - Serbest metin ödev ekleme
+     - Deneme modülü (D/Y/B, net hesaplama, review checkbox'lar)
+     - Mobile-first responsive tasarım
+  2. **Admin Sidebar Reorganizasyonu** (13 Mayıs 2026)
+  3. **Audit Log UI/UX İyileştirmeleri** (13 Mayıs 2026)
   4. **Önceki Güncellemeler**: Audit Log sistemi, Grup dersi silme, Mobil UI/UX
 

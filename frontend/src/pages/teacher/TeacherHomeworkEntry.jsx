@@ -8,7 +8,7 @@ import { ScrollArea } from '../../components/ui/scroll-area';
 import { 
   Book, ChevronLeft, ChevronRight, ChevronDown, Plus, Check, X, 
   Calendar, FileText, RotateCcw, Trash2, Clock, AlertCircle,
-  Undo2
+  Undo2, Edit
 } from 'lucide-react';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
@@ -51,6 +51,23 @@ const TeacherHomeworkEntry = () => {
   const [freetextDialog, setFreetextDialog] = useState(false);
   const [freetextDate, setFreetextDate] = useState('');
   const [freetextValue, setFreetextValue] = useState('');
+  const [statusPopup, setStatusPopup] = useState({ open: false, testId: null, x: 0, y: 0 });
+  
+  // Tabs
+  const [activeTab, setActiveTab] = useState('homework'); // 'homework' | 'trials'
+  
+  // Trials (Denemeler)
+  const [trials, setTrials] = useState([]);
+  const [trialDialogOpen, setTrialDialogOpen] = useState(false);
+  const [editingTrial, setEditingTrial] = useState(null);
+  const [trialForm, setTrialForm] = useState({
+    exam_name: '',
+    exam_date: new Date().toISOString().split('T')[0],
+    correct_count: 0,
+    wrong_count: 0,
+    empty_count: 0,
+    notes: ''
+  });
   
   // Available books for assignment
   const [availableBooks, setAvailableBooks] = useState([]);
@@ -106,6 +123,22 @@ const TeacherHomeworkEntry = () => {
       setLoading(false);
     }
   };
+
+  // Denemeleri çek
+  const fetchTrials = async () => {
+    try {
+      const response = await apiClient.get(`/homework/students/${studentId}/trials?branch_id=${branchId}`);
+      setTrials(response.data);
+    } catch (error) {
+      console.error('Trials error:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'trials') {
+      fetchTrials();
+    }
+  }, [activeTab, studentId, branchId]);
 
   const fetchBookTree = async (bookId) => {
     try {
@@ -299,6 +332,97 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
+  // ============ DENEME FONKSİYONLARI ============
+  
+  const openTrialDialog = (trial = null) => {
+    if (trial) {
+      setEditingTrial(trial);
+      setTrialForm({
+        exam_name: trial.exam_name,
+        exam_date: trial.exam_date,
+        correct_count: trial.correct_count,
+        wrong_count: trial.wrong_count,
+        empty_count: trial.empty_count,
+        notes: trial.notes || ''
+      });
+    } else {
+      setEditingTrial(null);
+      setTrialForm({
+        exam_name: '',
+        exam_date: new Date().toISOString().split('T')[0],
+        correct_count: 0,
+        wrong_count: 0,
+        empty_count: 0,
+        notes: ''
+      });
+    }
+    setTrialDialogOpen(true);
+  };
+
+  const handleSaveTrial = async () => {
+    if (!trialForm.exam_name || !trialForm.exam_date) {
+      toast.error('Deneme adı ve tarihi zorunludur');
+      return;
+    }
+    
+    try {
+      const data = {
+        student_id: studentId,
+        branch_id: branchId,
+        ...trialForm,
+        correct_count: parseInt(trialForm.correct_count) || 0,
+        wrong_count: parseInt(trialForm.wrong_count) || 0,
+        empty_count: parseInt(trialForm.empty_count) || 0
+      };
+      
+      if (editingTrial) {
+        await apiClient.put(`/homework/trials/${editingTrial.id}`, data);
+        toast.success('Deneme güncellendi');
+      } else {
+        await apiClient.post('/homework/trials', data);
+        toast.success('Deneme kaydedildi');
+      }
+      
+      setTrialDialogOpen(false);
+      fetchTrials();
+    } catch (error) {
+      toast.error('İşlem başarısız');
+    }
+  };
+
+  const updateTrialReview = async (trialId, field, value) => {
+    try {
+      await apiClient.put(`/homework/trials/${trialId}/review?${field}=${value}`);
+      fetchTrials();
+    } catch (error) {
+      console.error('Review update error:', error);
+    }
+  };
+
+  // ============ HIZLI DURUM DEĞİŞTİRME ============
+  
+  const openStatusPopup = (e, testId) => {
+    e.stopPropagation();
+    const rect = e.target.getBoundingClientRect();
+    setStatusPopup({
+      open: true,
+      testId,
+      x: rect.left,
+      y: rect.bottom + 5
+    });
+  };
+
+  const closeStatusPopup = () => {
+    setStatusPopup({ open: false, testId: null, x: 0, y: 0 });
+  };
+
+  const handleQuickStatusChange = async (newStatus) => {
+    if (statusPopup.testId) {
+      await updateTestStatus(statusPopup.testId, newStatus);
+      closeStatusPopup();
+    }
+  };
+
   const toggleUnit = (unitId) => {
     setExpandedUnits(prev => ({ ...prev, [unitId]: !prev[unitId] }));
   };
@@ -385,7 +509,32 @@ const TeacherHomeworkEntry = () => {
           </div>
         </div>
 
-        {/* 3 Panel Layout */}
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4 border-b border-slate-200">
+          <button
+            onClick={() => setActiveTab('homework')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'homework'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Ödev Takip
+          </button>
+          <button
+            onClick={() => setActiveTab('trials')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'trials'
+                ? 'border-purple-500 text-purple-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Denemeler
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'homework' ? (
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-0">
           {/* Sol Panel - Kitaplar */}
           <div className="lg:col-span-3 teacher-card p-3 flex flex-col min-h-0">
@@ -523,12 +672,12 @@ const TeacherHomeworkEntry = () => {
                                     key={test.id}
                                     className={`flex items-center gap-2 p-2 pl-10 border-b last:border-b-0 ${statusInfo.color}`}
                                   >
-                                    {/* Status button - tıklayınca durum değişir */}
+                                    {/* Status button - tıklayınca popup açılır */}
                                     <button
-                                      onClick={() => cycleTestStatus(test.id)}
-                                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${statusInfo.color} ${statusInfo.textColor}`}
+                                      onClick={(e) => openStatusPopup(e, test.id)}
+                                      className={`w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${statusInfo.color} ${statusInfo.textColor}`}
                                     >
-                                      {StatusIcon && <StatusIcon className="w-3.5 h-3.5" />}
+                                      {StatusIcon && <StatusIcon className="w-4 h-4" />}
                                     </button>
                                     
                                     <span className={`text-sm flex-1 truncate ${statusInfo.textColor}`}>
@@ -671,7 +820,139 @@ const TeacherHomeworkEntry = () => {
             </ScrollArea>
           </div>
         </div>
+        ) : (
+          /* ============ DENEME SEKMESİ ============ */
+          <div className="flex-1 teacher-card p-4 overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-slate-700">Deneme Sonuçları</h2>
+              <Button size="sm" onClick={() => openTrialDialog()} className="gap-1">
+                <Plus className="w-4 h-4" />
+                Deneme Ekle
+              </Button>
+            </div>
+            
+            {trials.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>Henüz deneme kaydı yok</p>
+                <Button 
+                  variant="link" 
+                  size="sm"
+                  onClick={() => openTrialDialog()}
+                >
+                  İlk denemeyi ekle
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {trials.map(trial => {
+                  const net = trial.correct_count - (trial.wrong_count / 4);
+                  return (
+                    <div key={trial.id} className="border rounded-lg p-4 hover:border-purple-200 transition-all">
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div>
+                          <h3 className="font-medium text-slate-800">{trial.exam_name}</h3>
+                          <p className="text-sm text-slate-500">{trial.exam_date}</p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => openTrialDialog(trial)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-4 gap-3 mb-3">
+                        <div className="text-center p-2 bg-green-50 rounded">
+                          <p className="text-lg font-bold text-green-600">{trial.correct_count}</p>
+                          <p className="text-xs text-slate-500">Doğru</p>
+                        </div>
+                        <div className="text-center p-2 bg-red-50 rounded">
+                          <p className="text-lg font-bold text-red-600">{trial.wrong_count}</p>
+                          <p className="text-xs text-slate-500">Yanlış</p>
+                        </div>
+                        <div className="text-center p-2 bg-slate-50 rounded">
+                          <p className="text-lg font-bold text-slate-600">{trial.empty_count}</p>
+                          <p className="text-xs text-slate-500">Boş</p>
+                        </div>
+                        <div className="text-center p-2 bg-purple-50 rounded">
+                          <p className="text-lg font-bold text-purple-600">{net.toFixed(2)}</p>
+                          <p className="text-xs text-slate-500">Net</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={trial.reviewed_wrong}
+                            onChange={(e) => updateTrialReview(trial.id, 'reviewed_wrong', e.target.checked)}
+                            className="rounded border-slate-300"
+                          />
+                          <span className="text-sm text-slate-600">Yanlışlara baktı</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={trial.reviewed_topics}
+                            onChange={(e) => updateTrialReview(trial.id, 'reviewed_topics', e.target.checked)}
+                            className="rounded border-slate-300"
+                          />
+                          <span className="text-sm text-slate-600">Eksik konuyu tekrar etti</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={trial.found_mistakes}
+                            onChange={(e) => updateTrialReview(trial.id, 'found_mistakes', e.target.checked)}
+                            className="rounded border-slate-300"
+                          />
+                          <span className="text-sm text-slate-600">Kaçırdığı bilgiyi buldu</span>
+                        </label>
+                      </div>
+                      
+                      {trial.notes && (
+                        <p className="mt-2 text-sm text-slate-500 bg-slate-50 p-2 rounded">{trial.notes}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Status Popup */}
+      {statusPopup.open && (
+        <div 
+          className="fixed z-50 bg-white rounded-lg shadow-xl border p-2 min-w-[160px]"
+          style={{ left: statusPopup.x, top: statusPopup.y }}
+        >
+          <div className="space-y-1">
+            {Object.entries(TEST_STATUSES).map(([key, info]) => {
+              const Icon = info.icon;
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleQuickStatusChange(key)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-slate-100 ${info.textColor}`}
+                >
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${info.color}`}>
+                    {Icon && <Icon className="w-3 h-3" />}
+                  </div>
+                  {info.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      
+      {/* Click outside to close status popup */}
+      {statusPopup.open && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={closeStatusPopup}
+        />
+      )}
 
       {/* Kitap Ekleme Dialog */}
       <Dialog open={addBookDialog} onOpenChange={setAddBookDialog}>
@@ -771,6 +1052,80 @@ const TeacherHomeworkEntry = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setFreetextDialog(false)}>İptal</Button>
             <Button onClick={handleAddFreetext}>Ekle</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deneme Dialog */}
+      <Dialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingTrial ? 'Deneme Düzenle' : 'Yeni Deneme'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-slate-700">Deneme Adı *</label>
+              <Input
+                value={trialForm.exam_name}
+                onChange={(e) => setTrialForm({ ...trialForm, exam_name: e.target.value })}
+                placeholder="Örn: LGS Deneme 1"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Tarih *</label>
+              <Input
+                type="date"
+                value={trialForm.exam_date}
+                onChange={(e) => setTrialForm({ ...trialForm, exam_date: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-sm font-medium text-green-600">Doğru</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={trialForm.correct_count}
+                  onChange={(e) => setTrialForm({ ...trialForm, correct_count: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-red-600">Yanlış</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={trialForm.wrong_count}
+                  onChange={(e) => setTrialForm({ ...trialForm, wrong_count: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-600">Boş</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={trialForm.empty_count}
+                  onChange={(e) => setTrialForm({ ...trialForm, empty_count: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Notlar</label>
+              <Input
+                value={trialForm.notes}
+                onChange={(e) => setTrialForm({ ...trialForm, notes: e.target.value })}
+                placeholder="İsteğe bağlı not..."
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTrialDialogOpen(false)}>İptal</Button>
+            <Button onClick={handleSaveTrial}>Kaydet</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
