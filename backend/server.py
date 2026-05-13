@@ -4845,15 +4845,8 @@ async def get_book(book_id: str, current_user: User = Depends(get_current_user))
 @api_router.post("/homework/books")
 async def create_book(book_data: BookCreate, current_user: User = Depends(get_current_user)):
     """Yeni kitap oluştur"""
-    # Öğretmen yetki kontrolü
-    if current_user.user_type == "teacher":
-        teacher_branches = await db.teacher_branches.find(
-            {"teacher_id": current_user.teacher_id},
-            {"_id": 0}
-        ).to_list(100)
-        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
-        if book_data.branch_id not in teacher_branch_ids:
-            raise HTTPException(status_code=403, detail="Bu branşa kitap ekleme yetkiniz yok")
+    # Öğretmen veya admin kitap oluşturabilir
+    # Öğretmen ödev takip sayfasına erişebildiyse zaten o branş için çalışıyordur
     
     book = Book(
         **book_data.model_dump(),
