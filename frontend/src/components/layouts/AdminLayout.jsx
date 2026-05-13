@@ -6,7 +6,6 @@ import {
   GraduationCap, 
   CreditCard, 
   Calendar, 
-  UserPlus, 
   LogOut,
   LayoutDashboard,
   Landmark,
@@ -18,7 +17,11 @@ import {
   X,
   Wallet,
   Trophy,
-  Clock
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  GraduationCap as LessonsIcon,
+  Calculator
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -26,6 +29,17 @@ const AdminLayout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Collapsible menu state - localStorage'dan oku
+  const [expandedGroups, setExpandedGroups] = useState(() => {
+    const saved = localStorage.getItem('adminMenuExpanded');
+    return saved ? JSON.parse(saved) : { dersler: true, muhasebe: true };
+  });
+
+  // Expand state'i localStorage'a kaydet
+  useEffect(() => {
+    localStorage.setItem('adminMenuExpanded', JSON.stringify(expandedGroups));
+  }, [expandedGroups]);
 
   // Sayfa değiştiğinde sidebar'ı kapat (mobilde)
   useEffect(() => {
@@ -46,22 +60,55 @@ const AdminLayout = ({ children }) => {
     navigate('/login');
   };
 
-  const menuItems = [
-    { path: '/admin/dashboard', label: 'Ana Sayfa', icon: LayoutDashboard },
-    { path: '/admin/students', label: 'Öğrenciler', icon: Users },
-    { path: '/admin/teachers', label: 'Öğretmenler', icon: GraduationCap },
-    { path: '/admin/groups', label: 'Gruplar', icon: UsersRound },
-    { path: '/admin/camps', label: 'Kamplar', icon: Tent },
-    { path: '/admin/youtube', label: 'YouTube', icon: Youtube },
-    { path: '/admin/branches', label: 'Branşlar', icon: BookOpen },
-    { path: '/admin/cashboxes', label: 'Kasalar', icon: Wallet },
-    { path: '/admin/payments', label: 'Ödemeler', icon: CreditCard },
-    { path: '/admin/bank-accounts', label: 'Banka Hesapları', icon: Landmark },
-    { path: '/admin/monthly-program', label: 'Aylık Program', icon: Calendar },
-    { path: '/admin/badges', label: 'Rozetler', icon: Trophy },
-    { path: '/admin/audit-logs', label: 'Günlük Değişiklikler', icon: Clock },
-    { path: '/admin/users/new', label: 'Kullanıcı Ekle', icon: UserPlus },
-  ];
+  const toggleGroup = (groupKey) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupKey]: !prev[groupKey]
+    }));
+  };
+
+  // Menü yapısı - gruplu
+  const menuStructure = {
+    standalone: [
+      { path: '/admin/dashboard', label: 'Ana Sayfa', icon: LayoutDashboard },
+    ],
+    groups: [
+      {
+        key: 'dersler',
+        label: 'Dersler',
+        icon: LessonsIcon,
+        items: [
+          { path: '/admin/students', label: 'Öğrenciler', icon: Users },
+          { path: '/admin/teachers', label: 'Öğretmenler', icon: GraduationCap },
+          { path: '/admin/groups', label: 'Gruplar', icon: UsersRound },
+          { path: '/admin/camps', label: 'Kamplar', icon: Tent },
+          { path: '/admin/youtube', label: 'YouTube', icon: Youtube },
+          { path: '/admin/branches', label: 'Branşlar', icon: BookOpen },
+        ]
+      },
+      {
+        key: 'muhasebe',
+        label: 'Muhasebe',
+        icon: Calculator,
+        items: [
+          { path: '/admin/cashboxes', label: 'Kasalar', icon: Wallet },
+          { path: '/admin/payments', label: 'Ödemeler', icon: CreditCard },
+          { path: '/admin/bank-accounts', label: 'Banka Hesapları', icon: Landmark },
+          { path: '/admin/monthly-program', label: 'Aylık Program', icon: Calendar },
+        ]
+      }
+    ],
+    bottom: [
+      { path: '/admin/badges', label: 'Rozetler', icon: Trophy },
+      { path: '/admin/audit-logs', label: 'Günlük Değişiklikler', icon: Clock },
+    ]
+  };
+
+  // Aktif sayfa kontrolü
+  const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
+  
+  // Grup içinde aktif sayfa var mı?
+  const hasActiveInGroup = (items) => items.some(item => isActive(item.path));
 
   return (
     <div className="min-h-screen admin-bg">
@@ -109,17 +156,96 @@ const AdminLayout = ({ children }) => {
         </div>
         
         {/* Navigation */}
-        <nav className="mt-2 lg:mt-6 overflow-y-auto max-h-[calc(100vh-180px)]">
-          {menuItems.map((item) => {
+        <nav className="mt-2 lg:mt-4 overflow-y-auto max-h-[calc(100vh-180px)] pb-4">
+          {/* Standalone items (Ana Sayfa) */}
+          {menuStructure.standalone.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 data-testid={`admin-menu-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-                className={`flex items-center gap-3 px-4 lg:px-6 py-3.5 lg:py-3 transition-colors ${
-                  isActive
+                className={`flex items-center gap-3 px-4 lg:px-6 py-3 transition-colors ${
+                  isActive(item.path)
+                    ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600 font-semibold'
+                    : 'text-slate-600 hover:bg-slate-50 active:bg-slate-100'
+                }`}
+              >
+                <Icon size={20} />
+                <span className="text-sm lg:text-base">{item.label}</span>
+              </Link>
+            );
+          })}
+
+          {/* Grouped items */}
+          {menuStructure.groups.map((group) => {
+            const GroupIcon = group.icon;
+            const isExpanded = expandedGroups[group.key];
+            const hasActive = hasActiveInGroup(group.items);
+            
+            return (
+              <div key={group.key} className="mt-1">
+                {/* Group Header */}
+                <button
+                  onClick={() => toggleGroup(group.key)}
+                  data-testid={`admin-menu-group-${group.key}`}
+                  className={`flex items-center justify-between w-full px-4 lg:px-6 py-3 transition-colors ${
+                    hasActive && !isExpanded
+                      ? 'bg-blue-50/50 text-blue-600'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <GroupIcon size={20} />
+                    <span className="text-sm lg:text-base font-medium">{group.label}</span>
+                  </div>
+                  {isExpanded ? (
+                    <ChevronDown size={18} className="text-slate-400" />
+                  ) : (
+                    <ChevronRight size={18} className="text-slate-400" />
+                  )}
+                </button>
+                
+                {/* Group Items */}
+                <div className={`overflow-hidden transition-all duration-200 ${
+                  isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                }`}>
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        data-testid={`admin-menu-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                        className={`flex items-center gap-3 pl-8 lg:pl-12 pr-4 lg:pr-6 py-2.5 transition-colors ${
+                          isActive(item.path)
+                            ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600 font-semibold'
+                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700 active:bg-slate-100'
+                        }`}
+                      >
+                        <Icon size={18} />
+                        <span className="text-sm">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Divider */}
+          <div className="my-3 mx-4 lg:mx-6 border-t border-slate-100" />
+
+          {/* Bottom standalone items */}
+          {menuStructure.bottom.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                data-testid={`admin-menu-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+                className={`flex items-center gap-3 px-4 lg:px-6 py-3 transition-colors ${
+                  isActive(item.path)
                     ? 'bg-blue-50 text-blue-600 border-r-4 border-blue-600 font-semibold'
                     : 'text-slate-600 hover:bg-slate-50 active:bg-slate-100'
                 }`}
