@@ -302,20 +302,30 @@ group_id: str (optional)  # YENİ - Grup dersi için
 
 ## Son Güncelleme
 - Tarih: 2026-05-13
-- Versiyon: 4.7
+- Versiyon: 4.8
 - Değişiklikler:
-  1. **Audit Log / İşlem Takip Sistemi** (YENİ - 13 Mayıs 2026):
+  1. **Audit Log UI/UX İyileştirmeleri** (YENİ - 13 Mayıs 2026):
+     - Grup işlemlerinde öğrenci isimleri parantez içinde gösteriliyor
+     - İngilizce key'ler Türkçe'ye çevrildi (Tarih, Ders Sayısı, Ay, Bu Ay Ders Yok, Mesaj Atıldı)
+     - İç kullanım alanları gizlendi (is_free_lesson, student_count, teacher_rate)
+     - Boolean değerler Türkçe (Evet/Hayır)
+  2. **Grup Planlama Audit Log Düzeltmesi** (YENİ - 13 Mayıs 2026):
+     - Yeni endpoint'ler: PUT/DELETE /api/group-planned-lessons
+     - Grup güncelleme/silme işlemleri artık tek audit log kaydı oluşturuyor
+     - Frontend bu yeni endpoint'leri kullanacak şekilde güncellendi
+  3. **Audit Log / İşlem Takip Sistemi** (13 Mayıs 2026):
      - Öğretmen işlemleri loglanıyor (ders girişi, planlama - add/update/delete)
      - Admin login popup'ı: Son login'den beri yapılan değişiklikleri gösteriyor
      - Yeni sayfa: "Günlük Değişiklikler" (tarih filtresi, pagination 10/25/50/100)
      - Grup işlemlerinde öğrenci snapshot'ı kaydediliyor
      - Eski/yeni veri karşılaştırması
      - Okundu mantığı: Popup kapandığında loglar okunmuş sayılıyor
-  2. **Öğretmen Grup Dersi Silme Özelliği** (YENİ - 13 Mayıs 2026):
+  4. **Öğretmen Grup Dersi Silme Özelliği** (13 Mayıs 2026):
      - Öğretmen kendi grubunun geçmiş derslerini silebiliyor
      - Backend role kontrolü: Teacher sadece kendi grubunu silebilir
      - Silme sonrası liste ve bakiye güncelleniyor
-  3. **Mobil UI/UX Geliştirmeleri** (10 Mayıs 2026)
-  4. **Pasif Öğrenci/Grup Filtrelemesi** (27 Nisan 2026)
-  5. **Öğrenci Ders Düzenleme Özelliği** (27 Nisan 2026)
-  6. **Önceki Güncellemeler**: Kutlama Animasyonu, Planlama Ustası Gamification
+  5. **Mobil UI/UX Geliştirmeleri** (10 Mayıs 2026)
+  6. **Pasif Öğrenci/Grup Filtrelemesi** (27 Nisan 2026)
+  7. **Öğrenci Ders Düzenleme Özelliği** (27 Nisan 2026)
+  8. **Önceki Güncellemeler**: Kutlama Animasyonu, Planlama Ustası Gamification
+
