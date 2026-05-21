@@ -2240,27 +2240,36 @@ async def create_group_lesson(
             "teacher_id": group.get("teacher_id")
         }, {"_id": 0})
         
-        if course:
-            # İlk öğrenciye tam ücret, diğerlerine 0 (duplikasyonu önlemek için)
-            lesson_teacher_rate = teacher_rate if is_first_student else 0
-            is_first_student = False
-            
-            lesson = Lesson(
-                student_course_id=course["id"],
-                date=date,
-                number_of_lessons=number_of_lessons,
-                teacher_rate=lesson_teacher_rate,
-                group_id=group_id,
-                is_free_lesson=is_free_lesson,
-                # Ders kaydına course bilgilerini de ekle (course silinse bile görünebilsin)
-                teacher_id=group.get("teacher_id"),
-                branch_id=branch_id,
-                student_id=student_id
-            )
-            doc = lesson.model_dump()
-            doc['created_at'] = doc['created_at'].isoformat()
-            await db.lessons.insert_one(doc)
-            created_lessons.append(lesson)
+        # Eğer course bulunamazsa, sadece branch_id ve student_id ile dene
+        if not course:
+            course = await db.student_courses.find_one({
+                "student_id": student_id,
+                "branch_id": branch_id
+            }, {"_id": 0})
+        
+        # Hala bulunamazsa, yeni bir course ID oluştur (geçici)
+        student_course_id = course["id"] if course else f"auto_{student_id}_{branch_id}"
+        
+        # İlk öğrenciye tam ücret, diğerlerine 0 (duplikasyonu önlemek için)
+        lesson_teacher_rate = teacher_rate if is_first_student else 0
+        is_first_student = False
+        
+        lesson = Lesson(
+            student_course_id=student_course_id,
+            date=date,
+            number_of_lessons=number_of_lessons,
+            teacher_rate=lesson_teacher_rate,
+            group_id=group_id,
+            is_free_lesson=is_free_lesson,
+            # Ders kaydına course bilgilerini de ekle (course silinse bile görünebilsin)
+            teacher_id=group.get("teacher_id"),
+            branch_id=branch_id,
+            student_id=student_id
+        )
+        doc = lesson.model_dump()
+        doc['created_at'] = doc['created_at'].isoformat()
+        await db.lessons.insert_one(doc)
+        created_lessons.append(lesson)
     
     # Audit log - sadece teacher işlemleri loglanır
     if current_user.user_type == "teacher" and created_lessons:
