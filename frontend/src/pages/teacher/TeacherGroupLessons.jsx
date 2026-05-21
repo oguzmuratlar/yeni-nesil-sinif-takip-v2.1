@@ -20,7 +20,7 @@ const TeacherGroupLessons = () => {
   const [group, setGroup] = useState(null);
   const [students, setStudents] = useState([]);
   const [branches, setBranches] = useState([]);
-  const [lessons, setLessons] = useState([]);
+  const [allLessons, setAllLessons] = useState([]); // Tüm dersler
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newLesson, setNewLesson] = useState({
@@ -28,24 +28,23 @@ const TeacherGroupLessons = () => {
     number_of_lessons: 2
   });
   
-  // Pagination state
+  // Pagination state - TARİH BAZLI
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const pageSize = 15;
+  const datesPerPage = 15; // Her sayfada 15 tarih satırı
 
   useEffect(() => {
     if (user?.teacher_id) {
       fetchData();
     }
-  }, [groupId, user, currentPage]);
+  }, [groupId, user]);
 
   const fetchData = async () => {
     try {
-      const [groupsRes, studentsRes, branchesRes] = await Promise.all([
+      const [groupsRes, studentsRes, branchesRes, lessonsRes] = await Promise.all([
         apiClient.get('/student-groups'),
         apiClient.get('/students'),
-        apiClient.get('/branches')
+        apiClient.get('/branches'),
+        apiClient.get('/lessons')
       ]);
       
       // Öğretmene ait grubu bul
@@ -62,34 +61,22 @@ const TeacherGroupLessons = () => {
       setStudents(studentsRes.data);
       setBranches(branchesRes.data);
       
-      // Pagination destekli ders listesi al
-      try {
-        const lessonsRes = await apiClient.get(`/lessons/paginated?group_id=${groupId}&page=${currentPage}&page_size=${pageSize}`);
-        const groupLessons = lessonsRes.data.data || [];
-        setTotalCount(lessonsRes.data.total_count || 0);
-        setTotalPages(lessonsRes.data.total_pages || 1);
-        setLessons(groupLessons);
-      } catch (e) {
-        // Fallback: eski API ile dene
-        const lessonsRes = await apiClient.get('/lessons');
-        let groupLessons = lessonsRes.data.filter(l => l.group_id === groupId);
-        
-        if (groupLessons.length === 0) {
-          const groupStudentIds = foundGroup.student_ids || [];
-          const coursesRes = await apiClient.get('/student-courses');
-          const groupCourseIds = coursesRes.data
-            .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
-            .map(c => c.id);
-          groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
-        }
-        
-        const sortedLessons = groupLessons.sort((a, b) => new Date(b.date) - new Date(a.date));
-        setTotalCount(sortedLessons.length);
-        setTotalPages(Math.ceil(sortedLessons.length / pageSize));
-        // Manual pagination
-        const start = (currentPage - 1) * pageSize;
-        setLessons(sortedLessons.slice(start, start + pageSize));
+      // Grup derslerini filtrele - önce group_id ile
+      let groupLessons = lessonsRes.data.filter(l => l.group_id === groupId);
+      
+      // Fallback: group_id yoksa eski yöntemle
+      if (groupLessons.length === 0) {
+        const groupStudentIds = foundGroup.student_ids || [];
+        const coursesRes = await apiClient.get('/student-courses');
+        const groupCourseIds = coursesRes.data
+          .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
+          .map(c => c.id);
+        groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
       }
+      
+      // Tarihe göre sırala (en yeni önce)
+      const sortedLessons = groupLessons.sort((a, b) => new Date(b.date) - new Date(a.date));
+      setAllLessons(sortedLessons);
     } catch (error) {
       toast.error('Veriler yüklenemedi');
     } finally {
@@ -140,8 +127,8 @@ const TeacherGroupLessons = () => {
   const branch = group ? branches.find(b => b.id === group.branch_id) : null;
   const groupStudentsList = group ? students.filter(s => group.student_ids?.includes(s.id)) : [];
 
-  // Group lessons by date
-  const lessonsByDate = lessons.reduce((acc, lesson) => {
+  // Tüm dersleri tarihe göre grupla
+  const allLessonsByDate = allLessons.reduce((acc, lesson) => {
     if (!acc[lesson.date]) {
       acc[lesson.date] = [];
     }
@@ -149,10 +136,26 @@ const TeacherGroupLessons = () => {
     return acc;
   }, {});
 
-  // Toplam ders sayısı (benzersiz tarih başına bir kez sayılır)
-  const totalLessons = Object.keys(lessonsByDate).reduce((sum, date) => {
-    // Her tarihte en az bir ders kaydı varsa, ilkinin ders sayısını al
-    const firstLesson = lessonsByDate[date]?.[0];
+  // Benzersiz tarihleri sırala (en yeni önce)
+  const allDates = Object.keys(allLessonsByDate).sort((a, b) => new Date(b) - new Date(a));
+  
+  // Pagination hesaplamaları - TARİH BAZLI
+  const totalDates = allDates.length;
+  const totalPages = Math.ceil(totalDates / datesPerPage);
+  
+  // Mevcut sayfadaki tarihleri al
+  const startIndex = (currentPage - 1) * datesPerPage;
+  const currentDates = allDates.slice(startIndex, startIndex + datesPerPage);
+  
+  // Mevcut sayfadaki tarihler için lessonsByDate objesi
+  const lessonsByDate = currentDates.reduce((acc, date) => {
+    acc[date] = allLessonsByDate[date];
+    return acc;
+  }, {});
+
+  // Toplam ders sayısı (TÜM tarihler için)
+  const totalLessons = allDates.reduce((sum, date) => {
+    const firstLesson = allLessonsByDate[date]?.[0];
     return sum + (firstLesson?.number_of_lessons || 0);
   }, 0);
 
@@ -227,7 +230,7 @@ const TeacherGroupLessons = () => {
             </div>
             <div className="text-right">
               <p className="text-sm text-slate-600">Ders Günü</p>
-              <p className="text-3xl font-bold text-slate-700">{Object.keys(lessonsByDate).length}</p>
+              <p className="text-3xl font-bold text-slate-700">{totalDates}</p>
             </div>
           </div>
         </div>
@@ -282,11 +285,12 @@ const TeacherGroupLessons = () => {
         <div className="teacher-card p-6">
           <h2 className="text-xl font-bold text-slate-800 mb-4">Yapılan Dersler</h2>
           
-          {Object.keys(lessonsByDate).length === 0 ? (
+          {currentDates.length === 0 ? (
             <p className="text-center text-slate-500 py-8">Henüz ders girişi yapılmamış</p>
           ) : (
             <div className="space-y-4">
-              {Object.entries(lessonsByDate).sort((a, b) => b[0].localeCompare(a[0])).map(([date, dateLessons]) => {
+              {currentDates.map((date) => {
+                const dateLessons = lessonsByDate[date] || [];
                 // İlk öğrencinin ders sayısını al (tüm öğrencilerde aynı)
                 const lessonCount = dateLessons[0]?.number_of_lessons || 0;
                 const isFreeLesson = dateLessons[0]?.is_free_lesson || false;
@@ -326,7 +330,7 @@ const TeacherGroupLessons = () => {
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-6 pt-4 border-t">
               <p className="text-sm text-slate-500">
-                Toplam {totalCount} kayıt • Sayfa {currentPage}/{totalPages}
+                Toplam {totalDates} tarih • Sayfa {currentPage}/{totalPages}
               </p>
               <div className="flex items-center gap-2">
                 <Button
