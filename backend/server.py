@@ -3513,21 +3513,43 @@ async def get_teacher_lesson_income_detail(teacher_id: str, month: Optional[str]
     # Key: (group_id veya student_id, branch_id)
     income_by_source = {}
     
+    # Öğrenci -> Grup eşleştirmesi oluştur (group_id olmayan eski dersler için)
+    # Her öğrenci için (student_id, branch_id, teacher_id) -> group_id mapping
+    student_to_group = {}
+    for g in groups:
+        g_branch_id = g.get("branch_id")
+        g_teacher_id = g.get("teacher_id")
+        for sid in g.get("student_ids", []):
+            # Aynı öğrenci aynı branşta sadece bir grupta olabilir
+            key = (sid, g_branch_id, g_teacher_id)
+            student_to_group[key] = g
+    
     for lesson in lessons:
         # Önce lesson'daki branch_id'yi kullan, yoksa course'dan al
         branch_id = lesson.get("branch_id")
         student_id = lesson.get("student_id")
+        lesson_teacher_id = lesson.get("teacher_id") or teacher_id
         
         if not branch_id or not student_id:
             course = course_map.get(lesson.get("student_course_id"))
             if course:
                 branch_id = branch_id or course.get("branch_id")
                 student_id = student_id or course.get("student_id")
+                lesson_teacher_id = lesson_teacher_id or course.get("teacher_id")
         
         if not branch_id:
             continue
         
+        # group_id öncelikle derste kayıtlı olanı kullan
         group_id = lesson.get("group_id")
+        
+        # group_id yoksa, student_groups'tan tespit et
+        if not group_id and student_id:
+            group_key = (student_id, branch_id, lesson_teacher_id)
+            matched_group = student_to_group.get(group_key)
+            if matched_group:
+                group_id = matched_group.get("id")
+        
         teacher_rate = lesson.get("teacher_rate") or 0
         
         # Sadece teacher_rate > 0 olan dersleri say (grup derslerinde sadece ilk öğrenci)

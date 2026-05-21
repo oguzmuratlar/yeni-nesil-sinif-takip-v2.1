@@ -61,17 +61,35 @@ const TeacherGroupLessons = () => {
       setStudents(studentsRes.data);
       setBranches(branchesRes.data);
       
-      // Grup derslerini filtrele - önce group_id ile
+      // Grup derslerini filtrele
+      // 1. Önce group_id ile filtrelenen dersleri al
       let groupLessons = lessonsRes.data.filter(l => l.group_id === groupId);
       
-      // Fallback: group_id yoksa eski yöntemle
-      if (groupLessons.length === 0) {
-        const groupStudentIds = foundGroup.student_ids || [];
-        const coursesRes = await apiClient.get('/student-courses');
-        const groupCourseIds = coursesRes.data
-          .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
-          .map(c => c.id);
-        groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
+      // 2. group_id olmayan eski dersler için: student_course_id bazlı filtreleme
+      const groupStudentIds = foundGroup.student_ids || [];
+      const coursesRes = await apiClient.get('/student-courses');
+      const groupCourseIds = coursesRes.data
+        .filter(c => groupStudentIds.includes(c.student_id) && 
+                     c.branch_id === foundGroup.branch_id &&
+                     c.teacher_id === foundGroup.teacher_id)
+        .map(c => c.id);
+      
+      // group_id olmayan ama bu gruptaki öğrencilere ait dersleri bul
+      const oldLessons = lessonsRes.data.filter(l => 
+        !l.group_id && 
+        groupCourseIds.includes(l.student_course_id)
+      );
+      
+      // Her iki listeyi birleştir (benzersiz tarihlerle)
+      const existingDates = new Set(groupLessons.map(l => l.date));
+      const existingIds = new Set(groupLessons.map(l => l.id));
+      
+      for (const lesson of oldLessons) {
+        // Aynı ID'li ders zaten eklenmemişse ekle
+        if (!existingIds.has(lesson.id)) {
+          groupLessons.push(lesson);
+          existingIds.add(lesson.id);
+        }
       }
       
       // Tarihe göre sırala (en yeni önce)

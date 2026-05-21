@@ -55,16 +55,32 @@ const AdminGroupLesson = () => {
       setStudents(studentsRes.data);
       setBranches(branchesRes.data);
       
-      // Filter lessons for this group - ÖNCELİKLE group_id ile filtrele
+      // Grup derslerini filtrele
+      // 1. Önce group_id ile filtrelenen dersleri al
       let groupLessons = lessonsRes.data.filter(l => l.group_id === groupId);
       
-      // Eğer group_id ile ders bulunamadıysa, eski yöntemle dene (geriye dönük uyumluluk)
-      if (groupLessons.length === 0) {
-        const groupStudentIds = foundGroup.student_ids || [];
-        const groupCourseIds = coursesRes.data
-          .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
-          .map(c => c.id);
-        groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
+      // 2. group_id olmayan eski dersler için: student_course_id bazlı filtreleme
+      const groupStudentIds = foundGroup.student_ids || [];
+      const groupCourseIds = coursesRes.data
+        .filter(c => groupStudentIds.includes(c.student_id) && 
+                     c.branch_id === foundGroup.branch_id &&
+                     c.teacher_id === foundGroup.teacher_id)
+        .map(c => c.id);
+      
+      // group_id olmayan ama bu gruptaki öğrencilere ait dersleri bul
+      const oldLessons = lessonsRes.data.filter(l => 
+        !l.group_id && 
+        groupCourseIds.includes(l.student_course_id)
+      );
+      
+      // Her iki listeyi birleştir (benzersiz ID'lerle)
+      const existingIds = new Set(groupLessons.map(l => l.id));
+      
+      for (const lesson of oldLessons) {
+        if (!existingIds.has(lesson.id)) {
+          groupLessons.push(lesson);
+          existingIds.add(lesson.id);
+        }
       }
       
       // En son tarihli ders en üstte olacak şekilde sırala
