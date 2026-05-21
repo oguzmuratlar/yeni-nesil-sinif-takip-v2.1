@@ -5,54 +5,42 @@
 
 ---
 
-## Uygulanan Özellikler (21 Mayıs 2026)
+## Uygulanan Özellikler (21 Mayıs 2026 - Son Güncelleme)
 
-### 🔴 Kritik Bug Düzeltmeleri
-- [x] **Grup Dersi Görünmüyor Hatası**: Grup dersleri artık doğru şekilde görünüyor
-  - Backend: `create_group_lesson` endpoint'i artık `group_id`, `teacher_id`, `branch_id`, `student_id` alanlarını kaydediyor
-  - Frontend: `TeacherGroupLessons.jsx` ve `AdminGroupLesson.jsx` önce `group_id` ile filtreliyor
+### 🔴 Kritik Bug Düzeltmeleri - Grup Dersi
+- [x] **Grup Dersi Görünmüyor Hatası**: TAMAMEN ÇÖZÜLDÜ
+  - **Dedicated Endpoint**: `GET /api/group-lessons/{group_id}` - Doğrudan group_id ile sorgulama
+  - **Frontend Güncelleme**: Admin ve Teacher sayfaları artık bu dedicated endpoint'i kullanıyor
+  - **student_course_id filtrelemesi KALDIRILDI** - Kırılgan yapı ortadan kaldırıldı
+  - Backend: `create_group_lesson` endpoint'i `group_id`, `teacher_id`, `branch_id`, `student_id` alanlarını kaydediyor
+  - Teacher earning sadece bir kez hesaplanıyor (ilk öğrencide full rate, diğerlerinde 0)
+
+### 🔧 Repair Endpoints
+- `POST /api/admin/repair-group-lessons` - Eski verilerde group_id tespiti (karmaşık)
+- `POST /api/admin/repair-group-lessons-v2` - GÜVENLİ: Sadece group_id olan ama eksik alanları olan dersleri düzeltir
 
 ### 🆕 Feature Flag Sistemi
-- [x] **Yeni Geliştirmeler Sayfası**: `/admin/settings` - Admin panelinden özellikleri açıp kapatabilir
-- [x] **Ödev Takip Sistemi Toggle**: Aktif/Pasif toggle ile ödev sistemini kontrol edebilir
-- [x] **Öğretmen Butonu Kontrolü**: Feature flag pasif olduğunda "Ödev" butonu gizlenir
-- [x] **Backend Koruması**: Pasif olduğunda `/api/homework/*` endpoint'leri 403 döner
+- [x] **Yeni Geliştirmeler Sayfası**: `/admin/settings`
+- [x] **Ödev Takip Sistemi Toggle**: Aktif/Pasif toggle
+- [x] **Backend Koruması**: Pasif olduğunda 403 döner
 
-### 📄 Pagination (Sayfalama)
-- [x] **Backend Endpoint**: `/api/lessons/paginated` - `page`, `page_size`, `group_id`, `teacher_id` parametreleri
-- [x] **Response Format**: `{ data, total_count, page, page_size, total_pages }`
-- [x] **Grup Dersleri UI**: 15 kayıt/sayfa, Önceki/Sonraki butonları
-
----
-
-## Önceki Özellikler (13 Mayıs 2026)
-
-### Admin Paneli - İçerik Yönetimi
-- [x] **Kitap Kopyalama**: Tüm içerik dahil kitap kopyalama
-- [x] **Ünite Sıralama**: Yukarı/aşağı butonlarıyla sıralama
-
-### Öğretmen Ödev Takip
-- [x] **Otomatik Plan**: Sayfa açılınca otomatik 7 günlük plan
-- [x] **Plan Süresi**: 7-21 gün arası dropdown
-- [x] **İçerik Düzenleme**: Ünite/Konu/Test adı düzenlenebilir
-- [x] **Sınıf Kontrolü**: Öğrenci sadece kendi sınıf seviyesindeki kitapları görür
-- [x] **Tamamlanan Test Kontrolü**: Tamamlanmış testler ödev olarak atanamaz
-
-### PDF Export
-- [x] Instagram bilgisi branşa göre
-- [x] Tarih formatı: "13 Mayıs 2026"
-- [x] Günler alt alta (dikey liste)
+### 📄 Pagination (Tarih Bazlı)
+- [x] **Grup Dersleri**: 15 tarih satırı/sayfa
+- [x] **Dedicated Endpoint**: `GET /api/group-lessons/{group_id}` - total_lessons, total_dates, grouped lessons
 
 ---
 
 ## Teknik Detaylar
 
-### Yeni Backend Endpoints (21 Mayıs 2026)
-- `GET /api/system-settings` - Tüm ayarları listele (admin only)
-- `PUT /api/system-settings/{key}` - Ayar güncelle
-- `GET /api/system-settings/homework-status` - Ödev sistemi durumu
-- `GET /api/lessons/paginated` - Sayfalı ders listesi
-- `POST /api/admin/repair-group-lessons` - Migration endpoint (eski verileri düzeltme)
+### Yeni Backend Endpoints
+```
+GET  /api/group-lessons/{group_id}     - Grup derslerini group_id ile getir
+GET  /api/system-settings              - Tüm ayarları listele
+PUT  /api/system-settings/{key}        - Ayar güncelle
+GET  /api/system-settings/homework-status
+GET  /api/lessons/paginated            - Sayfalı ders listesi
+POST /api/admin/repair-group-lessons-v2 - Güvenli repair
+```
 
 ### Dosya Yapısı
 ```
@@ -60,12 +48,13 @@
 ├── backend/server.py
 └── frontend/src/pages/
     ├── admin/
+    │   ├── AdminGroupLesson.jsx    (dedicated endpoint kullanıyor)
     │   ├── AdminHomeworkContent.jsx
-    │   └── AdminSettings.jsx (YENİ)
+    │   └── AdminSettings.jsx
     └── teacher/
+        ├── TeacherGroupLessons.jsx (dedicated endpoint kullanıyor)
         ├── TeacherHomeworkEntry.jsx
-        ├── TeacherStudents.jsx (homeworkEnabled kontrolü)
-        └── TeacherGroupLessons.jsx (pagination eklendi)
+        └── TeacherStudents.jsx
 ```
 
 ---
@@ -74,7 +63,6 @@
 
 ### P2 - Yakın Vadeli
 - [ ] Birebir öğrenci dersleri için pagination
-- [ ] Migration: Eski grup derslerine `group_id` ekleme
 
 ### P3 - Uzak Vadeli
 - [ ] Hızlı Ders Girişi butonu
@@ -87,4 +75,4 @@
 - **Admin**: `admin` / `test123`
 - **Öğretmen**: `ilknur.uzunal` / `test123`
 
-## Son Güncelleme: 21 Mayıs 2026
+## Son Test: 21 Mayıs 2026 - Backend 12/12, Frontend 100%
