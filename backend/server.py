@@ -406,6 +406,20 @@ class YouTubeContentUpdate(BaseModel):
     status: Optional[str] = None
     season_id: Optional[str] = None
 
+# ============= SYSTEM SETTINGS / FEATURE FLAGS =============
+
+class SystemSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    key: str  # Ayar anahtarı (örn: "homework_tool_enabled")
+    value: bool = True  # Ayar değeri
+    description: Optional[str] = None  # Açıklama
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class SystemSettingsUpdate(BaseModel):
+    value: bool
+    description: Optional[str] = None
+
 # ============= AUDIT LOG MODELS =============
 
 class AuditLogActionType:
@@ -1442,6 +1456,57 @@ async def get_lessons(student_course_id: Optional[str] = None, current_user: Use
             lesson['created_at'] = datetime.fromisoformat(lesson['created_at'])
     return lessons
 
+@api_router.get("/lessons/paginated")
+async def get_lessons_paginated(
+    student_course_id: Optional[str] = None,
+    group_id: Optional[str] = None,
+    teacher_id: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 15,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Sayfalı ders listesi - öğretmen ders geçmişi için optimize edilmiş.
+    Total count da döner ki özet istatistikler doğru hesaplansın.
+    """
+    query = {}
+    
+    if student_course_id:
+        query["student_course_id"] = student_course_id
+    
+    if group_id:
+        query["group_id"] = group_id
+    
+    if teacher_id:
+        # Öğretmen ID'si ile filtreleme (birebir ve grup dersleri dahil)
+        if current_user.user_type == "teacher" and current_user.teacher_id != teacher_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        query["teacher_id"] = teacher_id
+    
+    # Toplam sayı
+    total_count = await db.lessons.count_documents(query)
+    
+    # Sayfalama hesabı
+    skip = (page - 1) * page_size
+    
+    # En son tarih en üstte, sonra created_at
+    lessons = await db.lessons.find(query, {"_id": 0}).sort([
+        ("date", -1),
+        ("created_at", -1)
+    ]).skip(skip).limit(page_size).to_list(page_size)
+    
+    for lesson in lessons:
+        if isinstance(lesson.get('created_at'), str):
+            lesson['created_at'] = datetime.fromisoformat(lesson['created_at'])
+    
+    return {
+        "data": lessons,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total_count + page_size - 1) // page_size
+    }
+
 @api_router.post("/lessons", response_model=Lesson)
 async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(get_current_user)):
     # Check if user has access to this course
@@ -2186,7 +2251,11 @@ async def create_group_lesson(
                 number_of_lessons=number_of_lessons,
                 teacher_rate=lesson_teacher_rate,
                 group_id=group_id,
-                is_free_lesson=is_free_lesson  # Ücretsiz ders flag'i
+                is_free_lesson=is_free_lesson,
+                # Ders kaydına course bilgilerini de ekle (course silinse bile görünebilsin)
+                teacher_id=group.get("teacher_id"),
+                branch_id=branch_id,
+                student_id=student_id
             )
             doc = lesson.model_dump()
             doc['created_at'] = doc['created_at'].isoformat()
@@ -4779,6 +4848,78 @@ async def delete_group_lessons(group_id: str, date: str, current_user: User = De
 
 # ============= ÖDEV TAKİP SİSTEMİ ENDPOINTS =============
 
+# ------------- FEATURE FLAG HELPERS -------------
+
+async def is_homework_tool_enabled() -> bool:
+    """Ödev takip sistemi aktif mi kontrol et"""
+    setting = await db.system_settings.find_one({"key": "homework_tool_enabled"}, {"_id": 0})
+    if setting is None:
+        # Default: aktif
+        return True
+    return setting.get("value", True)
+
+async def check_homework_tool_enabled():
+    """Ödev takip sistemi kapalıysa 403 fırlat"""
+    enabled = await is_homework_tool_enabled()
+    if not enabled:
+        raise HTTPException(status_code=403, detail="Ödev takip sistemi şu anda pasif durumda. Admin panelinden aktif edebilirsiniz.")
+
+# ------------- FEATURE FLAG ENDPOINTS -------------
+
+@api_router.get("/system-settings")
+async def get_system_settings(current_user: User = Depends(get_current_user)):
+    """Sistem ayarlarını listele - sadece admin"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view system settings")
+    
+    settings = await db.system_settings.find({}, {"_id": 0}).to_list(100)
+    
+    # Default ayarları ekle (yoksa)
+    default_settings = [
+        {"key": "homework_tool_enabled", "value": True, "description": "Ödev Takip Sistemi"}
+    ]
+    
+    existing_keys = [s["key"] for s in settings]
+    for default in default_settings:
+        if default["key"] not in existing_keys:
+            settings.append({
+                "key": default["key"],
+                "value": default["value"],
+                "description": default["description"],
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            })
+    
+    return settings
+
+@api_router.put("/system-settings/{key}")
+async def update_system_setting(key: str, data: SystemSettingsUpdate, current_user: User = Depends(get_current_user)):
+    """Sistem ayarını güncelle - sadece admin"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update system settings")
+    
+    existing = await db.system_settings.find_one({"key": key})
+    
+    update_data = {
+        "key": key,
+        "value": data.value,
+        "description": data.description,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    if existing:
+        await db.system_settings.update_one({"key": key}, {"$set": update_data})
+    else:
+        update_data["id"] = str(uuid.uuid4())
+        await db.system_settings.insert_one(update_data)
+    
+    return {"message": "Ayar güncellendi", "key": key, "value": data.value}
+
+@api_router.get("/system-settings/homework-status")
+async def get_homework_status(current_user: User = Depends(get_current_user)):
+    """Ödev sistemi durumunu kontrol et - tüm kullanıcılar"""
+    enabled = await is_homework_tool_enabled()
+    return {"enabled": enabled}
+
 # ------------- KİTAP YÖNETİMİ -------------
 
 @api_router.get("/homework/books")
@@ -5326,6 +5467,9 @@ async def update_test_status(
     current_user: User = Depends(get_current_user)
 ):
     """Test durumunu güncelle (auto-save için)"""
+    # Feature flag kontrolü
+    await check_homework_tool_enabled()
+    
     test = await db.book_tests.find_one({"id": test_id}, {"_id": 0})
     if not test:
         raise HTTPException(status_code=404, detail="Test bulunamadı")
@@ -5442,6 +5586,9 @@ async def create_homework_plan(
     current_user: User = Depends(get_current_user)
 ):
     """Yeni haftalık plan oluştur"""
+    # Feature flag kontrolü
+    await check_homework_tool_enabled()
+    
     # Eski aktif planı kapat
     await db.homework_plans.update_many(
         {"student_id": plan_data.student_id, "branch_id": plan_data.branch_id, "status": "active"},
@@ -5474,6 +5621,9 @@ async def add_plan_item(
     current_user: User = Depends(get_current_user)
 ):
     """Plana öğe ekle (test veya serbest metin)"""
+    # Feature flag kontrolü
+    await check_homework_tool_enabled()
+    
     plan = await db.homework_plans.find_one({"id": plan_id}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan bulunamadı")
@@ -5521,12 +5671,18 @@ async def add_plan_item(
 @api_router.delete("/homework/plan-items/{item_id}")
 async def delete_plan_item(item_id: str, current_user: User = Depends(get_current_user)):
     """Plan öğesini sil"""
+    # Feature flag kontrolü
+    await check_homework_tool_enabled()
+    
     await db.homework_plan_items.delete_one({"id": item_id})
     return {"message": "Öğe silindi"}
 
 @api_router.delete("/homework/plans/{plan_id}")
 async def delete_plan(plan_id: str, current_user: User = Depends(get_current_user)):
     """Planı ve tüm öğelerini sil"""
+    # Feature flag kontrolü
+    await check_homework_tool_enabled()
+    
     # Önce plan öğelerini sil
     await db.homework_plan_items.delete_many({"plan_id": plan_id})
     # Sonra planı sil
@@ -5677,6 +5833,91 @@ async def create_daily_note(
     await db.daily_notes.insert_one(doc)
     
     return {"message": "Not eklendi", "note_id": note.id}
+
+
+# ============= MIGRATION: REPAIR GROUP LESSONS =============
+
+@api_router.post("/admin/repair-group-lessons")
+async def repair_group_lessons(current_user: User = Depends(get_current_user)):
+    """
+    Live ortamdaki mevcut grup derslerine eksik group_id, teacher_id, branch_id, student_id alanlarını ekler.
+    Bu migration, sadece group_id olmayan ama aslında grup dersi olan kayıtları tespit edip düzeltir.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can run migrations")
+    
+    # Tüm grupları al
+    groups = await db.student_groups.find({}, {"_id": 0}).to_list(1000)
+    
+    repaired_count = 0
+    checked_count = 0
+    
+    for group in groups:
+        group_id = group["id"]
+        teacher_id = group.get("teacher_id")
+        branch_id = group.get("branch_id")
+        student_ids = group.get("student_ids", [])
+        
+        # Bu gruptaki öğrencilerin course'larını bul
+        for student_id in student_ids:
+            course = await db.student_courses.find_one({
+                "student_id": student_id,
+                "branch_id": branch_id,
+                "teacher_id": teacher_id
+            }, {"_id": 0})
+            
+            if course:
+                # Bu course'a ait dersleri bul (group_id olmayan)
+                lessons_without_group = await db.lessons.find({
+                    "student_course_id": course["id"],
+                    "$or": [
+                        {"group_id": {"$exists": False}},
+                        {"group_id": None}
+                    ]
+                }).to_list(1000)
+                
+                checked_count += len(lessons_without_group)
+                
+                # Aynı tarihte birden fazla öğrencinin dersi varsa, bu grup dersi demektir
+                # Her dersi kontrol et
+                for lesson in lessons_without_group:
+                    lesson_date = lesson.get("date")
+                    
+                    # Aynı tarihte, aynı branch'te, aynı teacher'ın diğer öğrencilerinin dersi var mı?
+                    same_date_lessons = await db.lessons.find({
+                        "date": lesson_date,
+                        "branch_id": branch_id,
+                        "teacher_id": teacher_id
+                    }).to_list(100)
+                    
+                    # Eğer aynı tarihte 2+ ders varsa ve bunlar gruptaki öğrencilere aitse
+                    if len(same_date_lessons) >= 2:
+                        # Bu derslerin öğrencileri gruptaki öğrenciler mi?
+                        lesson_student_ids = [l.get("student_id") for l in same_date_lessons if l.get("student_id")]
+                        
+                        # Gruptaki öğrencilerin çoğu bu derslerde mi?
+                        matching_students = [s for s in lesson_student_ids if s in student_ids]
+                        
+                        if len(matching_students) >= 2:
+                            # Bu bir grup dersi, güncelle
+                            update_data = {
+                                "group_id": group_id,
+                                "teacher_id": teacher_id,
+                                "branch_id": branch_id,
+                                "student_id": lesson.get("student_id") or student_id
+                            }
+                            
+                            await db.lessons.update_one(
+                                {"id": lesson["id"]},
+                                {"$set": update_data}
+                            )
+                            repaired_count += 1
+    
+    return {
+        "message": f"Migration tamamlandı",
+        "checked_lessons": checked_count,
+        "repaired_lessons": repaired_count
+    }
 
 
 # ============= INCLUDE ROUTER =============

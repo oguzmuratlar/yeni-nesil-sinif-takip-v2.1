@@ -55,13 +55,18 @@ const AdminGroupLesson = () => {
       setStudents(studentsRes.data);
       setBranches(branchesRes.data);
       
-      // Filter lessons for students in this group
-      const groupStudentIds = foundGroup.student_ids || [];
-      const groupCourseIds = coursesRes.data
-        .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
-        .map(c => c.id);
+      // Filter lessons for this group - ÖNCELİKLE group_id ile filtrele
+      let groupLessons = lessonsRes.data.filter(l => l.group_id === groupId);
       
-      const groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
+      // Eğer group_id ile ders bulunamadıysa, eski yöntemle dene (geriye dönük uyumluluk)
+      if (groupLessons.length === 0) {
+        const groupStudentIds = foundGroup.student_ids || [];
+        const groupCourseIds = coursesRes.data
+          .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
+          .map(c => c.id);
+        groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
+      }
+      
       // En son tarihli ders en üstte olacak şekilde sırala
       const sortedLessons = groupLessons.sort((a, b) => new Date(b.date) - new Date(a.date));
       setLessons(sortedLessons);

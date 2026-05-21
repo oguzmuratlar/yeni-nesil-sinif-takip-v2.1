@@ -131,6 +131,19 @@ const TeacherHomeworkEntry = () => {
   const fetchInitialData = async () => {
     try {
       setLoading(true);
+      
+      // Feature flag kontrolü
+      try {
+        const statusRes = await apiClient.get('/system-settings/homework-status');
+        if (!statusRes.data.enabled) {
+          toast.error('Ödev takip sistemi şu anda pasif durumda.');
+          navigate('/teacher/students');
+          return;
+        }
+      } catch (e) {
+        // API hatası varsa devam et (varsayılan aktif)
+      }
+      
       const [studentRes, branchesRes, booksRes, plansRes] = await Promise.all([
         apiClient.get(`/students/${studentId}`),
         apiClient.get('/branches'),

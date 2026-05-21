@@ -40,6 +40,7 @@ import AdminStudentsByBranch from "./pages/admin/AdminStudentsByBranch";
 import AdminBadges from "./pages/admin/AdminBadges";
 import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
 import AdminHomeworkContent from "./pages/admin/AdminHomeworkContent";
+import AdminSettings from "./pages/admin/AdminSettings";
 
 // Teacher Pages
 import TeacherStudents from "./pages/teacher/TeacherStudents";
@@ -272,6 +273,11 @@ function App() {
             <Route path="/admin/homework-content" element={
               <ProtectedRoute requiredRole="admin">
                 <AdminHomeworkContent />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/settings" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminSettings />
               </ProtectedRoute>
             } />
 

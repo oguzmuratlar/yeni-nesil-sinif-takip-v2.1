@@ -20,6 +20,7 @@ const TeacherStudents = () => {
   const [selectedItem, setSelectedItem] = useState(null); // { type: 'student' | 'group', data: {...} }
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'individual', 'groups'
   const [groupStudentDialog, setGroupStudentDialog] = useState(false);
+  const [homeworkEnabled, setHomeworkEnabled] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -30,12 +31,16 @@ const TeacherStudents = () => {
 
   const fetchData = async () => {
     try {
-      const [studentsRes, groupsRes, coursesRes, branchesRes] = await Promise.all([
+      const [studentsRes, groupsRes, coursesRes, branchesRes, homeworkStatusRes] = await Promise.all([
         apiClient.get('/students'),
         apiClient.get('/student-groups'),
         apiClient.get('/student-courses'),
-        apiClient.get('/branches')
+        apiClient.get('/branches'),
+        apiClient.get('/system-settings/homework-status').catch(() => ({ data: { enabled: true } }))
       ]);
+      
+      // Feature flag kontrolü
+      setHomeworkEnabled(homeworkStatusRes.data.enabled);
       
       // Sadece aktif öğrencileri filtrele
       const activeStudents = studentsRes.data.filter(s => s.status === 'active');
@@ -370,15 +375,17 @@ const TeacherStudents = () => {
                     <Calendar size={16} className="mr-2" />
                     Planlama
                   </Button>
-                  <Button
-                    onClick={handleHomeworkEntry}
-                    data-testid="homework-entry-btn"
-                    variant="outline"
-                    className="rounded-full flex-1 sm:flex-none px-4 py-2 border-purple-300 text-purple-700 hover:bg-purple-50"
-                  >
-                    <ClipboardList size={16} className="mr-2" />
-                    Ödev
-                  </Button>
+                  {homeworkEnabled && (
+                    <Button
+                      onClick={handleHomeworkEntry}
+                      data-testid="homework-entry-btn"
+                      variant="outline"
+                      className="rounded-full flex-1 sm:flex-none px-4 py-2 border-purple-300 text-purple-700 hover:bg-purple-50"
+                    >
+                      <ClipboardList size={16} className="mr-2" />
+                      Ödev
+                    </Button>
+                  )}
                   <Button
                     onClick={() => setSelectedItem(null)}
                     variant="outline"

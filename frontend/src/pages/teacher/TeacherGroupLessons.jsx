@@ -8,7 +8,7 @@ import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { DateInput } from '../../components/ui/date-input';
 import { toast } from 'sonner';
-import { Users, ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { Users, ArrowLeft, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { formatDateTurkish } from '../../lib/dateUtils';
 
@@ -27,20 +27,25 @@ const TeacherGroupLessons = () => {
     date: new Date().toISOString().split('T')[0],
     number_of_lessons: 2
   });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const pageSize = 15;
 
   useEffect(() => {
     if (user?.teacher_id) {
       fetchData();
     }
-  }, [groupId, user]);
+  }, [groupId, user, currentPage]);
 
   const fetchData = async () => {
     try {
-      const [groupsRes, studentsRes, branchesRes, lessonsRes] = await Promise.all([
+      const [groupsRes, studentsRes, branchesRes] = await Promise.all([
         apiClient.get('/student-groups'),
         apiClient.get('/students'),
-        apiClient.get('/branches'),
-        apiClient.get('/lessons')
+        apiClient.get('/branches')
       ]);
       
       // Öğretmene ait grubu bul
@@ -57,18 +62,34 @@ const TeacherGroupLessons = () => {
       setStudents(studentsRes.data);
       setBranches(branchesRes.data);
       
-      // Filter lessons for students in this group
-      const groupStudentIds = foundGroup.student_ids || [];
-      // Get courses for group students
-      const coursesRes = await apiClient.get('/student-courses');
-      const groupCourseIds = coursesRes.data
-        .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
-        .map(c => c.id);
-      
-      const groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
-      // En son tarihli ders en üstte olacak şekilde sırala
-      const sortedLessons = groupLessons.sort((a, b) => new Date(b.date) - new Date(a.date));
-      setLessons(sortedLessons);
+      // Pagination destekli ders listesi al
+      try {
+        const lessonsRes = await apiClient.get(`/lessons/paginated?group_id=${groupId}&page=${currentPage}&page_size=${pageSize}`);
+        const groupLessons = lessonsRes.data.data || [];
+        setTotalCount(lessonsRes.data.total_count || 0);
+        setTotalPages(lessonsRes.data.total_pages || 1);
+        setLessons(groupLessons);
+      } catch (e) {
+        // Fallback: eski API ile dene
+        const lessonsRes = await apiClient.get('/lessons');
+        let groupLessons = lessonsRes.data.filter(l => l.group_id === groupId);
+        
+        if (groupLessons.length === 0) {
+          const groupStudentIds = foundGroup.student_ids || [];
+          const coursesRes = await apiClient.get('/student-courses');
+          const groupCourseIds = coursesRes.data
+            .filter(c => groupStudentIds.includes(c.student_id) && c.branch_id === foundGroup.branch_id)
+            .map(c => c.id);
+          groupLessons = lessonsRes.data.filter(l => groupCourseIds.includes(l.student_course_id));
+        }
+        
+        const sortedLessons = groupLessons.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setTotalCount(sortedLessons.length);
+        setTotalPages(Math.ceil(sortedLessons.length / pageSize));
+        // Manual pagination
+        const start = (currentPage - 1) * pageSize;
+        setLessons(sortedLessons.slice(start, start + pageSize));
+      }
     } catch (error) {
       toast.error('Veriler yüklenemedi');
     } finally {
@@ -298,6 +319,35 @@ const TeacherGroupLessons = () => {
                   </div>
                 );
               })}
+            </div>
+          )}
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t">
+              <p className="text-sm text-slate-500">
+                Toplam {totalCount} kayıt • Sayfa {currentPage}/{totalPages}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft size={16} className="mr-1" />
+                  Önceki
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Sonraki
+                  <ChevronRight size={16} className="ml-1" />
+                </Button>
+              </div>
             </div>
           )}
         </div>
