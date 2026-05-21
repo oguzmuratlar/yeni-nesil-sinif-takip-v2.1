@@ -4877,6 +4877,71 @@ async def delete_group_lessons(group_id: str, date: str, current_user: User = De
     }
 
 
+# ============= GRUP DERSLERİ LİSTELEME ENDPOINT =============
+
+@api_router.get("/group-lessons/{group_id}")
+async def get_group_lessons(group_id: str, current_user: User = Depends(get_current_user)):
+    """
+    Belirli bir grubun tüm derslerini getir.
+    Dersler group_id üzerinden doğrudan çekilir - student_course filtrelemesi YAPILMAZ.
+    En güncel tarih en üstte olacak şekilde sıralanır.
+    Aynı tarihteki öğrenci kayıtları gruplanarak döndürülür.
+    """
+    # Get group
+    group = await db.student_groups.find_one({"id": group_id}, {"_id": 0})
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    # Check access - teacher sadece kendi grubunu görebilir
+    if current_user.user_type == "teacher" and group.get("teacher_id") != current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Grup derslerini group_id ile doğrudan çek
+    lessons = await db.lessons.find(
+        {"group_id": group_id},
+        {"_id": 0}
+    ).sort("date", -1).to_list(1000)
+    
+    # Tarihe göre grupla
+    lessons_by_date = {}
+    for lesson in lessons:
+        date = lesson.get("date")
+        if date not in lessons_by_date:
+            lessons_by_date[date] = {
+                "date": date,
+                "lessons": [],
+                "number_of_lessons": lesson.get("number_of_lessons", 0),
+                "teacher_rate": 0,
+                "is_free_lesson": lesson.get("is_free_lesson", False),
+                "student_count": 0
+            }
+        lessons_by_date[date]["lessons"].append(lesson)
+        lessons_by_date[date]["student_count"] += 1
+        # Teacher rate sadece bir kez eklenir (ilk öğrencide tam rate var)
+        if lesson.get("teacher_rate", 0) > 0:
+            lessons_by_date[date]["teacher_rate"] = lesson.get("teacher_rate")
+    
+    # Tarihe göre sıralı liste oluştur (en yeni önce)
+    grouped_lessons = sorted(lessons_by_date.values(), key=lambda x: x["date"], reverse=True)
+    
+    # Toplam ders sayısı hesapla (her tarih için number_of_lessons toplamı)
+    total_lessons = sum(item["number_of_lessons"] for item in grouped_lessons)
+    total_dates = len(grouped_lessons)
+    
+    # Ücretsiz ders sayısı
+    free_lesson_count = sum(1 for item in grouped_lessons if item.get("is_free_lesson"))
+    
+    return {
+        "group": group,
+        "lessons": grouped_lessons,
+        "total_lessons": total_lessons,
+        "total_dates": total_dates,
+        "free_lesson_count": free_lesson_count,
+        # Ham lesson listesi de döndür (gerekirse)
+        "raw_lessons": lessons
+    }
+
+
 # ============= ÖDEV TAKİP SİSTEMİ ENDPOINTS =============
 
 # ------------- FEATURE FLAG HELPERS -------------
@@ -5948,6 +6013,80 @@ async def repair_group_lessons(current_user: User = Depends(get_current_user)):
         "message": f"Migration tamamlandı",
         "checked_lessons": checked_count,
         "repaired_lessons": repaired_count
+    }
+
+
+@api_router.post("/admin/repair-group-lessons-v2")
+async def repair_group_lessons_v2(current_user: User = Depends(get_current_user)):
+    """
+    GÜVENLİ repair: Sadece group_id OLAN ama teacher_id/branch_id/student_id eksik olan dersleri düzeltir.
+    group_id olmayan derslere DOKUNMAZ.
+    Veri kaybı riski YOK.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can run migrations")
+    
+    # Tüm grupları al
+    groups = await db.student_groups.find({}, {"_id": 0}).to_list(1000)
+    group_map = {g["id"]: g for g in groups}
+    
+    # Tüm kursları al
+    courses = await db.student_courses.find({}, {"_id": 0}).to_list(10000)
+    course_map = {c["id"]: c for c in courses}
+    
+    repaired_count = 0
+    skipped_count = 0
+    
+    # group_id olan ama eksik alanları olan dersleri bul
+    lessons_with_group = await db.lessons.find({
+        "group_id": {"$exists": True, "$ne": None},
+        "$or": [
+            {"teacher_id": {"$exists": False}},
+            {"teacher_id": None},
+            {"branch_id": {"$exists": False}},
+            {"branch_id": None},
+            {"student_id": {"$exists": False}},
+            {"student_id": None}
+        ]
+    }, {"_id": 0}).to_list(10000)
+    
+    for lesson in lessons_with_group:
+        group_id = lesson.get("group_id")
+        group = group_map.get(group_id)
+        
+        if not group:
+            skipped_count += 1
+            continue
+        
+        # Course'dan student_id al
+        course = course_map.get(lesson.get("student_course_id"))
+        student_id = lesson.get("student_id")
+        if not student_id and course:
+            student_id = course.get("student_id")
+        
+        update_data = {}
+        
+        if not lesson.get("teacher_id"):
+            update_data["teacher_id"] = group.get("teacher_id")
+        
+        if not lesson.get("branch_id"):
+            update_data["branch_id"] = group.get("branch_id")
+        
+        if not lesson.get("student_id") and student_id:
+            update_data["student_id"] = student_id
+        
+        if update_data:
+            await db.lessons.update_one(
+                {"id": lesson["id"]},
+                {"$set": update_data}
+            )
+            repaired_count += 1
+    
+    return {
+        "message": f"Repair tamamlandı",
+        "repaired_count": repaired_count,
+        "skipped_count": skipped_count,
+        "total_checked": len(lessons_with_group)
     }
 
 
