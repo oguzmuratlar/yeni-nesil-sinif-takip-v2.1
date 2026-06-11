@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layouts/AdminLayout';
-import { Users, GraduationCap, CreditCard, TrendingUp, ArrowRight, Calendar, Landmark } from 'lucide-react';
+import { Users, GraduationCap, CreditCard, TrendingUp, ArrowRight, Calendar, Landmark, BookOpen, Lock } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Badge } from '../../components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,11 +25,28 @@ const AdminDashboard = () => {
   const [yearEndLoading, setYearEndLoading] = useState(false);
   const [bankAccounts, setBankAccounts] = useState([]);
   const [auditLogPopupOpen, setAuditLogPopupOpen] = useState(false);
+  const [seasonStats, setSeasonStats] = useState(null);
+  const [currentSeason, setCurrentSeason] = useState(null);
+
+  const fetchSeasonData = useCallback(async () => {
+    try {
+      // Aktif dönem bilgisi
+      const seasonResponse = await apiClient.get('/seasons/current');
+      setCurrentSeason(seasonResponse.data);
+      
+      // Dönem istatistikleri
+      const statsResponse = await apiClient.get('/dashboard/season-stats');
+      setSeasonStats(statsResponse.data);
+    } catch (error) {
+      console.error('Dönem bilgileri yüklenemedi');
+    }
+  }, []);
 
   useEffect(() => {
     fetchBankAccounts();
     checkForAuditLogs();
-  }, []);
+    fetchSeasonData();
+  }, [fetchSeasonData]);
 
   const checkForAuditLogs = async () => {
     try {
@@ -136,7 +154,62 @@ const AdminDashboard = () => {
           })}
         </div>
 
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Dönem Bilgisi Kartı - FAZ 5 */}
+          <div className="admin-card p-6 bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <BookOpen size={24} className="text-indigo-600" />
+                <h3 className="text-lg font-bold text-slate-800">Aktif Dönem</h3>
+              </div>
+              {currentSeason ? (
+                <Badge className={currentSeason.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                  {currentSeason.status === 'active' ? 'Açık' : 'Kapalı'}
+                </Badge>
+              ) : (
+                <Badge variant="outline">Dönem Yok</Badge>
+              )}
+            </div>
+            
+            {currentSeason ? (
+              <div className="space-y-3">
+                <p className="text-2xl font-bold text-indigo-700">{currentSeason.name}</p>
+                {seasonStats && (
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="bg-white/50 p-2 rounded">
+                      <p className="text-gray-500">Toplam Ders</p>
+                      <p className="font-bold text-indigo-600">{seasonStats.lessons?.total || 0}</p>
+                    </div>
+                    <div className="bg-white/50 p-2 rounded">
+                      <p className="text-gray-500">Aktif Gruplar</p>
+                      <p className="font-bold text-indigo-600">{seasonStats.groups?.active || 0}</p>
+                    </div>
+                  </div>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full mt-2 border-indigo-300 text-indigo-700"
+                  onClick={() => navigate('/admin/year-end-preview')}
+                >
+                  <Calendar size={16} className="mr-2" />
+                  Sene Sonu İşlemi
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-gray-500 mb-3">Henüz dönem oluşturulmamış</p>
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/admin/settings')}
+                >
+                  Dönem Oluştur
+                </Button>
+              </div>
+            )}
+          </div>
+
           <div className="admin-card p-8">
             <div className="flex items-center gap-3 mb-4">
               <Landmark size={24} className="text-blue-600" />
@@ -168,21 +241,22 @@ const AdminDashboard = () => {
               Eğitim yönetim sisteminize hoş geldiniz. Sol menüden istediğiniz bölüme hızlıca erişebilirsiniz.
             </p>
             
-            {/* Sene Sonu Butonu */}
-            <div className="mt-6 pt-4 border-t border-blue-200">
-              <Button
-                variant="outline"
-                onClick={() => setYearEndDialogOpen(true)}
-                className="w-full bg-white hover:bg-amber-50 text-amber-700 border-amber-300"
-                data-testid="year-end-btn"
-              >
-                <Calendar size={18} className="mr-2" />
-                Sene Sonu İşlemi
-              </Button>
-              <p className="text-xs text-slate-500 mt-2">
-                Tüm öğrencilerin sınıfını 1 arttırır. 8. sınıflar pasife alınır.
-              </p>
-            </div>
+            {/* Dönem İstatistikleri */}
+            {seasonStats && (
+              <div className="mt-4 pt-4 border-t border-blue-200">
+                <p className="text-sm font-medium text-slate-700 mb-2">Dönem İstatistikleri</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-white/70 p-2 rounded">
+                    <p className="text-gray-500">Aktif Öğrenci</p>
+                    <p className="font-bold">{seasonStats.students?.total_active || 0}</p>
+                  </div>
+                  <div className="bg-white/70 p-2 rounded">
+                    <p className="text-gray-500">Aktif Öğretmen</p>
+                    <p className="font-bold">{seasonStats.teachers?.total_active || 0}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

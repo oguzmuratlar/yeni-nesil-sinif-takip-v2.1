@@ -1618,6 +1618,9 @@ async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(
     if current_user.user_type == "teacher" and course["teacher_id"] != current_user.teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
+    # FAZ 5: Kapalı dönem kontrolü
+    await check_season_is_open()
+    
     # Aktif dönemi al
     active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
     season_id = active_season["id"] if active_season else None
@@ -1945,6 +1948,9 @@ async def create_payment(payment_data: PaymentCreate, current_user: User = Depen
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Only admins can create payments")
     
+    # FAZ 5: Kapalı dönem kontrolü
+    await check_season_is_open()
+    
     # Kasa zorunlu kontrolü
     if not payment_data.cashbox_id:
         raise HTTPException(status_code=400, detail="Kasa seçimi zorunludur")
@@ -1960,6 +1966,9 @@ async def update_payment(payment_id: str, payment_data: PaymentCreate, current_u
     """Ödeme güncelle"""
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Only admins can update payments")
+    
+    # FAZ 5: Kapalı dönem kontrolü
+    await check_season_is_open()
     
     existing = await db.payments.find_one({"id": payment_id})
     if not existing:
@@ -2330,6 +2339,9 @@ async def create_group_lesson(
     # Check access
     if current_user.user_type == "teacher" and group.get("teacher_id") != current_user.teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
+    
+    # FAZ 5: Kapalı dönem kontrolü
+    await check_season_is_open()
     
     # Sadece admin ücretsiz ders işaretleyebilir
     if is_free_lesson and current_user.user_type != "admin":
@@ -7796,6 +7808,188 @@ async def get_current_student_prices(
         price["branch_name"] = branch["name"] if branch else "Bilinmiyor"
     
     return prices
+
+
+# ============= FAZ 5: DÖNEM FİLTRESİ VE KAPALI DÖNEM KONTROLLERİ =============
+
+# Helper: Kapalı dönem kontrolü
+async def check_season_is_open(season_id: str = None, date_str: str = None):
+    """
+    Dönemin açık olup olmadığını kontrol et.
+    Kapalı döneme işlem yapılamaz.
+    
+    REVİZYON #9: Tüm CUD endpoint'lerinde kullanılmalı.
+    """
+    if season_id:
+        season = await db.seasons.find_one({"id": season_id}, {"_id": 0})
+        if not season:
+            raise HTTPException(status_code=400, detail="Dönem bulunamadı")
+        if season.get("status") == "closed":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"'{season['name']}' dönemi kapatılmıştır. Kapalı döneme işlem yapılamaz."
+            )
+        return season
+    
+    # Aktif dönemi kontrol et
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    if not active_season:
+        # Dönem yoksa işleme izin ver (migration öncesi uyumluluk)
+        return None
+    
+    return active_season
+
+# Helper: Aktif dönem ID'sini getir
+async def get_active_season_id() -> str:
+    """Aktif dönem ID'sini döndür, yoksa None"""
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    return active_season["id"] if active_season else None
+
+# Dashboard: Dönem bazlı istatistikler
+@api_router.get("/dashboard/season-stats")
+async def get_season_dashboard_stats(
+    season_id: str = None,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FAZ 5: Dönem bazlı dashboard istatistikleri.
+    Admin için dönem özeti.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin")
+    
+    # Dönem belirtilmemişse aktif dönemi kullan
+    if not season_id:
+        active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+        if active_season:
+            season_id = active_season["id"]
+    
+    # Dönem bilgisi
+    season = await db.seasons.find_one({"id": season_id}, {"_id": 0}) if season_id else None
+    
+    # İstatistikler
+    stats = {
+        "season": {
+            "id": season_id,
+            "name": season["name"] if season else "Tüm Zamanlar",
+            "status": season.get("status") if season else None,
+            "is_closed": season.get("status") == "closed" if season else False
+        },
+        "students": {},
+        "teachers": {},
+        "lessons": {},
+        "payments": {},
+        "groups": {}
+    }
+    
+    # Öğrenci istatistikleri
+    if season_id:
+        stats["students"]["active_courses"] = await db.student_courses.count_documents({
+            "season_id": season_id,
+            "status": "active"
+        })
+        stats["lessons"]["total"] = await db.lessons.count_documents({"season_id": season_id})
+        stats["payments"]["total"] = await db.payments.count_documents({"season_id": season_id})
+        stats["groups"]["active"] = await db.student_groups.count_documents({
+            "season_id": season_id,
+            "status": "active"
+        })
+        stats["groups"]["closed"] = await db.student_groups.count_documents({
+            "season_id": season_id,
+            "status": "closed"
+        })
+    else:
+        # Tüm zamanlar
+        stats["students"]["active_courses"] = await db.student_courses.count_documents({"status": "active"})
+        stats["lessons"]["total"] = await db.lessons.count_documents({})
+        stats["payments"]["total"] = await db.payments.count_documents({})
+        stats["groups"]["active"] = await db.student_groups.count_documents({"status": "active"})
+        stats["groups"]["closed"] = await db.student_groups.count_documents({"status": "closed"})
+    
+    # Genel istatistikler
+    stats["students"]["total_active"] = await db.students.count_documents({"status": "active"})
+    stats["teachers"]["total_active"] = await db.teachers.count_documents({"status": "active"})
+    
+    # Bakiye devirleri (eğer dönem varsa)
+    if season_id:
+        student_carryovers = await db.season_carryovers.find({
+            "to_season_id": season_id,
+            "entity_type": "student"
+        }, {"_id": 0}).to_list(10000)
+        
+        teacher_carryovers = await db.season_carryovers.find({
+            "to_season_id": season_id,
+            "entity_type": "teacher"
+        }, {"_id": 0}).to_list(1000)
+        
+        stats["carryovers"] = {
+            "student_count": len(student_carryovers),
+            "student_total": sum([c["amount"] for c in student_carryovers]),
+            "teacher_count": len(teacher_carryovers),
+            "teacher_total": sum([c["amount"] for c in teacher_carryovers])
+        }
+    
+    return stats
+
+# Dönem listesi (frontend dropdown için)
+@api_router.get("/seasons/list")
+async def get_seasons_list(current_user: User = Depends(get_current_user)):
+    """
+    FAZ 5: Dönem listesi (dropdown için).
+    Aktif dönem başta, sonra kapalı dönemler.
+    """
+    seasons = await db.seasons.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    
+    # Aktif dönemi başa al
+    active = [s for s in seasons if s.get("status") == "active"]
+    closed = [s for s in seasons if s.get("status") == "closed"]
+    
+    return {
+        "active_season": active[0] if active else None,
+        "closed_seasons": closed,
+        "all_seasons": active + closed
+    }
+
+# Kapalı dönem için read-only veri görüntüleme
+@api_router.get("/seasons/{season_id}/summary")
+async def get_season_summary(
+    season_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FAZ 5: Belirli bir dönemin özet bilgileri.
+    Kapalı dönemler için read-only görüntüleme.
+    """
+    season = await db.seasons.find_one({"id": season_id}, {"_id": 0})
+    if not season:
+        raise HTTPException(status_code=404, detail="Dönem bulunamadı")
+    
+    summary = {
+        "season": season,
+        "is_read_only": season.get("status") == "closed",
+        "statistics": {
+            "lessons": await db.lessons.count_documents({"season_id": season_id}),
+            "payments": await db.payments.count_documents({"season_id": season_id}),
+            "student_courses": await db.student_courses.count_documents({"season_id": season_id}),
+            "groups": await db.student_groups.count_documents({"season_id": season_id})
+        }
+    }
+    
+    # Kapalı dönem için devir bilgileri
+    if season.get("status") == "closed":
+        year_end_log = await db.year_end_logs.find_one({
+            "from_season_id": season_id,
+            "status": "success"
+        }, {"_id": 0})
+        
+        if year_end_log:
+            summary["year_end_info"] = {
+                "executed_at": year_end_log.get("executed_at"),
+                "to_season": year_end_log.get("to_season_id"),
+                "summary": year_end_log.get("summary")
+            }
+    
+    return summary
 
 
 # ============= INCLUDE ROUTER =============
