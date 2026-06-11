@@ -95,9 +95,9 @@ GET  /api/admin/seasons/migration-status/{id}      - Migration durumu kontrol
 - [x] `POST /api/year-end/execute` endpoint'i
 - [x] Execute UI (Confirm dialog, sonuç ekranı)
 
-### Faz 4: Fiyat Geçmişi Uygulaması (BEKLEMEDE)
-- [ ] Student/Teacher price history endpoint'leri
-- [ ] Ders kaydı fiyat snapshot mantığı
+### Faz 4: Fiyat Geçmişi Uygulaması (TAMAMLANDI ✅)
+- [x] Student/Teacher price history endpoint'leri
+- [x] Ders kaydı fiyat snapshot mantığı (birebir ve grup dersleri)
 
 ### Faz 5: Zorunlu UI (BEKLEMEDE)
 - [ ] Dönem filtresi (tüm listeleme sayfaları)
@@ -108,7 +108,7 @@ GET  /api/admin/seasons/migration-status/{id}      - Migration durumu kontrol
 
 ## Teknik Detaylar
 
-### Yeni Backend Endpoints (Faz 1 + Faz 2 + Faz 3)
+### Yeni Backend Endpoints (Faz 1 + Faz 2 + Faz 3 + Faz 4)
 ```
 GET  /api/seasons                                  - Dönem listesi
 GET  /api/seasons/current                          - Aktif dönem
@@ -119,6 +119,11 @@ GET  /api/admin/seasons/migration-status/{id}      - Migration durumu
 POST /api/year-end/preview                         - Sene sonu preview (FAZ 2)
 POST /api/year-end/execute                         - Sene sonu uygula (FAZ 3)
 GET  /api/year-end/logs                            - Sene sonu logları (FAZ 3)
+GET  /api/student-price-history/{student_id}       - Öğrenci fiyat geçmişi (FAZ 4)
+POST /api/student-price-history                    - Öğrenci fiyatı ekle (FAZ 4)
+GET  /api/teacher-price-history/{teacher_id}       - Öğretmen fiyat geçmişi (FAZ 4)
+POST /api/teacher-price-history                    - Öğretmen fiyatı ekle (FAZ 4)
+GET  /api/current-prices/{student_id}              - Öğrenci güncel fiyatları (FAZ 4)
 ```
 
 ### Mevcut Backend Endpoints
@@ -173,4 +178,4 @@ POST /api/admin/repair-group-lessons-v2 - Güvenli repair
 - **Admin**: `admin` / `test123`
 - **Öğretmen**: `ilknur.uzunal` / `test123`
 
-## Son Test: 21 Mayıs 2026 - Faz 1 + Faz 2 + Faz 3 Tamamlandı ✅
+## Son Test: 21 Mayıs 2026 - Faz 1 + Faz 2 + Faz 3 + Faz 4 Tamamlandı ✅

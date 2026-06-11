@@ -1618,6 +1618,10 @@ async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(
     if current_user.user_type == "teacher" and course["teacher_id"] != current_user.teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
     
+    # Aktif dönemi al
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    season_id = active_season["id"] if active_season else None
+    
     # Ders oluşturulurken öğretmenin o anki ücretini kaydet (geriye dönük değişiklik olmaması için)
     teacher_rate = None
     teacher_price = await db.teacher_prices.find_one({
@@ -1639,13 +1643,44 @@ async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(
         if teacher_price:
             teacher_rate = teacher_price["price"]
     
+    # FAZ 4: Öğrenci fiyat snapshot'ını al
+    student_unit_price = None
+    student_total_amount = None
+    
+    if not lesson_data.is_free_lesson:
+        # Önce student_price_history'den dene
+        student_price_record = await db.student_price_history.find_one({
+            "student_id": course["student_id"],
+            "branch_id": course["branch_id"],
+            "lesson_type": "birebir",
+            "valid_to": None
+        }, {"_id": 0}, sort=[("valid_from", -1)])
+        
+        if student_price_record:
+            student_unit_price = student_price_record["price"]
+        else:
+            # Fallback: student_courses'tan al
+            student_unit_price = course.get("student_price") or course.get("price") or 0
+        
+        student_total_amount = student_unit_price * lesson_data.number_of_lessons
+    
+    # FAZ 4: Öğretmen fiyat snapshot'ı
+    teacher_unit_price = teacher_rate
+    teacher_total_earning = (teacher_rate or 0) * lesson_data.number_of_lessons
+    
     # Ders kaydına course bilgilerini de ekle (course silinse bile kazanç hesaplanabilsin)
     lesson = Lesson(
         **lesson_data.model_dump(), 
         teacher_rate=teacher_rate,
         teacher_id=course["teacher_id"],
         branch_id=course["branch_id"],
-        student_id=course["student_id"]
+        student_id=course["student_id"],
+        season_id=season_id,
+        # FAZ 4: Fiyat snapshot alanları
+        student_unit_price_at_lesson=student_unit_price,
+        student_total_amount_at_lesson=student_total_amount,
+        teacher_unit_price_at_lesson=teacher_unit_price,
+        teacher_total_earning_at_lesson=teacher_total_earning
     )
     doc = lesson.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
@@ -1664,7 +1699,8 @@ async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(
             new_data={
                 "date": lesson_data.date,
                 "number_of_lessons": lesson_data.number_of_lessons,
-                "teacher_rate": teacher_rate
+                "teacher_rate": teacher_rate,
+                "student_unit_price": student_unit_price
             }
         )
     
@@ -2299,6 +2335,10 @@ async def create_group_lesson(
     if is_free_lesson and current_user.user_type != "admin":
         is_free_lesson = False
     
+    # FAZ 4: Aktif dönemi al
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    season_id = active_season["id"] if active_season else None
+    
     # Grup boyutunu belirle ve öğretmen ücretini hesapla
     group_size = len(group["student_ids"])
     
@@ -2353,6 +2393,33 @@ async def create_group_lesson(
         
         # İlk öğrenciye tam ücret, diğerlerine 0 (duplikasyonu önlemek için)
         lesson_teacher_rate = teacher_rate if is_first_student else 0
+        
+        # FAZ 4: Öğrenci fiyat snapshot'ını al (grup dersi için)
+        student_unit_price = None
+        student_total_amount = None
+        
+        if not is_free_lesson:
+            # Önce student_price_history'den dene
+            student_price_record = await db.student_price_history.find_one({
+                "student_id": student_id,
+                "branch_id": branch_id,
+                "lesson_type": "group",
+                "valid_to": None
+            }, {"_id": 0}, sort=[("valid_from", -1)])
+            
+            if student_price_record:
+                student_unit_price = student_price_record["price"]
+            elif course:
+                # Fallback: student_courses'tan al
+                student_unit_price = course.get("student_price") or course.get("price") or 0
+            
+            if student_unit_price:
+                student_total_amount = student_unit_price * number_of_lessons
+        
+        # FAZ 4: Öğretmen fiyat snapshot'ı
+        teacher_unit_price = lesson_teacher_rate
+        teacher_total_earning = (lesson_teacher_rate or 0) * number_of_lessons
+        
         is_first_student = False
         
         lesson = Lesson(
@@ -2365,7 +2432,13 @@ async def create_group_lesson(
             # Ders kaydına course bilgilerini de ekle (course silinse bile görünebilsin)
             teacher_id=group.get("teacher_id"),
             branch_id=branch_id,
-            student_id=student_id
+            student_id=student_id,
+            season_id=season_id,
+            # FAZ 4: Fiyat snapshot alanları
+            student_unit_price_at_lesson=student_unit_price,
+            student_total_amount_at_lesson=student_total_amount,
+            teacher_unit_price_at_lesson=teacher_unit_price,
+            teacher_total_earning_at_lesson=teacher_total_earning
         )
         doc = lesson.model_dump()
         doc['created_at'] = doc['created_at'].isoformat()
@@ -7392,6 +7465,337 @@ async def get_year_end_logs(current_user: User = Depends(get_current_user)):
     
     logs = await db.year_end_logs.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return logs
+
+
+# ============= FAZ 4: FİYAT GEÇMİŞİ VE SNAPSHOT =============
+
+# Helper: Öğrenci fiyatını tarih bazlı getir
+async def get_student_price_at_date(
+    student_id: str, 
+    branch_id: str, 
+    lesson_type: str,
+    date: datetime
+) -> float:
+    """
+    Belirli bir tarihteki öğrenci fiyatını döndürür.
+    REVİZYON #2: student_id + branch_id + lesson_type bazında çalışır.
+    """
+    price_record = await db.student_price_history.find_one({
+        "student_id": student_id,
+        "branch_id": branch_id,
+        "lesson_type": lesson_type,
+        "valid_from": {"$lte": date},
+        "$or": [
+            {"valid_to": None},
+            {"valid_to": {"$gte": date}}
+        ]
+    }, {"_id": 0}, sort=[("valid_from", -1)])
+    
+    if price_record:
+        return price_record["price"]
+    
+    # Fallback: student_courses'tan fiyat al
+    course = await db.student_courses.find_one({
+        "student_id": student_id,
+        "branch_id": branch_id,
+        "status": "active"
+    }, {"_id": 0})
+    
+    if course and course.get("student_price"):
+        return course["student_price"]
+    
+    return 0
+
+# Helper: Öğretmen fiyatını tarih bazlı getir
+async def get_teacher_price_at_date(
+    teacher_id: str,
+    branch_id: str,
+    lesson_type_id: str,
+    group_size: int = None,
+    date: datetime = None
+) -> float:
+    """
+    REVİZYON #6: Backend teacher_price_history'den fiyat hesaplar.
+    """
+    query = {
+        "teacher_id": teacher_id,
+        "branch_id": branch_id,
+        "lesson_type_id": lesson_type_id
+    }
+    
+    if group_size:
+        query["group_size"] = group_size
+    else:
+        query["$or"] = [{"group_size": None}, {"group_size": {"$exists": False}}]
+    
+    if date:
+        query["valid_from"] = {"$lte": date}
+        query["$or"] = [
+            {"valid_to": None},
+            {"valid_to": {"$gte": date}}
+        ]
+    else:
+        query["valid_to"] = None
+    
+    price_record = await db.teacher_price_history.find_one(
+        query, {"_id": 0}, sort=[("valid_from", -1)]
+    )
+    
+    if price_record:
+        return price_record["price"]
+    
+    # Fallback: teacher_prices'tan fiyat al
+    fallback_query = {
+        "teacher_id": teacher_id,
+        "branch_id": branch_id,
+        "lesson_type_id": lesson_type_id
+    }
+    if group_size:
+        fallback_query["group_size"] = group_size
+    
+    teacher_price = await db.teacher_prices.find_one(fallback_query, {"_id": 0})
+    
+    return teacher_price["price"] if teacher_price else 0
+
+# Helper: Fiyat tarih aralığı çakışma kontrolü
+async def validate_student_price_date_range(
+    student_id: str,
+    branch_id: str,
+    lesson_type: str,
+    valid_from: datetime,
+    valid_to: datetime = None,
+    exclude_id: str = None
+):
+    """
+    REVİZYON #3: Fiyat tarih aralığı çakışma kontrolü.
+    """
+    query = {
+        "student_id": student_id,
+        "branch_id": branch_id,
+        "lesson_type": lesson_type,
+        "$or": [
+            {
+                "valid_from": {"$lte": valid_from},
+                "$or": [
+                    {"valid_to": None},
+                    {"valid_to": {"$gte": valid_from}}
+                ]
+            }
+        ]
+    }
+    
+    if valid_to:
+        query["$or"].append({
+            "valid_from": {"$gte": valid_from},
+            "valid_from": {"$lte": valid_to}
+        })
+    
+    if exclude_id:
+        query["id"] = {"$ne": exclude_id}
+    
+    conflicting = await db.student_price_history.find_one(query, {"_id": 0})
+    
+    if conflicting:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tarih aralığı çakışması mevcut"
+        )
+
+# Student Price History Endpoints
+class StudentPriceHistoryCreate(BaseModel):
+    student_id: str
+    branch_id: str
+    lesson_type: str = "birebir"  # "birebir" | "group"
+    price: float
+    valid_from: str  # YYYY-MM-DD
+
+@api_router.get("/student-price-history/{student_id}")
+async def get_student_price_history(
+    student_id: str,
+    branch_id: str = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin fiyat geçmişini getir"""
+    query = {"student_id": student_id}
+    if branch_id:
+        query["branch_id"] = branch_id
+    
+    history = await db.student_price_history.find(query, {"_id": 0}).sort("valid_from", -1).to_list(100)
+    return history
+
+@api_router.post("/student-price-history")
+async def create_student_price_history(
+    data: StudentPriceHistoryCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrenci fiyat geçmişine yeni kayıt ekle"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin")
+    
+    # Aktif dönem kontrolü
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    if not active_season:
+        raise HTTPException(status_code=400, detail="Aktif dönem bulunamadı")
+    
+    # Tarihi parse et
+    try:
+        valid_from = datetime.strptime(data.valid_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz tarih formatı. YYYY-MM-DD kullanın.")
+    
+    # Mevcut geçerli fiyatı kapat (lesson_type bazında)
+    await db.student_price_history.update_one(
+        {
+            "student_id": data.student_id,
+            "branch_id": data.branch_id,
+            "lesson_type": data.lesson_type,
+            "valid_to": None
+        },
+        {"$set": {"valid_to": valid_from}}
+    )
+    
+    # Yeni fiyatı ekle
+    new_price = {
+        "id": str(uuid.uuid4()),
+        "student_id": data.student_id,
+        "branch_id": data.branch_id,
+        "lesson_type": data.lesson_type,
+        "price": data.price,
+        "valid_from": valid_from,
+        "valid_to": None,
+        "season_id": active_season["id"],
+        "needs_review": False,
+        "created_at": datetime.now(timezone.utc),
+        "created_by": current_user.id
+    }
+    
+    await db.student_price_history.insert_one(new_price)
+    
+    # student_courses'taki student_price'ı da güncelle (uyumluluk için)
+    await db.student_courses.update_many(
+        {
+            "student_id": data.student_id,
+            "branch_id": data.branch_id,
+            "status": "active"
+        },
+        {"$set": {"student_price": data.price}}
+    )
+    
+    new_price.pop("_id", None)
+    return {"message": "Fiyat güncellendi", "price": new_price}
+
+# Teacher Price History Endpoints
+class TeacherPriceHistoryCreate(BaseModel):
+    teacher_id: str
+    branch_id: str
+    lesson_type_id: str
+    group_size: int = None
+    price: float
+    valid_from: str  # YYYY-MM-DD
+
+@api_router.get("/teacher-price-history/{teacher_id}")
+async def get_teacher_price_history(
+    teacher_id: str,
+    branch_id: str = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğretmenin fiyat geçmişini getir"""
+    query = {"teacher_id": teacher_id}
+    if branch_id:
+        query["branch_id"] = branch_id
+    
+    history = await db.teacher_price_history.find(query, {"_id": 0}).sort("valid_from", -1).to_list(100)
+    return history
+
+@api_router.post("/teacher-price-history")
+async def create_teacher_price_history(
+    data: TeacherPriceHistoryCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğretmen fiyat geçmişine yeni kayıt ekle"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin")
+    
+    # Aktif dönem kontrolü
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    if not active_season:
+        raise HTTPException(status_code=400, detail="Aktif dönem bulunamadı")
+    
+    # Tarihi parse et
+    try:
+        valid_from = datetime.strptime(data.valid_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz tarih formatı. YYYY-MM-DD kullanın.")
+    
+    # Mevcut geçerli fiyatı kapat
+    close_query = {
+        "teacher_id": data.teacher_id,
+        "branch_id": data.branch_id,
+        "lesson_type_id": data.lesson_type_id,
+        "valid_to": None
+    }
+    if data.group_size:
+        close_query["group_size"] = data.group_size
+    
+    await db.teacher_price_history.update_one(
+        close_query,
+        {"$set": {"valid_to": valid_from}}
+    )
+    
+    # Yeni fiyatı ekle
+    new_price = {
+        "id": str(uuid.uuid4()),
+        "teacher_id": data.teacher_id,
+        "branch_id": data.branch_id,
+        "lesson_type_id": data.lesson_type_id,
+        "group_size": data.group_size,
+        "price": data.price,
+        "valid_from": valid_from,
+        "valid_to": None,
+        "season_id": active_season["id"],
+        "needs_review": False,
+        "created_at": datetime.now(timezone.utc),
+        "created_by": current_user.id
+    }
+    
+    await db.teacher_price_history.insert_one(new_price)
+    
+    # teacher_prices'ı da güncelle (uyumluluk için)
+    update_query = {
+        "teacher_id": data.teacher_id,
+        "branch_id": data.branch_id,
+        "lesson_type_id": data.lesson_type_id
+    }
+    if data.group_size:
+        update_query["group_size"] = data.group_size
+    
+    await db.teacher_prices.update_one(
+        update_query,
+        {"$set": {"price": data.price}},
+        upsert=True
+    )
+    
+    new_price.pop("_id", None)
+    return {"message": "Fiyat güncellendi", "price": new_price}
+
+# Aktif dönemdeki fiyatları getir
+@api_router.get("/current-prices/{student_id}")
+async def get_current_student_prices(
+    student_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin güncel fiyatlarını getir (tüm branşlar)"""
+    prices = await db.student_price_history.find({
+        "student_id": student_id,
+        "valid_to": None
+    }, {"_id": 0}).to_list(100)
+    
+    # Branş adlarını ekle
+    for price in prices:
+        branch = await db.branches.find_one({"id": price["branch_id"]}, {"_id": 0})
+        price["branch_name"] = branch["name"] if branch else "Bilinmiyor"
+    
+    return prices
 
 
 # ============= INCLUDE ROUTER =============
