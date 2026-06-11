@@ -119,9 +119,93 @@ class LessonType(BaseModel):
 class Season(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    status: str = "active"
-    is_current: bool = False
+    name: str  # "2024-2025", "2025-2026"
+    start_date: Optional[datetime] = None  # Dönem başlangıcı (UTC)
+    end_date: Optional[datetime] = None  # Dönem bitişi (UTC) - None = açık dönem
+    status: str = "active"  # "active" | "closed"
+    is_current: bool = False  # Aktif dönem mi?
+    closed_at: Optional[datetime] = None  # Kapanış timestamp'i (UTC)
+    closed_by: Optional[str] = None  # Kapatan admin user_id
+    previous_season_id: Optional[str] = None  # Önceki dönem ID'si
+    next_season_id: Optional[str] = None  # Sonraki dönem ID'si
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class SeasonCreate(BaseModel):
+    """İlk dönem oluşturma için admin input modeli"""
+    name: str  # Admin girer, hardcoded değil
+    start_date: str  # YYYY-MM-DD formatında
+
+# ============= SENE SONU YENİ MODELLER (FAZ 1) =============
+
+class StudentPriceHistory(BaseModel):
+    """Öğrenci fiyat geçmişi - student_id + branch_id + lesson_type bazında"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    branch_id: str
+    lesson_type: str = "birebir"  # "birebir" | "group"
+    price: float
+    valid_from: datetime  # Geçerlilik başlangıcı (UTC)
+    valid_to: Optional[datetime] = None  # None = hala geçerli
+    season_id: str
+    needs_review: bool = False  # Yeni dönem kopyası kontrolü
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by: str  # Admin user_id veya "migration"
+
+class TeacherPriceHistory(BaseModel):
+    """Öğretmen fiyat geçmişi"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    teacher_id: str
+    branch_id: str
+    lesson_type_id: str
+    group_size: Optional[int] = None  # 1, 2, 3, 4 (grup dersleri için)
+    price: float
+    valid_from: datetime  # Geçerlilik başlangıcı (UTC)
+    valid_to: Optional[datetime] = None  # None = hala geçerli
+    season_id: str
+    needs_review: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by: str
+
+class SeasonCarryover(BaseModel):
+    """Dönem devir kaydı - bakiye aktarımları için"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    entity_type: str  # "student" | "teacher"
+    entity_id: str  # student_id veya teacher_id
+    branch_id: Optional[str] = None  # Öğrenci için branş bazlı
+    from_season_id: str
+    to_season_id: str
+    amount: float  # Devredilen bakiye (+ alacak, - borç)
+    description: str  # "2024-2025 dönem kapanışından aktarıldı"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ManualBalanceAdjustment(BaseModel):
+    """Manuel bakiye düzeltmesi"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    branch_id: str
+    season_id: str
+    amount: float  # + veya -
+    description: str  # Zorunlu açıklama
+    created_by: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class YearEndLog(BaseModel):
+    """Sene sonu işlem logu"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    from_season_id: str
+    to_season_id: str
+    executed_by: str
+    executed_at: datetime
+    cutoff_date: datetime  # Kesim tarihi
+    status: str  # "success" | "failed" | "partial"
+    summary: Optional[dict] = None  # Özet istatistikler
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class BankAccount(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -170,7 +254,10 @@ class StudentGroup(BaseModel):
     level: str  # sınıf
     student_ids: List[str]  # öğrenci ID listesi
     teacher_id: Optional[str] = None
-    status: str = "active"  # active / inactive
+    status: str = "active"  # active / inactive / closed
+    season_id: Optional[str] = None  # FAZ 1: Dönemsel grup
+    closed_at: Optional[datetime] = None  # Kapanış zamanı
+    closed_reason: Optional[str] = None  # "year_end" | "manual"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class StudentGroupCreate(BaseModel):
@@ -180,6 +267,7 @@ class StudentGroupCreate(BaseModel):
     student_ids: List[str]
     teacher_id: Optional[str] = None
     status: str = "active"
+    season_id: Optional[str] = None  # FAZ 1: Dönemsel grup
 
 class StudentCourse(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -192,6 +280,9 @@ class StudentCourse(BaseModel):
     student_price: Optional[float] = None  # Öğrenci ders ücreti (finans hesaplaması için)
     season_id: Optional[str] = None
     status: str = "active"
+    group_id: Optional[str] = None  # Grup ders ilişkisi için (birebir ise None)
+    closed_at: Optional[datetime] = None  # FAZ 1: Dönem kapanışında set edilir
+    copied_to_id: Optional[str] = None  # FAZ 1: Yeni dönem kopyasının ID'si
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class StudentCourseCreate(BaseModel):
@@ -202,6 +293,7 @@ class StudentCourseCreate(BaseModel):
     price: float
     student_price: Optional[float] = None
     season_id: Optional[str] = None
+    group_id: Optional[str] = None  # FAZ 1: Grup ders ilişkisi için
 
 class Lesson(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -216,6 +308,11 @@ class Lesson(BaseModel):
     branch_id: Optional[str] = None  # Branş ID - course silinse bile kazanç hesaplanabilsin
     student_id: Optional[str] = None  # Öğrenci ID - course silinse bile izlenebilsin
     is_free_lesson: bool = False  # Ücretsiz ders - öğrenci bakiyesinden düşülmez, öğretmen kazancı devam eder
+    # FAZ 4: Fiyat snapshot alanları (henüz kullanılmayacak)
+    student_unit_price_at_lesson: Optional[float] = None  # Öğrenci birim ücreti snapshot
+    student_total_amount_at_lesson: Optional[float] = None  # Öğrenci toplam tutarı snapshot
+    teacher_unit_price_at_lesson: Optional[float] = None  # Öğretmen birim ücreti (= teacher_rate)
+    teacher_total_earning_at_lesson: Optional[float] = None  # Öğretmen toplam kazancı snapshot
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class LessonCreate(BaseModel):
@@ -233,6 +330,7 @@ class PlannedLesson(BaseModel):
     messaged: bool = False
     month: str
     no_lesson_this_month: bool = False  # Bu ay dersi yok
+    season_id: Optional[str] = None  # FAZ 1: Dönemsel planlama
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PlannedLessonCreate(BaseModel):
@@ -242,6 +340,7 @@ class PlannedLessonCreate(BaseModel):
     messaged: bool = False
     month: str
     no_lesson_this_month: bool = False  # Bu ay dersi yok
+    season_id: Optional[str] = None  # FAZ 1: Dönemsel planlama
 
 class Payment(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -353,6 +452,7 @@ class CampStudent(BaseModel):
     payment_amount: float  # Ödeme tutarı
     payment_completed: bool = False  # Ödeme yapıldı mı
     notes: Optional[str] = None  # Not alanı
+    season_id: Optional[str] = None  # FAZ 1: Dönemsel kamp kaydı
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class CampStudentCreate(BaseModel):
@@ -364,6 +464,7 @@ class CampStudentCreate(BaseModel):
     payment_amount: float
     payment_completed: bool = False
     notes: Optional[str] = None
+    season_id: Optional[str] = None  # FAZ 1: Dönemsel kamp kaydı
 
 class CampStudentUpdate(BaseModel):
     student_name: Optional[str] = None
@@ -6010,7 +6111,7 @@ async def repair_group_lessons(current_user: User = Depends(get_current_user)):
                             repaired_count += 1
     
     return {
-        "message": f"Migration tamamlandı",
+        "message": "Migration tamamlandı",
         "checked_lessons": checked_count,
         "repaired_lessons": repaired_count
     }
@@ -6083,11 +6184,407 @@ async def repair_group_lessons_v2(current_user: User = Depends(get_current_user)
             repaired_count += 1
     
     return {
-        "message": f"Repair tamamlandı",
+        "message": "Repair tamamlandı",
         "repaired_count": repaired_count,
         "skipped_count": skipped_count,
         "total_checked": len(lessons_with_group)
     }
+
+
+# ============= FAZ 1: SENE SONU DÖNEM ALTYAPISI =============
+
+@api_router.get("/seasons")
+async def get_all_seasons(current_user: User = Depends(get_current_user)):
+    """Tüm dönemleri listele"""
+    seasons = await db.seasons.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return seasons
+
+@api_router.get("/seasons/current")
+async def get_current_active_season(current_user: User = Depends(get_current_user)):
+    """Aktif dönemi getir"""
+    season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    if not season:
+        return None
+    return season
+
+@api_router.post("/admin/seasons/create-initial")
+async def create_initial_season(
+    data: SeasonCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FAZ 1: İlk dönemi oluştur.
+    Admin tarafından dönem adı girilir (hardcoded değil).
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin bu işlemi yapabilir")
+    
+    # Zaten aktif dönem var mı kontrol et
+    existing_active = await db.seasons.find_one({"status": "active", "is_current": True})
+    if existing_active:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Zaten aktif dönem mevcut: {existing_active['name']}. Yeni dönem oluşturmak için önce sene sonu işlemi yapılmalı."
+        )
+    
+    # Aynı isimde dönem var mı kontrol et (idempotency)
+    existing_same_name = await db.seasons.find_one({"name": data.name})
+    if existing_same_name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{data.name}' adında dönem zaten mevcut. Duplicate dönem oluşturulamaz."
+        )
+    
+    # Başlangıç tarihini parse et
+    try:
+        start_date = datetime.strptime(data.start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz tarih formatı. YYYY-MM-DD kullanın.")
+    
+    season_id = f"season-{data.name}"
+    
+    season = {
+        "id": season_id,
+        "name": data.name,
+        "start_date": start_date,
+        "end_date": None,
+        "status": "active",
+        "is_current": True,
+        "closed_at": None,
+        "closed_by": None,
+        "previous_season_id": None,
+        "next_season_id": None,
+        "created_at": datetime.now(timezone.utc)
+    }
+    
+    await db.seasons.insert_one(season)
+    
+    # _id'yi response'dan çıkar
+    season.pop("_id", None)
+    
+    return {
+        "message": f"Dönem '{data.name}' başarıyla oluşturuldu",
+        "season": season
+    }
+
+@api_router.post("/admin/seasons/migrate")
+async def migrate_existing_data_to_season(
+    season_id: str,
+    dry_run: bool = True,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FAZ 1: Mevcut verilere season_id ekle (migration).
+    
+    - dry_run=True: Sadece preview, veri değişmez
+    - dry_run=False: Gerçek migration işlemi
+    
+    İdempotent: Aynı migration ikinci kez çalıştırılırsa duplicate oluşmaz.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin bu işlemi yapabilir")
+    
+    # Dönem kontrolü
+    season = await db.seasons.find_one({"id": season_id})
+    if not season:
+        raise HTTPException(status_code=404, detail="Dönem bulunamadı")
+    
+    # Migration sonuçları
+    results = {
+        "season_id": season_id,
+        "season_name": season["name"],
+        "dry_run": dry_run,
+        "collections": {}
+    }
+    
+    # Collection listesi ve kontrol
+    collections_to_migrate = [
+        ("lessons", "lessons"),
+        ("payments", "payments"),
+        ("student_courses", "student_courses"),
+        ("student_groups", "student_groups"),
+        ("planned_lessons", "planned_lessons"),
+        ("camps", "camps"),
+        ("camp_students", "camp_students"),
+        ("youtube_contents", "youtube_contents"),
+        ("trial_exams", "trial_exams"),
+        ("homework_plans", "homework_plans"),
+        ("homework_plan_items", "homework_plan_items"),
+        ("student_book_assignments", "student_book_assignments"),
+        ("student_test_progress", "student_test_progress"),
+    ]
+    
+    total_to_update = 0
+    total_already_has = 0
+    
+    for collection_name, _ in collections_to_migrate:
+        # season_id olmayan kayıtları say
+        without_season = await db[collection_name].count_documents({
+            "$or": [
+                {"season_id": {"$exists": False}},
+                {"season_id": None}
+            ]
+        })
+        
+        # season_id olan kayıtları say
+        with_season = await db[collection_name].count_documents({
+            "season_id": {"$exists": True, "$ne": None}
+        })
+        
+        results["collections"][collection_name] = {
+            "records_to_update": without_season,
+            "records_already_has_season": with_season,
+            "status": "will_update" if without_season > 0 else "already_migrated"
+        }
+        
+        total_to_update += without_season
+        total_already_has += with_season
+        
+        # Gerçek migration (dry_run=False ise)
+        if not dry_run and without_season > 0:
+            update_result = await db[collection_name].update_many(
+                {
+                    "$or": [
+                        {"season_id": {"$exists": False}},
+                        {"season_id": None}
+                    ]
+                },
+                {"$set": {"season_id": season_id}}
+            )
+            results["collections"][collection_name]["updated_count"] = update_result.modified_count
+    
+    results["summary"] = {
+        "total_records_to_update": total_to_update,
+        "total_records_already_has_season": total_already_has,
+        "action": "PREVIEW - Veri değişmedi" if dry_run else f"{total_to_update} kayıt güncellendi"
+    }
+    
+    if dry_run:
+        results["next_step"] = "Migration'ı uygulamak için dry_run=false ile tekrar çağırın"
+    
+    return results
+
+@api_router.post("/admin/seasons/migrate-price-history")
+async def migrate_price_history(
+    season_id: str,
+    dry_run: bool = True,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FAZ 1: Mevcut fiyatları price history'ye kopyala.
+    
+    - Öğrenci fiyatları: student_courses.student_price → student_price_history
+    - Öğretmen fiyatları: teacher_prices → teacher_price_history
+    
+    İdempotent: Aynı kombinasyon için duplicate oluşmaz.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin bu işlemi yapabilir")
+    
+    # Dönem kontrolü
+    season = await db.seasons.find_one({"id": season_id})
+    if not season:
+        raise HTTPException(status_code=404, detail="Dönem bulunamadı")
+    
+    results = {
+        "season_id": season_id,
+        "season_name": season["name"],
+        "dry_run": dry_run,
+        "student_price_history": {
+            "to_create": 0,
+            "already_exists": 0,
+            "created": 0,
+            "details": []
+        },
+        "teacher_price_history": {
+            "to_create": 0,
+            "already_exists": 0,
+            "created": 0,
+            "details": []
+        }
+    }
+    
+    # ===== STUDENT PRICE HISTORY =====
+    # student_courses'tan aktif kursları çek
+    courses = await db.student_courses.find({"status": "active"}).to_list(10000)
+    
+    for course in courses:
+        student_price = course.get("student_price")
+        if not student_price:
+            continue
+        
+        student_id = course["student_id"]
+        branch_id = course["branch_id"]
+        # Grup mu birebir mi belirle
+        lesson_type = "group" if course.get("group_id") else "birebir"
+        
+        # Aynı kombinasyon için zaten kayıt var mı? (idempotency)
+        existing = await db.student_price_history.find_one({
+            "student_id": student_id,
+            "branch_id": branch_id,
+            "lesson_type": lesson_type,
+            "season_id": season_id
+        })
+        
+        if existing:
+            results["student_price_history"]["already_exists"] += 1
+            continue
+        
+        results["student_price_history"]["to_create"] += 1
+        
+        if not dry_run:
+            price_history = {
+                "id": str(uuid.uuid4()),
+                "student_id": student_id,
+                "branch_id": branch_id,
+                "lesson_type": lesson_type,
+                "price": student_price,
+                "valid_from": season.get("start_date") or datetime.now(timezone.utc),
+                "valid_to": None,
+                "season_id": season_id,
+                "needs_review": False,
+                "created_at": datetime.now(timezone.utc),
+                "created_by": "migration"
+            }
+            await db.student_price_history.insert_one(price_history)
+            results["student_price_history"]["created"] += 1
+    
+    # ===== TEACHER PRICE HISTORY =====
+    # teacher_prices'tan fiyatları çek
+    teacher_prices = await db.teacher_prices.find({}).to_list(10000)
+    
+    for tp in teacher_prices:
+        teacher_id = tp["teacher_id"]
+        branch_id = tp["branch_id"]
+        lesson_type_id = tp["lesson_type_id"]
+        group_size = tp.get("group_size")
+        price = tp["price"]
+        
+        # Aynı kombinasyon için zaten kayıt var mı? (idempotency)
+        query = {
+            "teacher_id": teacher_id,
+            "branch_id": branch_id,
+            "lesson_type_id": lesson_type_id,
+            "season_id": season_id
+        }
+        if group_size:
+            query["group_size"] = group_size
+        
+        existing = await db.teacher_price_history.find_one(query)
+        
+        if existing:
+            results["teacher_price_history"]["already_exists"] += 1
+            continue
+        
+        results["teacher_price_history"]["to_create"] += 1
+        
+        if not dry_run:
+            teacher_price_history = {
+                "id": str(uuid.uuid4()),
+                "teacher_id": teacher_id,
+                "branch_id": branch_id,
+                "lesson_type_id": lesson_type_id,
+                "group_size": group_size,
+                "price": price,
+                "valid_from": season.get("start_date") or datetime.now(timezone.utc),
+                "valid_to": None,
+                "season_id": season_id,
+                "needs_review": False,
+                "created_at": datetime.now(timezone.utc),
+                "created_by": "migration"
+            }
+            await db.teacher_price_history.insert_one(teacher_price_history)
+            results["teacher_price_history"]["created"] += 1
+    
+    results["summary"] = {
+        "action": "PREVIEW - Veri değişmedi" if dry_run else "Migration tamamlandı",
+        "student_prices": {
+            "to_create": results["student_price_history"]["to_create"],
+            "already_exists": results["student_price_history"]["already_exists"],
+            "created": results["student_price_history"]["created"] if not dry_run else 0
+        },
+        "teacher_prices": {
+            "to_create": results["teacher_price_history"]["to_create"],
+            "already_exists": results["teacher_price_history"]["already_exists"],
+            "created": results["teacher_price_history"]["created"] if not dry_run else 0
+        }
+    }
+    
+    if dry_run:
+        results["next_step"] = "Migration'ı uygulamak için dry_run=false ile tekrar çağırın"
+    
+    return results
+
+@api_router.get("/admin/seasons/migration-status/{season_id}")
+async def get_migration_status(
+    season_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FAZ 1: Migration durumunu kontrol et.
+    Hangi collection'larda kaç kayıt season_id'ye sahip, kaç kayıt eksik.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin bu işlemi yapabilir")
+    
+    season = await db.seasons.find_one({"id": season_id})
+    if not season:
+        raise HTTPException(status_code=404, detail="Dönem bulunamadı")
+    
+    collections = [
+        "lessons", "payments", "student_courses", "student_groups",
+        "planned_lessons", "camps", "camp_students", "youtube_contents",
+        "trial_exams", "homework_plans", "homework_plan_items",
+        "student_book_assignments", "student_test_progress"
+    ]
+    
+    status = {
+        "season_id": season_id,
+        "season_name": season["name"],
+        "collections": {}
+    }
+    
+    total_with_season = 0
+    total_without_season = 0
+    
+    for coll in collections:
+        with_season = await db[coll].count_documents({"season_id": season_id})
+        without_season = await db[coll].count_documents({
+            "$or": [
+                {"season_id": {"$exists": False}},
+                {"season_id": None}
+            ]
+        })
+        other_season = await db[coll].count_documents({
+            "season_id": {"$exists": True, "$nin": [None, season_id]}
+        })
+        
+        status["collections"][coll] = {
+            "with_this_season": with_season,
+            "without_season": without_season,
+            "with_other_season": other_season,
+            "migration_complete": without_season == 0
+        }
+        
+        total_with_season += with_season
+        total_without_season += without_season
+    
+    # Price history durumu
+    student_price_count = await db.student_price_history.count_documents({"season_id": season_id})
+    teacher_price_count = await db.teacher_price_history.count_documents({"season_id": season_id})
+    
+    status["price_history"] = {
+        "student_price_history_count": student_price_count,
+        "teacher_price_history_count": teacher_price_count
+    }
+    
+    status["summary"] = {
+        "total_records_with_season": total_with_season,
+        "total_records_without_season": total_without_season,
+        "migration_complete": total_without_season == 0
+    }
+    
+    return status
 
 
 # ============= INCLUDE ROUTER =============
