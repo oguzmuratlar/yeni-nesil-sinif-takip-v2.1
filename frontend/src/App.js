@@ -41,6 +41,7 @@ import AdminBadges from "./pages/admin/AdminBadges";
 import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
 import AdminHomeworkContent from "./pages/admin/AdminHomeworkContent";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminYearEndPreview from "./pages/admin/AdminYearEndPreview";
 
 // Teacher Pages
 import TeacherStudents from "./pages/teacher/TeacherStudents";
@@ -278,6 +279,11 @@ function App() {
             <Route path="/admin/settings" element={
               <ProtectedRoute requiredRole="admin">
                 <AdminSettings />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/year-end-preview" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminYearEndPreview />
               </ProtectedRoute>
             } />
 

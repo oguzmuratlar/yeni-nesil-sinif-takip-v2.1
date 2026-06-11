@@ -87,9 +87,9 @@ GET  /api/admin/seasons/migration-status/{id}      - Migration durumu kontrol
 
 ## Sene Sonu İşlemi - Kalan Fazlar
 
-### Faz 2: Sene Sonu Preview (BEKLEMEDE)
-- [ ] `POST /api/year-end/preview` endpoint'i
-- [ ] Preview UI sayfası
+### Faz 2: Sene Sonu Preview (TAMAMLANDI ✅)
+- [x] `POST /api/year-end/preview` endpoint'i
+- [x] Preview UI sayfası (`/admin/year-end-preview`)
 
 ### Faz 3: Sene Sonu Execute (BEKLEMEDE)
 - [ ] `POST /api/year-end/execute` endpoint'i
@@ -108,7 +108,7 @@ GET  /api/admin/seasons/migration-status/{id}      - Migration durumu kontrol
 
 ## Teknik Detaylar
 
-### Yeni Backend Endpoints (Faz 1)
+### Yeni Backend Endpoints (Faz 1 + Faz 2)
 ```
 GET  /api/seasons                                  - Dönem listesi
 GET  /api/seasons/current                          - Aktif dönem
@@ -116,6 +116,7 @@ POST /api/admin/seasons/create-initial             - İlk dönem oluştur
 POST /api/admin/seasons/migrate                    - Season_id migration
 POST /api/admin/seasons/migrate-price-history      - Fiyat geçmişi migration
 GET  /api/admin/seasons/migration-status/{id}      - Migration durumu
+POST /api/year-end/preview                         - Sene sonu preview (FAZ 2)
 ```
 
 ### Mevcut Backend Endpoints
@@ -170,4 +171,4 @@ POST /api/admin/repair-group-lessons-v2 - Güvenli repair
 - **Admin**: `admin` / `test123`
 - **Öğretmen**: `ilknur.uzunal` / `test123`
 
-## Son Test: 21 Mayıs 2026 - Faz 1 Tamamlandı ✅
+## Son Test: 21 Mayıs 2026 - Faz 1 + Faz 2 Tamamlandı ✅

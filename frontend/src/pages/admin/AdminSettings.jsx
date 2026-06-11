@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
-import { Settings, ToggleLeft, ToggleRight, BookOpen, Loader2 } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, BookOpen, Loader2, Calendar, ChevronRight } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Switch } from '../../components/ui/switch';
 
 const AdminSettings = () => {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
@@ -165,6 +167,47 @@ const AdminSettings = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Sene Sonu İşlemleri */}
+        <div className="mt-12">
+          <h2 className="text-2xl font-bold text-slate-800 mb-4">Sene Sonu İşlemleri</h2>
+          <Card className="border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Calendar className="h-6 w-6 text-orange-600" />
+                  <div>
+                    <CardTitle className="text-lg text-orange-800">Dönem Geçişi</CardTitle>
+                    <CardDescription className="text-orange-700">
+                      Mevcut dönemi kapatın ve yeni dönem açın
+                    </CardDescription>
+                  </div>
+                </div>
+                <Button 
+                  data-testid="year-end-preview-btn"
+                  onClick={() => navigate('/admin/year-end-preview')}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  Sene Sonu Preview
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="p-3 rounded-lg bg-white/50 border border-orange-200">
+                <p className="text-sm text-orange-800">
+                  Sene sonu işleminde:
+                </p>
+                <ul className="text-sm text-orange-700 mt-2 space-y-1">
+                  <li>• Öğrenciler bir üst sınıfa geçer (8. sınıf pasife alınır)</li>
+                  <li>• Öğrenci ve öğretmen bakiyeleri yeni döneme devredilir</li>
+                  <li>• Gruplar kapatılır (yeni dönemde manuel oluşturulur)</li>
+                  <li>• Birebir ders ilişkileri yeni döneme kopyalanır</li>
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AdminLayout>
   );

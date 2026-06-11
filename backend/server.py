@@ -6587,6 +6587,322 @@ async def get_migration_status(
     return status
 
 
+# ============= FAZ 2: SENE SONU PREVIEW =============
+
+async def calculate_student_balance_for_preview(student_id: str, branch_id: str = None):
+    """
+    Öğrencinin branş bazlı bakiyesini hesapla (preview için).
+    Mevcut hesaplama mantığını kullanır, değiştirmez.
+    """
+    # Öğrencinin aktif kursları
+    course_query = {"student_id": student_id, "status": "active"}
+    if branch_id:
+        course_query["branch_id"] = branch_id
+    
+    courses = await db.student_courses.find(course_query, {"_id": 0}).to_list(100)
+    
+    balances = []
+    
+    for course in courses:
+        course_branch_id = course["branch_id"]
+        
+        # Bu branştaki dersler
+        lessons = await db.lessons.find({
+            "student_course_id": course["id"]
+        }, {"_id": 0}).to_list(10000)
+        
+        # Ücretsiz olmayan derslerin toplam sayısı
+        paid_lessons = [lesson for lesson in lessons if not lesson.get("is_free_lesson", False)]
+        total_paid_lessons = sum([lesson["number_of_lessons"] for lesson in paid_lessons])
+        
+        # Öğrenci ders ücreti
+        student_price = course.get("student_price") or course.get("price") or 0
+        
+        # Kullanılan tutar
+        used_amount = total_paid_lessons * student_price
+        
+        # Bu branş için ödemeler
+        payments = await db.payments.find({
+            "student_id": student_id,
+            "branch_id": course_branch_id,
+            "payment_type": "student_payment"
+        }, {"_id": 0}).to_list(10000)
+        
+        total_paid = sum([p["amount"] for p in payments])
+        
+        # Kalan bakiye
+        remaining_balance = total_paid - used_amount
+        
+        balances.append({
+            "branch_id": course_branch_id,
+            "balance": remaining_balance,
+            "status": "alacakli" if remaining_balance >= 0 else "borclu"
+        })
+    
+    return balances
+
+async def calculate_teacher_balance_for_preview(teacher_id: str):
+    """
+    Öğretmenin toplam bakiyesini hesapla (preview için).
+    Mevcut hesaplama mantığını kullanır, değiştirmez.
+    """
+    # Dersleri teacher_id ile getir
+    lessons = await db.lessons.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(10000)
+    
+    # Eski sistemle uyumluluk
+    courses = await db.student_courses.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
+    course_ids = [c["id"] for c in courses]
+    
+    old_lessons = await db.lessons.find({
+        "student_course_id": {"$in": course_ids},
+        "$or": [{"teacher_id": None}, {"teacher_id": {"$exists": False}}]
+    }, {"_id": 0}).to_list(10000)
+    
+    # Birleştir
+    all_lesson_ids = set()
+    all_lessons = []
+    for lesson in lessons + old_lessons:
+        if lesson["id"] not in all_lesson_ids:
+            all_lesson_ids.add(lesson["id"])
+            all_lessons.append(lesson)
+    
+    # Ders kazancı
+    total_earnings = 0
+    for lesson in all_lessons:
+        if lesson.get("teacher_rate") is not None:
+            total_earnings += lesson["teacher_rate"] * lesson["number_of_lessons"]
+        else:
+            course = next((c for c in courses if c["id"] == lesson.get("student_course_id")), None)
+            if course:
+                teacher_price = await db.teacher_prices.find_one({
+                    "teacher_id": teacher_id,
+                    "branch_id": course["branch_id"],
+                    "lesson_type_id": course["lesson_type_id"]
+                }, {"_id": 0})
+                if teacher_price:
+                    total_earnings += teacher_price["price"] * lesson["number_of_lessons"]
+    
+    # Kamp kazançları
+    camps = await db.camps.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
+    total_camp_earnings = 0
+    for camp in camps:
+        paid_students_count = await db.camp_students.count_documents({
+            "camp_id": camp["id"],
+            "registration_status": "kesin_kayit"
+        })
+        total_camp_earnings += paid_students_count * camp["per_student_teacher_fee"]
+    
+    # YouTube kazançları
+    youtube_records = await db.youtube_contents.find({
+        "teacher_id": teacher_id,
+        "status": "active"
+    }, {"_id": 0}).to_list(1000)
+    total_youtube_earnings = sum([r["amount"] for r in youtube_records])
+    
+    # Toplam kazanç
+    grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings
+    
+    # Ödemeler
+    payments = await db.payments.find({
+        "teacher_id": teacher_id,
+        "payment_type": "teacher_payment"
+    }, {"_id": 0}).to_list(1000)
+    total_paid = sum([p["amount"] for p in payments])
+    
+    # Bakiye
+    balance = grand_total_earnings - total_paid
+    
+    return {
+        "total_earnings": grand_total_earnings,
+        "total_paid": total_paid,
+        "balance": balance
+    }
+
+@api_router.post("/year-end/preview")
+async def year_end_preview(current_user: User = Depends(get_current_user)):
+    """
+    FAZ 2: Sene sonu işlemi preview.
+    Veri DEĞİŞTİRMEZ, sadece preview gösterir.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin bu işlemi yapabilir")
+    
+    # Aktif dönemi bul
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    if not active_season:
+        raise HTTPException(status_code=400, detail="Aktif dönem bulunamadı. Önce dönem oluşturun.")
+    
+    # Yeni dönem adını hesapla
+    current_name = active_season["name"]  # örn: "2024-2025"
+    try:
+        years = current_name.split("-")
+        new_name = f"{int(years[0]) + 1}-{int(years[1]) + 1}"  # "2025-2026"
+    except (ValueError, IndexError):
+        new_name = f"{current_name}-SONRAKI"
+    
+    cutoff_date = datetime.now(timezone.utc)
+    
+    # ===== ÖĞRENCİ ANALİZİ =====
+    all_students = await db.students.find({}, {"_id": 0}).to_list(10000)
+    active_students = [s for s in all_students if s.get("status") == "active"]
+    inactive_students = [s for s in all_students if s.get("status") != "active"]
+    
+    # Sınıf dağılımı
+    class_breakdown = {
+        "5_to_6": 0,
+        "6_to_7": 0,
+        "7_to_8": 0,
+        "8_to_inactive": 0,
+        "other": 0
+    }
+    
+    upgrading_students = 0
+    graduating_students = 0
+    
+    for student in active_students:
+        level = student.get("level", "")
+        try:
+            level_int = int(level)
+            if level_int == 5:
+                class_breakdown["5_to_6"] += 1
+                upgrading_students += 1
+            elif level_int == 6:
+                class_breakdown["6_to_7"] += 1
+                upgrading_students += 1
+            elif level_int == 7:
+                class_breakdown["7_to_8"] += 1
+                upgrading_students += 1
+            elif level_int == 8:
+                class_breakdown["8_to_inactive"] += 1
+                graduating_students += 1
+            else:
+                class_breakdown["other"] += 1
+        except (ValueError, TypeError):
+            class_breakdown["other"] += 1
+    
+    # ===== GRUP ANALİZİ =====
+    active_groups = await db.student_groups.find({
+        "status": "active"
+    }, {"_id": 0}).to_list(1000)
+    
+    # ===== ÖĞRENCİ BAKİYELERİ =====
+    branches = await db.branches.find({}, {"_id": 0}).to_list(100)
+    branch_map = {b["id"]: b["name"] for b in branches}
+    
+    student_balances = []
+    
+    for student in active_students:
+        balances = await calculate_student_balance_for_preview(student["id"])
+        
+        # Bakiyelere branş adı ekle
+        for bal in balances:
+            bal["branch_name"] = branch_map.get(bal["branch_id"], "Bilinmiyor")
+        
+        total_balance = sum([b["balance"] for b in balances])
+        
+        level = student.get("level", "")
+        try:
+            level_int = int(level)
+            new_level = str(level_int + 1) if level_int < 8 else None
+            will_graduate = level_int == 8
+        except (ValueError, TypeError):
+            new_level = None
+            will_graduate = False
+        
+        student_balances.append({
+            "student_id": student["id"],
+            "student_name": student["name"],
+            "level": level,
+            "new_level": new_level,
+            "will_graduate": will_graduate,
+            "total_balance": total_balance,
+            "by_branch": balances
+        })
+    
+    # Bakiyeye göre sırala (en yüksek bakiye önce)
+    student_balances.sort(key=lambda x: abs(x["total_balance"]), reverse=True)
+    
+    # ===== ÖĞRETMEN BAKİYELERİ =====
+    teachers = await db.teachers.find({"status": "active"}, {"_id": 0}).to_list(1000)
+    
+    teacher_balances = []
+    
+    for teacher in teachers:
+        balance_info = await calculate_teacher_balance_for_preview(teacher["id"])
+        
+        teacher_balances.append({
+            "teacher_id": teacher["id"],
+            "teacher_name": teacher["name"],
+            "total_earnings": balance_info["total_earnings"],
+            "total_paid": balance_info["total_paid"],
+            "carryover_balance": balance_info["balance"]
+        })
+    
+    # Bakiyeye göre sırala
+    teacher_balances.sort(key=lambda x: abs(x["carryover_balance"]), reverse=True)
+    
+    # ===== UYARILAR =====
+    warnings = []
+    
+    if graduating_students > 0:
+        warnings.append(f"{graduating_students} öğrenci mezun olacak ve pasife alınacak")
+    
+    if len(active_groups) > 0:
+        warnings.append(f"{len(active_groups)} grup kapatılacak (yeni döneme kopyalanmayacak)")
+    
+    # Mezun olacak öğrencilerin bakiyeleri
+    graduating_with_balance = [s for s in student_balances if s["will_graduate"] and s["total_balance"] != 0]
+    if graduating_with_balance:
+        positive_balance = sum([s["total_balance"] for s in graduating_with_balance if s["total_balance"] > 0])
+        negative_balance = sum([s["total_balance"] for s in graduating_with_balance if s["total_balance"] < 0])
+        if positive_balance > 0:
+            warnings.append(f"Mezun olacak öğrencilerde toplam {positive_balance:.0f} TL alacak bakiye var (devredilmeyecek)")
+        if negative_balance < 0:
+            warnings.append(f"Mezun olacak öğrencilerde toplam {abs(negative_balance):.0f} TL borç var (devredilmeyecek)")
+    
+    # ===== RESPONSE =====
+    return {
+        "closing_season": {
+            "id": active_season["id"],
+            "name": active_season["name"]
+        },
+        "opening_season": {
+            "id": f"season-{new_name}",
+            "name": new_name
+        },
+        "cutoff_date": cutoff_date.isoformat(),
+        
+        "student_summary": {
+            "total_active_students": len(active_students),
+            "upgrading_students": upgrading_students,
+            "graduating_students": graduating_students,
+            "already_inactive": len(inactive_students),
+            "class_breakdown": class_breakdown
+        },
+        
+        "group_summary": {
+            "total_active_groups": len(active_groups),
+            "groups_to_close": len(active_groups),
+            "groups_to_copy": 0  # Gruplar kopyalanmayacak
+        },
+        
+        "student_balances": student_balances,
+        "teacher_balances": teacher_balances,
+        
+        "cashbox_note": "Kasa bakiyeleri değişmeyecek",
+        
+        "warnings": warnings,
+        
+        "important_notes": [
+            "Bu sadece PREVIEW - henüz hiçbir veri değişmedi",
+            "Sene sonu işlemini onaylamak için /year-end/execute endpoint'ini kullanın",
+            "8. sınıf öğrencileri pasife alınacak ve bakiyeleri DEVREDİLMEYECEK",
+            "Gruplar kapatılacak, yeni döneme kopyalanmayacak",
+            "Birebir ders ilişkileri yeni döneme kopyalanacak"
+        ]
+    }
+
+
 # ============= INCLUDE ROUTER =============
 
 app.include_router(api_router)
