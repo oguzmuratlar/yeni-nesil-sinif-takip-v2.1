@@ -2,7 +2,24 @@
 
 **Tarih:** 21 Mayıs 2026  
 **Durum:** ONAY BEKLİYOR  
-**Versiyon:** 1.0
+**Versiyon:** 2.0 (REVİZE EDİLDİ)
+
+---
+
+## 🔴 REVİZYON NOTLARI (v2.0)
+
+| # | Revizyon | Yapılan Değişiklik |
+|---|----------|-------------------|
+| 1 | Kamp kazancı dönemsel | Kamplar `season_id` alacak, öğretmen bakiyesi dönemsel hesaplanacak |
+| 2 | Student price history key | `student_id + branch_id + lesson_type` bazında çalışacak |
+| 3 | valid_from/valid_to çakışması | Çakışma kontrolü ve önleme mekanizması eklendi |
+| 4 | Grup student_course kopyalanmayacak | Sadece birebir ders ilişkileri kopyalanacak |
+| 5 | İlk dönem admin seçimi | Hardcoded değil, admin UI'dan seçilecek |
+| 6 | Teacher price snapshot backend | `teacher_price_history`'den hesaplanacak, frontend'e güvenilmeyecek |
+| 7 | Dönem kapanışı datetime | `datetime` (UTC timezone aware) kullanılacak |
+| 8 | Rollback sadece acil recovery | Normal admin özelliği değil, teknik recovery planı |
+| 9 | Kapalı dönem kontrolleri genişletildi | Kamp, YouTube, ödeme, gelir/gider, ders, planlama, ödev, fiyat güncelleme |
+| 10 | Doküman revize edildi | Bu versiyon sunuldu |
 
 ---
 
@@ -38,16 +55,18 @@
 class Season(BaseModel):
     id: str
     name: str                          # "2024-2025", "2025-2026"
-    start_date: str                    # "2024-09-01"
-    end_date: Optional[str] = None     # "2025-06-30" veya None (açık dönem)
+    start_date: datetime               # REVİZYON: datetime (timezone aware UTC)
+    end_date: Optional[datetime] = None  # REVİZYON: datetime veya None (açık dönem)
     status: str = "active"             # "active" | "closed"
     is_current: bool = False           # Aktif dönem mi?
-    closed_at: Optional[datetime] = None  # Kapanış timestamp'i
+    closed_at: Optional[datetime] = None  # Kapanış timestamp'i (UTC)
     closed_by: Optional[str] = None    # Kapatan admin user_id
     previous_season_id: Optional[str] = None
     next_season_id: Optional[str] = None
-    created_at: datetime
+    created_at: datetime               # UTC timezone aware
 ```
+
+> ⚠️ **REVİZYON #7**: Tüm tarih alanları `datetime` (UTC timezone aware) olacak. Frontend'de local time'a çevrilecek.
 
 #### `student_price_history` (YENİ)
 ```python
@@ -57,13 +76,16 @@ class StudentPriceHistory(BaseModel):
     branch_id: str
     lesson_type: str                   # "birebir" | "group"
     price: float
-    valid_from: str                    # "2025-07-01"
-    valid_to: Optional[str] = None     # "2025-12-31" veya None (geçerli)
+    valid_from: datetime               # REVİZYON: datetime (UTC)
+    valid_to: Optional[datetime] = None  # REVİZYON: datetime veya None (geçerli)
     season_id: str
     needs_review: bool = False         # Yeni dönem kopyası kontrolü
     created_at: datetime
     created_by: str                    # Admin user_id
 ```
+
+> ⚠️ **REVİZYON #2**: Unique key = `student_id + branch_id + lesson_type`. Her kombinasyon için ayrı fiyat geçmişi tutulur.
+> ⚠️ **REVİZYON #3**: `valid_from/valid_to` çakışma kontrolü eklenecek (aşağıda detaylı).
 
 #### `teacher_price_history` (YENİ)
 ```python
@@ -74,13 +96,15 @@ class TeacherPriceHistory(BaseModel):
     lesson_type_id: str
     group_size: Optional[int] = None   # 1, 2, 3, 4
     price: float
-    valid_from: str                    # "2025-07-01"
-    valid_to: Optional[str] = None
+    valid_from: datetime               # REVİZYON: datetime (UTC)
+    valid_to: Optional[datetime] = None  # REVİZYON: datetime (UTC)
     season_id: str
     needs_review: bool = False
     created_at: datetime
     created_by: str
 ```
+
+> ⚠️ **REVİZYON #6**: Backend her ders kaydında `teacher_price_history`'den fiyat çekecek. Frontend'in gönderdiği `teacher_rate`'e güvenilmeyecek.
 
 #### `season_carryovers` (YENİ)
 ```python
@@ -93,7 +117,7 @@ class SeasonCarryover(BaseModel):
     to_season_id: str
     amount: float                      # Devredilen bakiye (+ alacak, - borç)
     description: str                   # "2024-2025 dönem kapanışından aktarıldı"
-    created_at: datetime
+    created_at: datetime               # UTC timezone aware
 ```
 
 #### `manual_balance_adjustments` (YENİ)
@@ -174,8 +198,8 @@ class StudentGroup(BaseModel):
 | `student_courses` | EVET (zaten var) | Ders ilişkileri dönemsel |
 | `student_groups` | EVET | Gruplar dönemsel |
 | `planned_lessons` | EVET | Planlı dersler dönemsel |
-| `camps` | HAYIR | Kamplar dönemden bağımsız devam eder |
-| `camp_students` | HAYIR | Kamp kayıtları dönemden bağımsız |
+| `camps` | **EVET** | **REVİZYON #1:** Kamplar dönemsel, `season_id` eklenecek |
+| `camp_students` | **EVET** | **REVİZYON #1:** Kamp kayıtları dönemsel |
 | `youtube_contents` | EVET | YouTube içerikleri dönemsel |
 | `trial_exams` | EVET | Denemeler dönemsel |
 | `homework_plans` | EVET | Ödev planları dönemsel |
@@ -198,97 +222,143 @@ class StudentGroup(BaseModel):
 ### 3.1 ÖN HAZIRLIK
 ```
 1. YEDEK AL: Tüm collection'ların yedeğini al
-2. İLK DÖNEM OLUŞTUR: "2024-2025" aktif dönem olarak oluştur
+2. İLK DÖNEM OLUŞTUR: Admin UI üzerinden seçilen isimle (örn: "2024-2025") aktif dönem oluşturulur
 3. season_id = bu dönemin ID'si
 ```
 
-### 3.2 MIGRATION ADIMLARI
+> ⚠️ **REVİZYON #5**: İlk dönem ismi hardcoded DEĞİL, admin tarafından UI'dan girilecek.
 
-#### Adım 1: İlk Sezonu Oluştur
+### 3.2 İLK DÖNEM OLUŞTURMA (ADMİN UI)
 ```python
-season_2024_2025 = {
-    "id": "season-2024-2025",
-    "name": "2024-2025",
-    "start_date": "2024-09-01",
-    "end_date": None,  # Henüz kapanmadı
-    "status": "active",
-    "is_current": True,
-    "created_at": datetime.now()
-}
-await db.seasons.insert_one(season_2024_2025)
+# Admin UI'da form:
+# - Dönem adı: [input] (örn: "2024-2025")
+# - Başlangıç tarihi: [date picker]
+# - NOT: Bitiş tarihi yeni dönem oluşturulduğunda otomatik set edilir
+
+@api_router.post("/admin/seasons/create-initial")
+async def create_initial_season(
+    name: str,           # "2024-2025" - Admin girer
+    start_date: datetime,  # Admin seçer
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins")
+    
+    # Zaten aktif dönem var mı kontrol et
+    existing = await db.seasons.find_one({"status": "active"})
+    if existing:
+        raise HTTPException(status_code=400, detail="Zaten aktif dönem mevcut")
+    
+    season_id = f"season-{name}"
+    season = {
+        "id": season_id,
+        "name": name,
+        "start_date": start_date,
+        "end_date": None,
+        "status": "active",
+        "is_current": True,
+        "created_at": datetime.now(timezone.utc)
+    }
+    await db.seasons.insert_one(season)
+    return {"message": "Dönem oluşturuldu", "season_id": season_id}
+```
+
+### 3.3 MIGRATION ADIMLARI (Admin seçtikten sonra)
+
+> ⚠️ **NOT**: Aşağıdaki `default_season_id` değeri admin'in oluşturduğu dönemden alınır.
+
+#### Adım 1: Admin UI'dan Dönem Oluşturulduktan Sonra
+```python
+# Admin UI'dan dönem oluşturuldu, season_id artık DB'de mevcut
+# Migration endpoint bu ID'yi kullanır
 ```
 
 #### Adım 2: Mevcut Kayıtlara seasonId Ekle
 ```python
-default_season_id = "season-2024-2025"
+# default_season_id = admin'in oluşturduğu dönemin ID'si (parametre olarak alınır)
 
-# Lessons
-await db.lessons.update_many(
-    {"season_id": {"$exists": False}},
-    {"$set": {"season_id": default_season_id}}
-)
-
-# Payments
-await db.payments.update_many(
-    {"season_id": {"$exists": False}},
-    {"$set": {"season_id": default_season_id}}
-)
-
-# Student Courses
-await db.student_courses.update_many(
-    {"season_id": {"$exists": False}},
-    {"$set": {"season_id": default_season_id}}
-)
-
-# Student Groups
-await db.student_groups.update_many(
-    {"season_id": {"$exists": False}},
-    {"$set": {"season_id": default_season_id}}
-)
-
-# Planned Lessons
-await db.planned_lessons.update_many(
-    {"season_id": {"$exists": False}},
-    {"$set": {"season_id": default_season_id}}
-)
-
-# YouTube Contents
-await db.youtube_contents.update_many(
-    {"season_id": {"$exists": False}},
-    {"$set": {"season_id": default_season_id}}
-)
-
-# Homework related
-for collection in ["homework_plans", "homework_plan_items", "student_book_assignments", "student_test_progress"]:
-    await db[collection].update_many(
+async def run_season_migration(season_id: str):
+    # Lessons
+    await db.lessons.update_many(
         {"season_id": {"$exists": False}},
-        {"$set": {"season_id": default_season_id}}
+        {"$set": {"season_id": season_id}}
     )
-
-# Trial Exams
-await db.trial_exams.update_many(
-    {"season_id": {"$exists": False}},
-    {"$set": {"season_id": default_season_id}}
-)
+    
+    # Payments
+    await db.payments.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
+    
+    # Student Courses
+    await db.student_courses.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
+    
+    # Student Groups
+    await db.student_groups.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
+    
+    # Planned Lessons
+    await db.planned_lessons.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
+    
+    # REVİZYON #1: Camps ve Camp Students'a da season_id ekle
+    await db.camps.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
+    await db.camp_students.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
+    
+    # YouTube Contents
+    await db.youtube_contents.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
+    
+    # Homework related
+    for collection in ["homework_plans", "homework_plan_items", "student_book_assignments", "student_test_progress"]:
+        await db[collection].update_many(
+            {"season_id": {"$exists": False}},
+            {"$set": {"season_id": season_id}}
+        )
+    
+    # Trial Exams
+    await db.trial_exams.update_many(
+        {"season_id": {"$exists": False}},
+        {"$set": {"season_id": season_id}}
+    )
 ```
 
 #### Adım 3: Mevcut Fiyatları Price History'ye Kopyala
 ```python
 # Student fiyatlarını student_courses'tan çek
+# REVİZYON #2: student_id + branch_id + lesson_type kombinasyonu unique key
 courses = await db.student_courses.find({"status": "active"}).to_list(10000)
 for course in courses:
     if course.get("student_price"):
+        # lesson_type belirleme (grup mu birebir mi)
+        lesson_type = "group" if course.get("group_id") else "birebir"
+        
         price_history = {
             "id": str(uuid.uuid4()),
             "student_id": course["student_id"],
             "branch_id": course["branch_id"],
-            "lesson_type": "birebir",  # veya course'tan çıkar
+            "lesson_type": lesson_type,  # REVİZYON #2: lesson_type eklendi
             "price": course["student_price"],
-            "valid_from": "2024-09-01",
+            "valid_from": season["start_date"],  # Admin'in seçtiği başlangıç tarihi
             "valid_to": None,
-            "season_id": default_season_id,
+            "season_id": season_id,
             "needs_review": False,
-            "created_at": datetime.now(),
+            "created_at": datetime.now(timezone.utc),
             "created_by": "migration"
         }
         await db.student_price_history.insert_one(price_history)
@@ -303,22 +373,23 @@ for tp in teacher_prices:
         "lesson_type_id": tp["lesson_type_id"],
         "group_size": tp.get("group_size"),
         "price": tp["price"],
-        "valid_from": "2024-09-01",
+        "valid_from": season["start_date"],  # Admin'in seçtiği başlangıç tarihi
         "valid_to": None,
-        "season_id": default_season_id,
+        "season_id": season_id,
         "needs_review": False,
-        "created_at": datetime.now(),
+        "created_at": datetime.now(timezone.utc),
         "created_by": "migration"
     }
     await db.teacher_price_history.insert_one(teacher_price_history)
 ```
 
-### 3.3 MIGRATION SONRASI KONTROL
+### 3.4 MIGRATION SONRASI KONTROL
 ```
 1. Tüm lessons'da season_id var mı? ✓
 2. Tüm payments'ta season_id var mı? ✓
-3. student_price_history kayıt sayısı = aktif course sayısı mı? ✓
-4. teacher_price_history kayıt sayısı = teacher_prices sayısı mı? ✓
+3. Tüm camps'ta season_id var mı? ✓  (REVİZYON #1)
+4. student_price_history kayıt sayısı = aktif course sayısı mı? ✓
+5. teacher_price_history kayıt sayısı = teacher_prices sayısı mı? ✓
 ```
 
 ---
@@ -500,12 +571,21 @@ async def get_student_finance_detail_v2(student_id: str, season_id: str = None):
 ```
 
 ### 6.2 YARDIMCI FONKSİYONLAR
+
+> ⚠️ **REVİZYON #2**: Tüm fonksiyonlar `student_id + branch_id + lesson_type` bazında çalışır.
+
 ```python
-async def get_student_price_at_date(student_id: str, branch_id: str, date: str) -> float:
+async def get_student_price_at_date(
+    student_id: str, 
+    branch_id: str, 
+    lesson_type: str,  # REVİZYON #2: lesson_type eklendi
+    date: datetime
+) -> float:
     """Belirli bir tarihteki öğrenci fiyatını döndürür"""
     price_record = await db.student_price_history.find_one({
         "student_id": student_id,
         "branch_id": branch_id,
+        "lesson_type": lesson_type,  # REVİZYON #2
         "valid_from": {"$lte": date},
         "$or": [
             {"valid_to": None},
@@ -515,15 +595,68 @@ async def get_student_price_at_date(student_id: str, branch_id: str, date: str) 
     
     return price_record["price"] if price_record else 0
 
-async def get_student_current_price(student_id: str, branch_id: str) -> float:
+async def get_student_current_price(
+    student_id: str, 
+    branch_id: str,
+    lesson_type: str  # REVİZYON #2: lesson_type eklendi
+) -> float:
     """Öğrencinin güncel fiyatını döndürür"""
     price_record = await db.student_price_history.find_one({
         "student_id": student_id,
         "branch_id": branch_id,
+        "lesson_type": lesson_type,  # REVİZYON #2
         "valid_to": None
     }, sort=[("valid_from", -1)])
     
     return price_record["price"] if price_record else 0
+```
+
+### 6.3 valid_from/valid_to ÇAKIŞMA KONTROLÜ (REVİZYON #3)
+
+```python
+async def validate_price_date_range(
+    student_id: str,
+    branch_id: str,
+    lesson_type: str,
+    valid_from: datetime,
+    valid_to: Optional[datetime],
+    exclude_id: Optional[str] = None  # Güncelleme için mevcut kaydı hariç tut
+):
+    """
+    REVİZYON #3: Fiyat tarih aralığı çakışma kontrolü.
+    Aynı student_id + branch_id + lesson_type için çakışan tarih aralığı olmamalı.
+    """
+    query = {
+        "student_id": student_id,
+        "branch_id": branch_id,
+        "lesson_type": lesson_type,
+        "$or": [
+            # Yeni aralık mevcut bir aralığın içinde mi?
+            {
+                "valid_from": {"$lte": valid_from},
+                "$or": [
+                    {"valid_to": None},
+                    {"valid_to": {"$gte": valid_from}}
+                ]
+            },
+            # Yeni aralık mevcut bir aralığı kapsıyor mu?
+            {
+                "valid_from": {"$gte": valid_from},
+                "valid_from": {"$lte": valid_to} if valid_to else {"$exists": True}
+            }
+        ]
+    }
+    
+    if exclude_id:
+        query["id"] = {"$ne": exclude_id}
+    
+    conflicting = await db.student_price_history.find_one(query)
+    
+    if conflicting:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tarih aralığı çakışması: {conflicting['valid_from']} - {conflicting['valid_to'] or 'devam ediyor'}"
+        )
 ```
 
 ---
@@ -561,10 +694,15 @@ Fonksiyon: get_teacher_balance() - Satır 1878
 ### 7.4 EKSİK OLAN
 - Dönem ayrımı yok
 - Devreden bakiye yok
+- **REVİZYON #1**: Kamp kazancı dönemden bağımsız hesaplanıyor (dönemsel olmalı)
+- **REVİZYON #6**: Backend `teacher_rate`'e güveniyor (teacher_price_history'den hesaplanmalı)
 
 ---
 
 ## 8. YENİ ÖĞRETMEN BAKİYE DEVRİ
+
+> ⚠️ **REVİZYON #1**: Kamp kazancı artık DÖNEMSEL hesaplanacak.
+> ⚠️ **REVİZYON #6**: Backend `teacher_price_history`'den fiyat hesaplayacak, frontend'in gönderdiği `teacher_rate`'e güvenmeyecek.
 
 ### 8.1 HESAPLAMA
 ```python
@@ -582,6 +720,7 @@ async def get_teacher_balance_v2(teacher_id: str, season_id: str = None):
     carryover_amount = carryover["amount"] if carryover else 0
     
     # Bu dönemdeki ders kazancı
+    # REVİZYON #6: Backend teacher_price_history'den hesaplar
     lessons = await db.lessons.find({
         "teacher_id": teacher_id,
         "season_id": season_id
@@ -589,11 +728,25 @@ async def get_teacher_balance_v2(teacher_id: str, season_id: str = None):
     
     lesson_earnings = 0
     for lesson in lessons:
-        if lesson.get("teacher_rate"):
+        # REVİZYON #6: Önce snapshot'ı kontrol et, yoksa teacher_price_history'den çek
+        if lesson.get("teacher_total_earning_at_lesson") is not None:
+            lesson_earnings += lesson["teacher_total_earning_at_lesson"]
+        elif lesson.get("teacher_rate"):
+            # Fallback: Eski kayıtlar için teacher_rate kullan
             lesson_earnings += lesson["teacher_rate"] * lesson["number_of_lessons"]
+        else:
+            # teacher_price_history'den hesapla
+            teacher_price = await get_teacher_price_at_date(
+                teacher_id=teacher_id,
+                branch_id=lesson["branch_id"],
+                lesson_type_id=lesson.get("lesson_type_id"),
+                group_size=lesson.get("group_size", 1),
+                date=lesson["date"]
+            )
+            lesson_earnings += teacher_price * lesson["number_of_lessons"]
     
-    # Kamp kazancı (kamplar dönemden bağımsız - tüm zamanlar)
-    camp_earnings = await calculate_camp_earnings(teacher_id)
+    # REVİZYON #1: Kamp kazancı DÖNEMSEL
+    camp_earnings = await calculate_camp_earnings_by_season(teacher_id, season_id)
     
     # YouTube kazancı (dönemsel)
     youtube_records = await db.youtube_contents.find({
@@ -628,6 +781,57 @@ async def get_teacher_balance_v2(teacher_id: str, season_id: str = None):
     }
 ```
 
+### 8.2 YARDIMCI FONKSİYONLAR (REVİZYON #6)
+
+```python
+async def get_teacher_price_at_date(
+    teacher_id: str,
+    branch_id: str,
+    lesson_type_id: str,
+    group_size: int,
+    date: datetime
+) -> float:
+    """
+    REVİZYON #6: Backend teacher_price_history'den fiyat hesaplar.
+    Frontend'in gönderdiği teacher_rate'e güvenilmez.
+    """
+    price_record = await db.teacher_price_history.find_one({
+        "teacher_id": teacher_id,
+        "branch_id": branch_id,
+        "lesson_type_id": lesson_type_id,
+        "group_size": group_size,
+        "valid_from": {"$lte": date},
+        "$or": [
+            {"valid_to": None},
+            {"valid_to": {"$gte": date}}
+        ]
+    }, sort=[("valid_from", -1)])
+    
+    return price_record["price"] if price_record else 0
+
+async def calculate_camp_earnings_by_season(teacher_id: str, season_id: str) -> float:
+    """
+    REVİZYON #1: Kamp kazancı DÖNEMSEL hesaplanır.
+    """
+    camps = await db.camps.find({
+        "teacher_ids": teacher_id,
+        "season_id": season_id,
+        "status": "active"
+    }).to_list(1000)
+    
+    total_earnings = 0
+    for camp in camps:
+        if camp.get("per_student_teacher_fee"):
+            # Kesin kayıtlı öğrenci sayısı
+            kesin_count = await db.camp_students.count_documents({
+                "camp_id": camp["id"],
+                "status": "kesin_kayit"
+            })
+            total_earnings += kesin_count * camp["per_student_teacher_fee"]
+    
+    return total_earnings
+```
+
 ---
 
 ## 9. ÖĞRENCİ FİYAT GEÇMİŞİ MODELİ
@@ -641,13 +845,15 @@ class StudentPriceHistory(BaseModel):
     branch_id: str
     lesson_type: str = "birebir"       # "birebir" | "group"
     price: float
-    valid_from: str                    # "2025-07-01" (ISO date string)
-    valid_to: Optional[str] = None     # None = hala geçerli
+    valid_from: datetime               # REVİZYON #7: datetime (UTC)
+    valid_to: Optional[datetime] = None  # REVİZYON #7: None = hala geçerli
     season_id: str
     needs_review: bool = False         # Yeni dönem kopyası
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str                    # Admin user_id
 ```
+
+> ⚠️ **REVİZYON #2**: Unique key = `student_id + branch_id + lesson_type`
 
 ### 9.2 FİYAT GÜNCELLEME ENDPOINTİ
 ```python
@@ -663,11 +869,21 @@ async def create_student_price(data: StudentPriceCreate, current_user: User = De
     if data.season_id != active_season["id"]:
         raise HTTPException(status_code=400, detail="Kapalı döneme fiyat eklenemez")
     
-    # Mevcut geçerli fiyatı kapat
+    # REVİZYON #3: Çakışma kontrolü
+    await validate_price_date_range(
+        student_id=data.student_id,
+        branch_id=data.branch_id,
+        lesson_type=data.lesson_type,  # REVİZYON #2
+        valid_from=data.valid_from,
+        valid_to=None
+    )
+    
+    # REVİZYON #2: lesson_type bazında mevcut geçerli fiyatı kapat
     await db.student_price_history.update_one(
         {
             "student_id": data.student_id,
             "branch_id": data.branch_id,
+            "lesson_type": data.lesson_type,  # REVİZYON #2
             "valid_to": None
         },
         {"$set": {"valid_to": data.valid_from}}
@@ -687,9 +903,6 @@ async def create_student_price(data: StudentPriceCreate, current_user: User = De
     )
     
     await db.student_price_history.insert_one(new_price.model_dump())
-    
-    # Etkilenen dersleri güncelle (opsiyonel - admin onayı ile)
-    # Bu ayrı bir endpoint olabilir: POST /price-updates/preview + /price-updates/confirm
     
     return {"message": "Fiyat güncellendi", "id": new_price.id}
 ```
@@ -1034,12 +1247,18 @@ async def execute_year_end(admin_user_id: str):
         
         # ========== DERS İLİŞKİSİ KOPYALAMA ==========
         
-        # 10. Aktif birebir ders ilişkilerini yeni döneme kopyala
+        # REVİZYON #4: SADECE BİREBİR ders ilişkilerini yeni döneme kopyala
+        # Grup student_course kayıtları KOPYALANMAZ
         courses = await db.student_courses.find({
             "season_id": active_season["id"],
-            "status": "active"
+            "status": "active",
+            "group_id": {"$exists": False}  # REVİZYON #4: Sadece birebir (grup olmayanlar)
         }).to_list(10000)
         
+        # Alternatif: group_id null veya yok olanları al
+        # NOT: Grup student_course kayıtları yeni döneme KOPYALANMAZ
+        
+        copied_course_count = 0
         for course in courses:
             # Öğrenci pasife alınmadıysa kopyala
             student = await db.students.find_one({"id": course["student_id"]})
@@ -1050,7 +1269,10 @@ async def execute_year_end(admin_user_id: str):
                     "season_id": new_season_id,
                     "created_at": cutoff_date
                 }
+                # _id varsa kaldır (MongoDB)
+                new_course.pop("_id", None)
                 await db.student_courses.insert_one(new_course)
+                copied_course_count += 1
                 
                 # Eski course'u işaretle
                 await db.student_courses.update_one(
@@ -1203,6 +1425,10 @@ if existing_log:
 ```
 
 ### 14.2 ROLLBACK STRATEJİSİ
+
+> ⚠️ **REVİZYON #8**: Rollback endpoint NORMAL ADMİN ÖZELLİĞİ OLARAK EKLENMEYECEK.
+> Sadece ACİL TEKNİK RECOVERY PLANI olarak dokümantasyonda kalacak.
+
 ```
 MongoDB transaction desteği olmadığı için:
 
@@ -1220,35 +1446,30 @@ MongoDB transaction desteği olmadığı için:
 4. Kritik işlemler:
    - Dönem durumu en son değişir
    - Veri silinmez, sadece status/flag güncellenir
-   - Geri dönüş mümkün (closed → active yapılabilir - admin özel endpoint)
+   - Geri dönüş SADECE TEKNİK EKİP TARAFINDAN DB üzerinden yapılabilir
 ```
 
-### 14.3 MANUEL ROLLBACK ENDPOINTİ (SADECE ACİL DURUM)
+### 14.3 ACİL RECOVERY PLANI (SADECE TEKNİK EKİP - UI YOK)
+
+> ⚠️ **REVİZYON #8**: Bu endpoint UI'da görünmeyecek, sadece teknik recovery için.
+> Normal admin özelliği olarak EKLENMEYECEK.
+
 ```python
-@api_router.post("/admin/year-end/rollback/{log_id}")
-async def rollback_year_end(log_id: str, current_user: User = Depends(get_current_user)):
-    """
-    SADECE ACİL DURUMLAR İÇİN - Normal kullanımda çağrılmamalı
-    Sene sonu işlemini geri alır
-    """
-    if current_user.user_type != "admin":
-        raise HTTPException(status_code=403)
-    
-    # Log'u bul
-    log = await db.year_end_logs.find_one({"id": log_id})
-    if not log:
-        raise HTTPException(status_code=404)
-    
-    # İşlemleri tersine çevir
-    # 1. Yeni dönemi sil/pasife al
-    # 2. Eski dönemi aktif yap
-    # 3. Carryover kayıtlarını sil
-    # 4. Kopyalanan course'ları sil
-    # 5. Öğrenci sınıflarını geri al
-    # 6. Grupları tekrar aktif yap
-    
-    # Bu endpoint çok riskli, sadece acil durumlarda kullanılmalı
-    pass
+# NOT: Bu endpoint SADECE teknik ekip tarafından, doğrudan API çağrısıyla kullanılır.
+# Admin panelinde butonu/linki OLMAYACAK.
+
+# Recovery senaryosu:
+# 1. Teknik ekip DB yedeği alır
+# 2. Gerekli değişiklikleri manuel veya script ile yapar
+# 3. Değişiklikleri doğrular
+#
+# Rollback adımları (MANUEL DB İŞLEMİ):
+# 1. Yeni dönemi sil: db.seasons.delete_one({"id": new_season_id})
+# 2. Eski dönemi aktif yap: db.seasons.update_one({"id": old_season_id}, {"$set": {"status": "active", "is_current": True, "end_date": None, "closed_at": None}})
+# 3. Carryover kayıtlarını sil: db.season_carryovers.delete_many({"to_season_id": new_season_id})
+# 4. Kopyalanan course'ları sil: db.student_courses.delete_many({"season_id": new_season_id})
+# 5. Öğrenci sınıflarını geri al: (Manuel, snapshot'tan)
+# 6. Grupları tekrar aktif yap: db.student_groups.update_many({"closed_reason": "year_end", "season_id": old_season_id}, {"$set": {"status": "active"}, "$unset": {"closed_at": "", "closed_reason": ""}})
 ```
 
 ---
@@ -1287,25 +1508,52 @@ async def check_season_is_open(season_id: str = None, date: str = None):
 
 ### 15.2 KONTROL EKLENECEK ENDPOINTLer
 
+> ⚠️ **REVİZYON #9**: Kapalı dönem kontrolleri TÜM ilgili endpoint'lerde TAM uygulanacak.
+
 | Endpoint | Kontrol Türü |
 |----------|--------------|
+| **DERS İŞLEMLERİ** | |
 | `POST /lessons` | Ders tarihi kapalı dönemde mi? |
 | `PUT /lessons/{id}` | Ders kapalı dönemde mi? |
 | `DELETE /lessons/{id}` | Ders kapalı dönemde mi? |
 | `POST /group-lessons` | Ders tarihi kapalı dönemde mi? |
+| `PUT /group-lessons/{id}` | Kapalı dönem kontrolü |
 | `DELETE /group-lessons/{id}/{date}` | Kapalı dönem kontrolü |
+| **ÖDEME İŞLEMLERİ** | |
 | `POST /payments` | Ödeme tarihi kapalı dönemde mi? |
 | `PUT /payments/{id}` | Ödeme kapalı dönemde mi? |
 | `DELETE /payments/{id}` | Ödeme kapalı dönemde mi? |
+| **GELİR/GİDER İŞLEMLERİ** | |
+| `POST /cashbox-movements` | Tarih kapalı dönemde mi? |
+| `PUT /cashbox-movements/{id}` | Kapalı dönem kontrolü |
+| `DELETE /cashbox-movements/{id}` | Kapalı dönem kontrolü |
+| **PLANLAMA İŞLEMLERİ** | |
 | `POST /planned-lessons` | Planlanan tarih kapalı dönemde mi? |
 | `PUT /planned-lessons/{id}` | Kapalı dönem kontrolü |
 | `DELETE /planned-lessons/{id}` | Kapalı dönem kontrolü |
-| `POST /camps` | - (kamplar dönemden bağımsız) |
+| **KAMP İŞLEMLERİ (REVİZYON #1)** | |
+| `POST /camps` | Kamp tarihi kapalı dönemde mi? |
+| `PUT /camps/{id}` | Kapalı dönem kontrolü |
+| `DELETE /camps/{id}` | Kapalı dönem kontrolü |
+| `POST /camp-students` | Kamp dönem kontrolü |
+| `PUT /camp-students/{id}` | Kapalı dönem kontrolü |
+| `DELETE /camp-students/{id}` | Kapalı dönem kontrolü |
+| **YOUTUBE İŞLEMLERİ** | |
 | `POST /youtube-contents` | Tarih kapalı dönemde mi? |
-| `POST /manual-balance-adjustments` | Sadece açık döneme |
+| `PUT /youtube-contents/{id}` | Kapalı dönem kontrolü |
+| `DELETE /youtube-contents/{id}` | Kapalı dönem kontrolü |
+| **FİYAT İŞLEMLERİ** | |
 | `POST /student-price-history` | Sadece açık döneme |
+| `PUT /student-price-history/{id}` | Kapalı dönem kontrolü |
 | `POST /teacher-price-history` | Sadece açık döneme |
-| `POST /homework/*` | Season kontrolü |
+| `PUT /teacher-price-history/{id}` | Kapalı dönem kontrolü |
+| **MANUEL BAKİYE DÜZELTME** | |
+| `POST /manual-balance-adjustments` | Sadece açık döneme |
+| **ÖDEV/PLANLAMA İŞLEMLERİ** | |
+| `POST /homework-plans` | Season kontrolü |
+| `PUT /homework-plans/{id}` | Kapalı dönem kontrolü |
+| `DELETE /homework-plans/{id}` | Kapalı dönem kontrolü |
+| `POST /homework-plan-items` | Season kontrolü |
 | Rozet/Planlama Ustası endpoint'leri | Season kontrolü |
 
 ### 15.3 ÖRNEK KONTROL
@@ -1539,20 +1787,50 @@ Ciddi hata durumunda:
 
 ---
 
-## ONAY BEKLENİYOR
+## ONAY BEKLENİYOR (VERSİYON 2.0)
 
 Bu teknik dokümanı onaylıyor musunuz?
 
-Onay sonrası şu sırayla ilerleyeceğim:
-1. Backend model değişiklikleri
-2. Migration endpoint'i
-3. Sene sonu preview/execute endpoint'leri
-4. Fiyat geçmişi endpoint'leri
-5. Kapalı dönem kontrolleri
-6. Dönem filtresi eklemeleri
-7. Frontend UI güncellemeleri
-8. Test
+### REVİZYON ÖZETİ (v2.0)
+
+| # | Revizyon Talebi | Yapılan Değişiklik |
+|---|-----------------|-------------------|
+| ✅ 1 | Kamp kazancı dönemsel | Kamplar `season_id` alacak, `calculate_camp_earnings_by_season()` |
+| ✅ 2 | Student price history key | `student_id + branch_id + lesson_type` bazında çalışacak |
+| ✅ 3 | valid_from/valid_to çakışması | `validate_price_date_range()` fonksiyonu eklendi |
+| ✅ 4 | Grup student_course kopyalanmayacak | Execute'da `group_id: {"$exists": False}` filtresi |
+| ✅ 5 | İlk dönem admin seçimi | `POST /admin/seasons/create-initial` endpoint'i, hardcoded değil |
+| ✅ 6 | Teacher price snapshot backend | `get_teacher_price_at_date()` fonksiyonu, frontend'e güvenilmez |
+| ✅ 7 | Dönem kapanışı datetime | Tüm tarih alanları `datetime` (UTC timezone aware) |
+| ✅ 8 | Rollback sadece acil recovery | UI'da yok, sadece teknik recovery planı |
+| ✅ 9 | Kapalı dönem kontrolleri genişletildi | Kamp, YouTube, ödeme, gelir/gider, ders, planlama, ödev, fiyat |
+| ✅ 10 | Doküman revize edildi | Bu versiyon sunuldu |
+
+### Onay sonrası uygulama sırası:
+
+**Faz 1: Temel Dönem Altyapısı**
+1. Season modeli genişletme
+2. Yeni collection'ların oluşturulması
+3. `POST /admin/seasons/create-initial` endpoint'i
+4. `POST /admin/seasons/migrate` endpoint'i
+
+**Faz 2: Sene Sonu Preview**
+5. `POST /api/year-end/preview` endpoint'i
+6. Preview UI sayfası
+
+**Faz 3: Sene Sonu Execute**
+7. `POST /api/year-end/execute` endpoint'i
+8. Execute UI sayfası
+
+**Faz 4: Fiyat Geçmişi**
+9. Student/Teacher price history endpoint'leri
+10. Ders kaydı fiyat snapshot mantığı
+
+**Faz 5: Zorunlu UI**
+11. Dönem filtresi (tüm listeleme sayfaları)
+12. Kapalı dönem kontrolleri (tüm CUD endpoint'leri)
+13. Dashboard kartları
 
 ---
 
-**Doküman Sonu**
+**Doküman Sonu - Versiyon 2.0**
