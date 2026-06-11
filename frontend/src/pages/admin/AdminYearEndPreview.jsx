@@ -6,6 +6,8 @@ import { Button } from '../../components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { Badge } from '../../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { toast } from 'sonner';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -18,7 +20,10 @@ import {
   Building2,
   Wallet,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  CheckCircle,
+  XCircle,
+  PlayCircle
 } from 'lucide-react';
 
 const AdminYearEndPreview = () => {
@@ -26,6 +31,9 @@ const AdminYearEndPreview = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [previewData, setPreviewData] = useState(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [executeResult, setExecuteResult] = useState(null);
 
   const fetchPreview = useCallback(async () => {
     setLoading(true);
@@ -43,6 +51,21 @@ const AdminYearEndPreview = () => {
   useEffect(() => {
     fetchPreview();
   }, [fetchPreview]);
+
+  const handleExecute = async () => {
+    setExecuting(true);
+    try {
+      const response = await api.post('/year-end/execute', { confirm: true });
+      setExecuteResult(response.data);
+      setShowConfirmDialog(false);
+      toast.success('Sene sonu işlemi başarıyla tamamlandı!');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Sene sonu işlemi sırasında hata oluştu');
+      setShowConfirmDialog(false);
+    } finally {
+      setExecuting(false);
+    }
+  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('tr-TR', {
@@ -388,27 +411,148 @@ const AdminYearEndPreview = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Action Buttons */}
-      <Card className="bg-gray-50">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              <p>Sene sonu işlemini gerçekleştirmek için Faz 3 gereklidir.</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Preview tarihi: {new Date(previewData?.cutoff_date).toLocaleString('tr-TR')}
-              </p>
+      {/* Execute Result */}
+      {executeResult && (
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader>
+            <CardTitle className="flex items-center text-green-800">
+              <CheckCircle className="h-6 w-6 mr-2" />
+              Sene Sonu İşlemi Tamamlandı!
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="text-center p-3 bg-white rounded-lg">
+                <p className="text-2xl font-bold text-green-600">{executeResult.summary?.upgraded_students || 0}</p>
+                <p className="text-sm text-gray-600">Sınıf Atlayan</p>
+              </div>
+              <div className="text-center p-3 bg-white rounded-lg">
+                <p className="text-2xl font-bold text-orange-600">{executeResult.summary?.graduated_students || 0}</p>
+                <p className="text-sm text-gray-600">Mezun Olan</p>
+              </div>
+              <div className="text-center p-3 bg-white rounded-lg">
+                <p className="text-2xl font-bold text-blue-600">{executeResult.summary?.closed_groups || 0}</p>
+                <p className="text-sm text-gray-600">Kapatılan Grup</p>
+              </div>
+              <div className="text-center p-3 bg-white rounded-lg">
+                <p className="text-2xl font-bold text-purple-600">{executeResult.summary?.copied_courses || 0}</p>
+                <p className="text-sm text-gray-600">Kopyalanan Ders</p>
+              </div>
             </div>
-            <div className="flex space-x-3">
-              <Button variant="outline" onClick={() => navigate('/admin/settings')}>
-                İptal
+            <div className="flex items-center justify-between mt-4">
+              <div>
+                <p className="text-sm text-green-700">
+                  <strong>{executeResult.from_season}</strong> dönemi kapatıldı, 
+                  <strong> {executeResult.to_season}</strong> dönemi açıldı.
+                </p>
+                <p className="text-xs text-green-600 mt-1">
+                  İşlem tarihi: {new Date(executeResult.cutoff_date).toLocaleString('tr-TR')}
+                </p>
+              </div>
+              <Button onClick={() => navigate('/admin/dashboard')} className="bg-green-600 hover:bg-green-700">
+                Ana Sayfaya Dön
               </Button>
-              <Button disabled className="bg-gray-400 cursor-not-allowed">
-                Sene Sonunu Uygula (Faz 3&apos;te)
-              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Action Buttons */}
+      {!executeResult && (
+        <Card className="bg-gray-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                <p className="font-medium text-orange-700">
+                  DİKKAT: Bu işlem geri alınamaz!
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Preview tarihi: {new Date(previewData?.cutoff_date).toLocaleString('tr-TR')}
+                </p>
+              </div>
+              <div className="flex space-x-3">
+                <Button variant="outline" onClick={() => navigate('/admin/settings')}>
+                  İptal
+                </Button>
+                <Button 
+                  data-testid="execute-year-end-btn"
+                  onClick={() => setShowConfirmDialog(true)}
+                  className="bg-orange-600 hover:bg-orange-700"
+                >
+                  <PlayCircle className="h-4 w-4 mr-2" />
+                  Sene Sonunu Uygula
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Confirm Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-orange-700">
+              <AlertTriangle className="h-5 w-5 mr-2" />
+              Sene Sonu Onayı
+            </DialogTitle>
+            <DialogDescription>
+              Bu işlem geri alınamaz. Aşağıdaki değişiklikler yapılacak:
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-3 py-4">
+            <div className="flex items-center text-sm">
+              <ChevronRight className="h-4 w-4 text-orange-500 mr-2" />
+              <span><strong>{previewData?.student_summary?.graduating_students || 0}</strong> öğrenci mezun olup pasife alınacak</span>
+            </div>
+            <div className="flex items-center text-sm">
+              <ChevronRight className="h-4 w-4 text-orange-500 mr-2" />
+              <span><strong>{previewData?.student_summary?.upgrading_students || 0}</strong> öğrenci sınıf atlayacak</span>
+            </div>
+            <div className="flex items-center text-sm">
+              <ChevronRight className="h-4 w-4 text-orange-500 mr-2" />
+              <span><strong>{previewData?.group_summary?.groups_to_close || 0}</strong> grup kapatılacak</span>
+            </div>
+            <div className="flex items-center text-sm">
+              <ChevronRight className="h-4 w-4 text-orange-500 mr-2" />
+              <span>Öğrenci ve öğretmen bakiyeleri yeni döneme devredilecek</span>
+            </div>
+            <div className="flex items-center text-sm">
+              <ChevronRight className="h-4 w-4 text-orange-500 mr-2" />
+              <span><strong>{previewData?.closing_season?.name}</strong> kapanacak, <strong>{previewData?.opening_season?.name}</strong> açılacak</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          
+          <Alert className="bg-red-50 border-red-200">
+            <XCircle className="h-4 w-4 text-red-600" />
+            <AlertTitle className="text-red-800">Uyarı</AlertTitle>
+            <AlertDescription className="text-red-700">
+              Bu işlem geri alınamaz. Emin misiniz?
+            </AlertDescription>
+          </Alert>
+          
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)} disabled={executing}>
+              Vazgeç
+            </Button>
+            <Button 
+              onClick={handleExecute} 
+              disabled={executing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {executing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  İşleniyor...
+                </>
+              ) : (
+                'Evet, Sene Sonunu Uygula'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

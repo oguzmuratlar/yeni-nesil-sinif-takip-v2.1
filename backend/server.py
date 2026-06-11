@@ -6903,6 +6903,497 @@ async def year_end_preview(current_user: User = Depends(get_current_user)):
     }
 
 
+# ============= FAZ 3: SENE SONU EXECUTE =============
+
+def get_next_season_name(current_name: str) -> str:
+    """Bir sonraki dönem adını hesapla: '2024-2025' -> '2025-2026'"""
+    try:
+        parts = current_name.split("-")
+        return f"{int(parts[0]) + 1}-{int(parts[1]) + 1}"
+    except (ValueError, IndexError):
+        return f"{current_name}-SONRAKI"
+
+async def calculate_all_student_balances_for_execute(season_id: str = None):
+    """Tüm aktif öğrencilerin branş bazlı bakiyelerini hesapla"""
+    student_balances = {}
+    
+    students = await db.students.find({"status": "active"}, {"_id": 0}).to_list(10000)
+    
+    for student in students:
+        student_id = student["id"]
+        balances_by_branch = {}
+        
+        # Öğrencinin aktif kurslarını al
+        courses = await db.student_courses.find({
+            "student_id": student_id,
+            "status": "active"
+        }, {"_id": 0}).to_list(100)
+        
+        for course in courses:
+            branch_id = course["branch_id"]
+            
+            # Bu kurs için dersler
+            lessons = await db.lessons.find({
+                "student_course_id": course["id"]
+            }, {"_id": 0}).to_list(10000)
+            
+            # Ücretsiz olmayan derslerin toplam sayısı
+            paid_lessons = [l for l in lessons if not l.get("is_free_lesson", False)]
+            total_paid_lessons = sum([l["number_of_lessons"] for l in paid_lessons])
+            
+            # Öğrenci ders ücreti
+            student_price = course.get("student_price") or course.get("price") or 0
+            
+            # Kullanılan tutar
+            used_amount = total_paid_lessons * student_price
+            
+            # Bu branş için ödemeler
+            payments = await db.payments.find({
+                "student_id": student_id,
+                "branch_id": branch_id,
+                "payment_type": "student_payment"
+            }, {"_id": 0}).to_list(10000)
+            
+            total_paid = sum([p["amount"] for p in payments])
+            
+            # Kalan bakiye
+            remaining_balance = total_paid - used_amount
+            
+            # Branş bazlı topla
+            if branch_id not in balances_by_branch:
+                balances_by_branch[branch_id] = 0
+            balances_by_branch[branch_id] += remaining_balance
+        
+        student_balances[student_id] = balances_by_branch
+    
+    return student_balances
+
+async def calculate_all_teacher_balances_for_execute(season_id: str = None):
+    """Tüm aktif öğretmenlerin toplam bakiyelerini hesapla"""
+    teacher_balances = {}
+    
+    teachers = await db.teachers.find({"status": "active"}, {"_id": 0}).to_list(1000)
+    
+    for teacher in teachers:
+        teacher_id = teacher["id"]
+        
+        # Dersleri teacher_id ile getir
+        lessons = await db.lessons.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(10000)
+        
+        # Eski sistemle uyumluluk
+        courses = await db.student_courses.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
+        course_ids = [c["id"] for c in courses]
+        
+        old_lessons = await db.lessons.find({
+            "student_course_id": {"$in": course_ids},
+            "$or": [{"teacher_id": None}, {"teacher_id": {"$exists": False}}]
+        }, {"_id": 0}).to_list(10000)
+        
+        # Birleştir
+        all_lesson_ids = set()
+        all_lessons = []
+        for lesson in lessons + old_lessons:
+            if lesson["id"] not in all_lesson_ids:
+                all_lesson_ids.add(lesson["id"])
+                all_lessons.append(lesson)
+        
+        # Ders kazancı
+        total_earnings = 0
+        for lesson in all_lessons:
+            if lesson.get("teacher_rate") is not None:
+                total_earnings += lesson["teacher_rate"] * lesson["number_of_lessons"]
+            else:
+                course = next((c for c in courses if c["id"] == lesson.get("student_course_id")), None)
+                if course:
+                    teacher_price = await db.teacher_prices.find_one({
+                        "teacher_id": teacher_id,
+                        "branch_id": course["branch_id"],
+                        "lesson_type_id": course["lesson_type_id"]
+                    }, {"_id": 0})
+                    if teacher_price:
+                        total_earnings += teacher_price["price"] * lesson["number_of_lessons"]
+        
+        # Kamp kazançları
+        camps = await db.camps.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
+        total_camp_earnings = 0
+        for camp in camps:
+            paid_students_count = await db.camp_students.count_documents({
+                "camp_id": camp["id"],
+                "registration_status": "kesin_kayit"
+            })
+            total_camp_earnings += paid_students_count * camp.get("per_student_teacher_fee", 0)
+        
+        # YouTube kazançları
+        youtube_records = await db.youtube_contents.find({
+            "teacher_id": teacher_id,
+            "status": "active"
+        }, {"_id": 0}).to_list(1000)
+        total_youtube_earnings = sum([r["amount"] for r in youtube_records])
+        
+        # Toplam kazanç
+        grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings
+        
+        # Ödemeler
+        payments = await db.payments.find({
+            "teacher_id": teacher_id,
+            "payment_type": "teacher_payment"
+        }, {"_id": 0}).to_list(1000)
+        total_paid = sum([p["amount"] for p in payments])
+        
+        # Bakiye
+        balance = grand_total_earnings - total_paid
+        teacher_balances[teacher_id] = balance
+    
+    return teacher_balances
+
+class YearEndExecuteRequest(BaseModel):
+    confirm: bool = False  # Kullanıcının onayını zorunlu kıl
+
+@api_router.post("/year-end/execute")
+async def year_end_execute(
+    request: YearEndExecuteRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    FAZ 3: Sene sonu işlemini gerçekleştir.
+    
+    DİKKAT: Bu işlem GERİ ALINAMAZ (UI'da rollback yok).
+    
+    İşlem adımları:
+    1. Yeni dönem oluştur
+    2. Öğrenci sınıflarını güncelle (8. sınıf pasife alınır)
+    3. Grupları kapat
+    4. Öğrenci bakiye devirlerini oluştur (branş bazlı)
+    5. Öğretmen bakiye devirlerini oluştur (toplam)
+    6. Birebir ders ilişkilerini yeni döneme kopyala
+    7. Mevcut dönemi kapat
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin bu işlemi yapabilir")
+    
+    if not request.confirm:
+        raise HTTPException(
+            status_code=400, 
+            detail="Bu işlem geri alınamaz. Onaylamak için confirm=true gönderin."
+        )
+    
+    # ========== HAZIRLIK ==========
+    
+    # 1. Aktif dönemi doğrula
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    if not active_season:
+        raise HTTPException(status_code=400, detail="Aktif dönem bulunamadı")
+    
+    # 2. Aynı dönem için daha önce sene sonu yapılmamış mı kontrol et (idempotency)
+    existing_log = await db.year_end_logs.find_one({
+        "from_season_id": active_season["id"],
+        "status": "success"
+    })
+    if existing_log:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Bu dönem ({active_season['name']}) için sene sonu işlemi zaten yapılmış"
+        )
+    
+    # 3. Kesim tarihini belirle
+    cutoff_date = datetime.now(timezone.utc)
+    
+    # 4. Yeni dönem adı ve ID'si
+    new_season_name = get_next_season_name(active_season["name"])
+    new_season_id = f"season-{new_season_name}"
+    
+    # Yeni dönem zaten var mı? (idempotency)
+    existing_new_season = await db.seasons.find_one({"id": new_season_id})
+    if existing_new_season:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Yeni dönem ({new_season_name}) zaten mevcut. Duplicate oluşturulamaz."
+        )
+    
+    try:
+        # ========== SNAPSHOT OLUŞTUR ==========
+        
+        # 5. Öğrenci bakiyelerini hesapla
+        student_balances = await calculate_all_student_balances_for_execute()
+        
+        # 6. Öğretmen bakiyelerini hesapla
+        teacher_balances = await calculate_all_teacher_balances_for_execute()
+        
+        # ========== YENİ DÖNEM OLUŞTUR ==========
+        
+        # 7. Yeni dönemi oluştur
+        new_season = {
+            "id": new_season_id,
+            "name": new_season_name,
+            "start_date": cutoff_date,
+            "end_date": None,
+            "status": "active",
+            "is_current": False,  # Henüz değil
+            "closed_at": None,
+            "closed_by": None,
+            "previous_season_id": active_season["id"],
+            "next_season_id": None,
+            "created_at": cutoff_date
+        }
+        await db.seasons.insert_one(new_season)
+        
+        # ========== ÖĞRENCİ İŞLEMLERİ ==========
+        
+        # 8. Aktif öğrencileri çek
+        students = await db.students.find({"status": "active"}, {"_id": 0}).to_list(10000)
+        
+        upgraded_count = 0
+        graduated_count = 0
+        student_carryover_count = 0
+        
+        for student in students:
+            student_id = student["id"]
+            level_str = student.get("level", "0")
+            
+            try:
+                level = int(level_str)
+            except (ValueError, TypeError):
+                level = 0
+            
+            if level == 8:
+                # 8. sınıf → Pasife al, bakiye devretme
+                await db.students.update_one(
+                    {"id": student_id},
+                    {"$set": {"status": "inactive"}}
+                )
+                graduated_count += 1
+            else:
+                if level >= 5 and level <= 7:
+                    # 5-7. sınıf → Sınıf atlat
+                    await db.students.update_one(
+                        {"id": student_id},
+                        {"$set": {"level": str(level + 1)}}
+                    )
+                    upgraded_count += 1
+                
+                # Bakiye devir kayıtları oluştur (branş bazlı)
+                balances = student_balances.get(student_id, {})
+                for branch_id, balance in balances.items():
+                    if balance != 0:
+                        carryover = {
+                            "id": str(uuid.uuid4()),
+                            "entity_type": "student",
+                            "entity_id": student_id,
+                            "branch_id": branch_id,
+                            "from_season_id": active_season["id"],
+                            "to_season_id": new_season_id,
+                            "amount": balance,
+                            "description": f"{active_season['name']} dönem kapanışından aktarıldı",
+                            "created_at": cutoff_date
+                        }
+                        await db.season_carryovers.insert_one(carryover)
+                        student_carryover_count += 1
+        
+        # ========== ÖĞRETMEN İŞLEMLERİ ==========
+        
+        # 9. Öğretmen bakiye devir kayıtları
+        teacher_carryover_count = 0
+        for teacher_id, balance in teacher_balances.items():
+            if balance != 0:
+                carryover = {
+                    "id": str(uuid.uuid4()),
+                    "entity_type": "teacher",
+                    "entity_id": teacher_id,
+                    "branch_id": None,
+                    "from_season_id": active_season["id"],
+                    "to_season_id": new_season_id,
+                    "amount": balance,
+                    "description": f"{active_season['name']} dönem kapanışından aktarıldı",
+                    "created_at": cutoff_date
+                }
+                await db.season_carryovers.insert_one(carryover)
+                teacher_carryover_count += 1
+        
+        # ========== DERS İLİŞKİSİ KOPYALAMA ==========
+        
+        # 10. SADECE BİREBİR ders ilişkilerini kopyala (REVİZYON #4)
+        # group_id olan veya None olmayan kayıtları KOPYALAMA
+        courses = await db.student_courses.find({
+            "status": "active",
+            "$or": [
+                {"group_id": {"$exists": False}},
+                {"group_id": None}
+            ]
+        }, {"_id": 0}).to_list(10000)
+        
+        copied_course_count = 0
+        for course in courses:
+            # Öğrenci aktifse kopyala
+            student = await db.students.find_one({"id": course["student_id"]})
+            if student and student.get("status") == "active":
+                new_course_id = str(uuid.uuid4())
+                new_course = {
+                    **course,
+                    "id": new_course_id,
+                    "season_id": new_season_id,
+                    "created_at": cutoff_date,
+                    "closed_at": None,
+                    "copied_to_id": None
+                }
+                new_course.pop("_id", None)
+                await db.student_courses.insert_one(new_course)
+                copied_course_count += 1
+                
+                # Eski course'u işaretle
+                await db.student_courses.update_one(
+                    {"id": course["id"]},
+                    {"$set": {
+                        "closed_at": cutoff_date,
+                        "copied_to_id": new_course_id
+                    }}
+                )
+        
+        # ========== GRUP KAPATMA ==========
+        
+        # 11. Tüm aktif grupları kapat
+        closed_groups_result = await db.student_groups.update_many(
+            {"status": "active"},
+            {"$set": {
+                "status": "closed",
+                "closed_at": cutoff_date,
+                "closed_reason": "year_end"
+            }}
+        )
+        
+        # ========== FİYAT KOPYALAMA (VARSA) ==========
+        
+        # 12. Mevcut fiyat history'den aktif fiyatları yeni döneme kopyala
+        student_prices = await db.student_price_history.find({
+            "valid_to": None
+        }, {"_id": 0}).to_list(10000)
+        
+        copied_student_prices = 0
+        for price in student_prices:
+            # Öğrenci aktifse kopyala
+            student = await db.students.find_one({"id": price["student_id"]})
+            if student and student.get("status") == "active":
+                new_price = {
+                    **price,
+                    "id": str(uuid.uuid4()),
+                    "season_id": new_season_id,
+                    "valid_from": cutoff_date,
+                    "needs_review": True,
+                    "created_at": cutoff_date,
+                    "created_by": "year_end_migration"
+                }
+                new_price.pop("_id", None)
+                await db.student_price_history.insert_one(new_price)
+                copied_student_prices += 1
+        
+        # 13. Öğretmen fiyatlarını kopyala
+        teacher_prices = await db.teacher_price_history.find({
+            "valid_to": None
+        }, {"_id": 0}).to_list(10000)
+        
+        copied_teacher_prices = 0
+        for price in teacher_prices:
+            new_price = {
+                **price,
+                "id": str(uuid.uuid4()),
+                "season_id": new_season_id,
+                "valid_from": cutoff_date,
+                "needs_review": True,
+                "created_at": cutoff_date,
+                "created_by": "year_end_migration"
+            }
+            new_price.pop("_id", None)
+            await db.teacher_price_history.insert_one(new_price)
+            copied_teacher_prices += 1
+        
+        # ========== DÖNEM DURUMU GÜNCELLE ==========
+        
+        # 14. Eski dönemi kapat
+        await db.seasons.update_one(
+            {"id": active_season["id"]},
+            {"$set": {
+                "status": "closed",
+                "is_current": False,
+                "end_date": cutoff_date,
+                "closed_at": cutoff_date,
+                "closed_by": current_user.id,
+                "next_season_id": new_season_id
+            }}
+        )
+        
+        # 15. Yeni dönemi aktif yap
+        await db.seasons.update_one(
+            {"id": new_season_id},
+            {"$set": {"is_current": True}}
+        )
+        
+        # ========== AUDIT LOG ==========
+        
+        # 16. Başarılı log oluştur
+        summary = {
+            "upgraded_students": upgraded_count,
+            "graduated_students": graduated_count,
+            "closed_groups": closed_groups_result.modified_count,
+            "student_carryovers": student_carryover_count,
+            "teacher_carryovers": teacher_carryover_count,
+            "copied_courses": copied_course_count,
+            "copied_student_prices": copied_student_prices,
+            "copied_teacher_prices": copied_teacher_prices
+        }
+        
+        log = {
+            "id": str(uuid.uuid4()),
+            "from_season_id": active_season["id"],
+            "to_season_id": new_season_id,
+            "executed_by": current_user.id,
+            "executed_at": cutoff_date,
+            "cutoff_date": cutoff_date,
+            "status": "success",
+            "summary": summary,
+            "error_message": None,
+            "created_at": cutoff_date
+        }
+        await db.year_end_logs.insert_one(log)
+        
+        return {
+            "success": True,
+            "message": f"Sene sonu işlemi başarıyla tamamlandı",
+            "from_season": active_season["name"],
+            "to_season": new_season_name,
+            "cutoff_date": cutoff_date.isoformat(),
+            "summary": summary
+        }
+        
+    except Exception as e:
+        # Hata durumunda log oluştur
+        error_log = {
+            "id": str(uuid.uuid4()),
+            "from_season_id": active_season["id"],
+            "to_season_id": new_season_id,
+            "executed_by": current_user.id,
+            "executed_at": cutoff_date,
+            "cutoff_date": cutoff_date,
+            "status": "failed",
+            "summary": None,
+            "error_message": str(e),
+            "created_at": cutoff_date
+        }
+        await db.year_end_logs.insert_one(error_log)
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Sene sonu işlemi sırasında hata oluştu: {str(e)}"
+        )
+
+@api_router.get("/year-end/logs")
+async def get_year_end_logs(current_user: User = Depends(get_current_user)):
+    """Sene sonu işlem loglarını getir"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin")
+    
+    logs = await db.year_end_logs.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return logs
+
+
 # ============= INCLUDE ROUTER =============
 
 app.include_router(api_router)
