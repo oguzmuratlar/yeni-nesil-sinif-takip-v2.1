@@ -631,6 +631,7 @@ const AdminTeacherForm = () => {
                     type="date"
                     value={priceUpdateData.valid_from}
                     onChange={(e) => setPriceUpdateData({...priceUpdateData, valid_from: e.target.value})}
+                    data-testid="teacher-valid-from-input"
                   />
                   <p className="text-xs text-gray-500">
                     Bu tarihten önce verilen dersler eski ücretten, sonra verilenler yeni ücretten hesaplanacak.
@@ -646,6 +647,7 @@ const AdminTeacherForm = () => {
                     value={priceUpdateData.birebir_price}
                     onChange={(e) => setPriceUpdateData({...priceUpdateData, birebir_price: e.target.value})}
                     placeholder="Yeni birebir ders ücreti"
+                    data-testid="teacher-price-birebir-input"
                   />
                 </div>
 
@@ -746,3 +748,4 @@ const AdminTeacherForm = () => {
 };
 
 export default AdminTeacherForm;
+nTeacherForm;

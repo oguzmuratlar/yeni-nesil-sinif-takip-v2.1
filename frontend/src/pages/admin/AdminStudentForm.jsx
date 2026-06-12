@@ -700,6 +700,7 @@ const AdminStudentForm = () => {
                     value={priceUpdateData.price}
                     onChange={(e) => setPriceUpdateData({...priceUpdateData, price: e.target.value})}
                     placeholder="Yeni ders ücreti"
+                    data-testid="student-price-input"
                   />
                 </div>
                 
@@ -713,6 +714,7 @@ const AdminStudentForm = () => {
                     type="date"
                     value={priceUpdateData.valid_from}
                     onChange={(e) => setPriceUpdateData({...priceUpdateData, valid_from: e.target.value})}
+                    data-testid="student-valid-from-input"
                   />
                   <p className="text-xs text-gray-500">
                     Bu tarihten önce alınan dersler eski fiyattan, sonra alınan dersler yeni fiyattan hesaplanacak.
@@ -736,10 +738,10 @@ const AdminStudentForm = () => {
               </div>
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setPriceUpdateDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setPriceUpdateDialogOpen(false)} data-testid="student-price-cancel-btn">
                   İptal
                 </Button>
-                <Button type="button" onClick={handlePriceUpdate} className="bg-green-600 hover:bg-green-700">
+                <Button type="button" onClick={handlePriceUpdate} className="bg-green-600 hover:bg-green-700" data-testid="student-price-save-btn">
                   Fiyatı Güncelle
                 </Button>
               </DialogFooter>
