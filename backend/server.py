@@ -2097,12 +2097,12 @@ async def get_teacher_balance(
             lesson_type_id = course.get("lesson_type_id")
         
         if branch_id and lesson_type_id:
-            # Ders tarihini parse et
+            # Ders tarihini parse et (timezone-naive, DB ile uyumlu)
             lesson_date = None
             lesson_date_str = lesson.get("date")
             if lesson_date_str:
                 try:
-                    lesson_date = datetime.strptime(lesson_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    lesson_date = datetime.strptime(lesson_date_str, "%Y-%m-%d")
                 except (ValueError, TypeError):
                     pass
             
@@ -3990,19 +3990,42 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
                 lesson_date_str = lesson.get("date")
                 if lesson_date_str:
                     try:
-                        lesson_date = datetime.strptime(lesson_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                        # Fiyat geçmişinden o tarihteki fiyatı bul
-                        lesson_type = "group" if lesson.get("group_id") else "birebir"
+                        # Ders tarihini parse et (timezone-naive, DB ile uyumlu)
+                        lesson_date = datetime.strptime(lesson_date_str, "%Y-%m-%d")
+                        # Ders tipini belirle - grup dersiyse önce grup, sonra birebir dene
+                        is_group_lesson = bool(lesson.get("group_id"))
+                        
+                        price_at_date = None
+                        
+                        # Önce doğru tipi dene
+                        primary_type = "group" if is_group_lesson else "birebir"
                         price_at_date = await db.student_price_history.find_one({
-                            "student_id": student_id,
-                            "branch_id": branch_id,
-                            "lesson_type": lesson_type,
-                            "valid_from": {"$lte": lesson_date},
-                            "$or": [
-                                {"valid_to": None},
-                                {"valid_to": {"$gte": lesson_date}}
+                            "$and": [
+                                {"student_id": student_id},
+                                {"branch_id": branch_id},
+                                {"lesson_type": primary_type},
+                                {"valid_from": {"$lte": lesson_date}},
+                                {"$or": [
+                                    {"valid_to": None},
+                                    {"valid_to": {"$gte": lesson_date}}
+                                ]}
                             ]
                         }, {"_id": 0}, sort=[("valid_from", -1)])
+                        
+                        # Grup dersi için birebir fiyat yoksa, birebir'i de dene
+                        if not price_at_date and is_group_lesson:
+                            price_at_date = await db.student_price_history.find_one({
+                                "$and": [
+                                    {"student_id": student_id},
+                                    {"branch_id": branch_id},
+                                    {"lesson_type": "birebir"},
+                                    {"valid_from": {"$lte": lesson_date}},
+                                    {"$or": [
+                                        {"valid_to": None},
+                                        {"valid_to": {"$gte": lesson_date}}
+                                    ]}
+                                ]
+                            }, {"_id": 0}, sort=[("valid_from", -1)])
                         
                         if price_at_date:
                             used_amount += price_at_date["price"] * lesson["number_of_lessons"]
