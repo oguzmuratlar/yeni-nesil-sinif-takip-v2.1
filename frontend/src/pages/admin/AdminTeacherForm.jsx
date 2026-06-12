@@ -6,9 +6,9 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Plus, X, Eye, EyeOff } from 'lucide-react';
+import { Plus, X, Eye, EyeOff, Edit, Calendar, TrendingUp } from 'lucide-react';
 
 const AdminTeacherForm = () => {
   const { id } = useParams();
@@ -31,6 +31,17 @@ const AdminTeacherForm = () => {
   const [loading, setLoading] = useState(false);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [priceUpdateDialogOpen, setPriceUpdateDialogOpen] = useState(false);
+  const [selectedBranchForUpdate, setSelectedBranchForUpdate] = useState(null);
+  const [priceUpdateData, setPriceUpdateData] = useState({
+    birebir_price: '',
+    group_1: '',
+    group_2: '',
+    group_3: '',
+    group_4: '',
+    valid_from: new Date().toISOString().split('T')[0]
+  });
+  const [priceHistory, setPriceHistory] = useState([]);
   const [newBranch, setNewBranch] = useState({
     branch_id: '',
     birebir_price: '',
@@ -265,6 +276,85 @@ const AdminTeacherForm = () => {
     setFormData({ ...formData });
   };
 
+  // Fiyat güncelleme dialog'unu aç
+  const openPriceUpdateDialog = async (branch, index) => {
+    setSelectedBranchForUpdate({ ...branch, index });
+    setPriceUpdateData({
+      birebir_price: branch.birebir_price || '',
+      group_1: branch.group_1 || '',
+      group_2: branch.group_2 || '',
+      group_3: branch.group_3 || '',
+      group_4: branch.group_4 || '',
+      valid_from: new Date().toISOString().split('T')[0]
+    });
+    
+    // Fiyat geçmişini getir
+    try {
+      const response = await apiClient.get(`/teacher-price-history/${id}?branch_id=${branch.branch_id}`);
+      setPriceHistory(response.data);
+    } catch (error) {
+      setPriceHistory([]);
+    }
+    
+    setPriceUpdateDialogOpen(true);
+  };
+
+  // Fiyat güncelle
+  const handlePriceUpdate = async () => {
+    if (!priceUpdateData.birebir_price || !priceUpdateData.valid_from) {
+      toast.error('Birebir ders ücreti ve geçerlilik tarihi zorunludur');
+      return;
+    }
+
+    try {
+      const birebirType = lessonTypes.find(t => t.name === 'Birebir');
+      const grupType = lessonTypes.find(t => t.name === 'Grup');
+      
+      // Birebir fiyatı güncelle
+      await apiClient.post('/teacher-price-history', {
+        teacher_id: id,
+        branch_id: selectedBranchForUpdate.branch_id,
+        lesson_type_id: birebirType.id,
+        price: parseFloat(priceUpdateData.birebir_price),
+        valid_from: priceUpdateData.valid_from
+      });
+
+      // Grup fiyatlarını güncelle
+      if (grupType) {
+        for (let i = 1; i <= 4; i++) {
+          const groupPrice = priceUpdateData[`group_${i}`];
+          if (groupPrice) {
+            await apiClient.post('/teacher-price-history', {
+              teacher_id: id,
+              branch_id: selectedBranchForUpdate.branch_id,
+              lesson_type_id: grupType.id,
+              group_size: i,
+              price: parseFloat(groupPrice),
+              valid_from: priceUpdateData.valid_from
+            });
+          }
+        }
+      }
+
+      // Local state'i güncelle
+      const updatedBranches = [...formData.branches];
+      updatedBranches[selectedBranchForUpdate.index] = {
+        ...updatedBranches[selectedBranchForUpdate.index],
+        birebir_price: priceUpdateData.birebir_price,
+        group_1: priceUpdateData.group_1,
+        group_2: priceUpdateData.group_2,
+        group_3: priceUpdateData.group_3,
+        group_4: priceUpdateData.group_4
+      };
+      setFormData({ ...formData, branches: updatedBranches });
+
+      toast.success('Fiyatlar güncellendi. Bu tarihten itibaren yeni fiyatlar uygulanacak.');
+      setPriceUpdateDialogOpen(false);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Fiyatlar güncellenemedi');
+    }
+  };
+
   return (
     <AdminLayout>
       <div className="max-w-2xl">
@@ -477,21 +567,36 @@ const AdminTeacherForm = () => {
                         <div className="flex-1">
                           <p className="font-semibold text-slate-800 mb-2">{branchData?.name}</p>
                           <div className="grid grid-cols-2 gap-2 text-sm text-slate-600">
-                            <p>• Birebir: {branch.birebir_price} ₺</p>
-                            {branch.group_1 && <p>• Grup 1: {branch.group_1} ₺</p>}
-                            {branch.group_2 && <p>• Grup 2: {branch.group_2} ₺</p>}
-                            {branch.group_3 && <p>• Grup 3: {branch.group_3} ₺</p>}
-                            {branch.group_4 && <p>• Grup 4: {branch.group_4} ₺</p>}
+                            <p>• Birebir: <span className="font-medium text-green-700">{branch.birebir_price} ₺</span></p>
+                            {branch.group_1 && <p>• Grup 1: <span className="font-medium text-green-700">{branch.group_1} ₺</span></p>}
+                            {branch.group_2 && <p>• Grup 2: <span className="font-medium text-green-700">{branch.group_2} ₺</span></p>}
+                            {branch.group_3 && <p>• Grup 3: <span className="font-medium text-green-700">{branch.group_3} ₺</span></p>}
+                            {branch.group_4 && <p>• Grup 4: <span className="font-medium text-green-700">{branch.group_4} ₺</span></p>}
                           </div>
                         </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleRemoveBranch(index)}
-                        >
-                          <X size={16} />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {isEdit && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openPriceUpdateDialog(branch, index)}
+                              className="text-blue-600 hover:bg-blue-50"
+                              data-testid={`update-teacher-price-${index}`}
+                            >
+                              <Edit size={14} className="mr-1" />
+                              Fiyat Güncelle
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleRemoveBranch(index)}
+                          >
+                            <X size={16} />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -501,6 +606,120 @@ const AdminTeacherForm = () => {
               <p className="text-slate-600 text-center py-8">Branş ekleyin</p>
             )}
           </div>
+
+          {/* Öğretmen Fiyat Güncelleme Dialog */}
+          <Dialog open={priceUpdateDialogOpen} onOpenChange={setPriceUpdateDialogOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <TrendingUp size={20} className="text-green-600" />
+                  Öğretmen Ücretlerini Güncelle
+                </DialogTitle>
+                <DialogDescription>
+                  {selectedBranchForUpdate && branches.find(b => b.id === selectedBranchForUpdate.branch_id)?.name}
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="teacher-valid-from" className="flex items-center gap-2">
+                    <Calendar size={16} />
+                    Geçerlilik Başlangıç Tarihi *
+                  </Label>
+                  <Input
+                    id="teacher-valid-from"
+                    type="date"
+                    value={priceUpdateData.valid_from}
+                    onChange={(e) => setPriceUpdateData({...priceUpdateData, valid_from: e.target.value})}
+                  />
+                  <p className="text-xs text-gray-500">
+                    Bu tarihten önce verilen dersler eski ücretten, sonra verilenler yeni ücretten hesaplanacak.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="teacher-birebir-price">Birebir Ders Ücreti (₺) *</Label>
+                  <Input
+                    id="teacher-birebir-price"
+                    type="number"
+                    step="0.01"
+                    value={priceUpdateData.birebir_price}
+                    onChange={(e) => setPriceUpdateData({...priceUpdateData, birebir_price: e.target.value})}
+                    placeholder="Yeni birebir ders ücreti"
+                  />
+                </div>
+
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold text-slate-800 mb-3">Grup Dersi Ücretleri</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-sm">1 Kişilik Grup (₺)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={priceUpdateData.group_1}
+                        onChange={(e) => setPriceUpdateData({...priceUpdateData, group_1: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">2 Kişilik Grup (₺)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={priceUpdateData.group_2}
+                        onChange={(e) => setPriceUpdateData({...priceUpdateData, group_2: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">3 Kişilik Grup (₺)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={priceUpdateData.group_3}
+                        onChange={(e) => setPriceUpdateData({...priceUpdateData, group_3: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">4 Kişilik Grup (₺)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={priceUpdateData.group_4}
+                        onChange={(e) => setPriceUpdateData({...priceUpdateData, group_4: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fiyat Geçmişi */}
+                {priceHistory.length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Fiyat Geçmişi</p>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {priceHistory.map((ph, idx) => (
+                        <div key={idx} className="text-xs flex justify-between bg-gray-50 p-2 rounded">
+                          <span>
+                            {new Date(ph.valid_from).toLocaleDateString('tr-TR')} - {ph.valid_to ? new Date(ph.valid_to).toLocaleDateString('tr-TR') : 'Devam'}
+                            {ph.group_size && <span className="text-purple-600 ml-1">(Grup {ph.group_size})</span>}
+                          </span>
+                          <span className="font-medium">{ph.price} ₺</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setPriceUpdateDialogOpen(false)}>
+                  İptal
+                </Button>
+                <Button type="button" onClick={handlePriceUpdate} className="bg-green-600 hover:bg-green-700">
+                  Fiyatları Güncelle
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <div className="flex items-center gap-4">
             <Button

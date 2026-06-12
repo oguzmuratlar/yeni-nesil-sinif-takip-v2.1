@@ -2027,6 +2027,12 @@ async def get_teacher_balance(
     month: Optional[str] = None,  # Format: "2025-01" - Ay bazlı filtreleme
     current_user: User = Depends(get_current_user)
 ):
+    """
+    FAZ 4 GÜNCELLEMESİ: Öğretmen bakiye hesaplamasında fiyat geçmişi kullanılır.
+    - Önce ders kaydındaki teacher_rate_at_lesson veya teacher_rate snapshot'ı kontrol edilir
+    - Yoksa ders tarihindeki fiyat geçmişinden hesaplanır
+    - Son fallback: güncel teacher_prices
+    """
     # Teachers can only see their own balance
     if current_user.user_type == "teacher" and current_user.teacher_id != teacher_id:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -2042,6 +2048,7 @@ async def get_teacher_balance(
     # Eski sistemle uyumluluk: teacher_id olmayan dersler için course üzerinden bul
     courses = await db.student_courses.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
     course_ids = [c["id"] for c in courses]
+    course_map = {c["id"]: c for c in courses}
     
     old_lesson_query = {
         "student_course_id": {"$in": course_ids},
@@ -2060,37 +2067,61 @@ async def get_teacher_balance(
             all_lesson_ids.add(lesson["id"])
             lessons.append(lesson)
     
-    # Calculate earnings based on lesson rates (stored at creation time)
+    # Lesson types cache
+    lesson_types = await db.lesson_types.find({}, {"_id": 0}).to_list(100)
+    lesson_type_map = {lt["id"]: lt for lt in lesson_types}
+    
+    # FAZ 4: Calculate earnings based on price history snapshots
     total_earnings = 0
     for lesson in lessons:
-        # Önce dersin kaydındaki ücreti kullan (geriye dönük değişiklik olmaması için)
+        # 1. Önce dersin kaydındaki snapshot'ı kontrol et
+        if lesson.get("teacher_rate_at_lesson") is not None:
+            total_earnings += lesson["teacher_rate_at_lesson"] * lesson["number_of_lessons"]
+            continue
+        
+        # 2. Eski sistemdeki teacher_rate'i kontrol et
         if lesson.get("teacher_rate") is not None:
             total_earnings += lesson["teacher_rate"] * lesson["number_of_lessons"]
+            continue
+        
+        # 3. Fiyat geçmişinden tarih bazlı hesaplama
+        course = course_map.get(lesson.get("student_course_id"))
+        if not course:
+            # Course bulunamadı, dersten branş bilgisi al
+            branch_id = lesson.get("branch_id")
+            lesson_type_id = lesson.get("lesson_type_id")
         else:
-            # Eski dersler için fallback: güncel fiyatı kullan
-            course = next((c for c in courses if c["id"] == lesson.get("student_course_id")), None)
-            if course:
-                # Get teacher price for this course
-                teacher_price = await db.teacher_prices.find_one({
-                    "teacher_id": teacher_id,
-                    "branch_id": course["branch_id"],
-                    "lesson_type_id": course["lesson_type_id"]
-                }, {"_id": 0})
-                
-                if teacher_price:
-                    # If it's a group lesson, check group_size
-                    if teacher_price.get("group_size"):
-                        # Find matching group size price
-                        group_price = await db.teacher_prices.find_one({
-                            "teacher_id": teacher_id,
-                            "branch_id": course["branch_id"],
-                            "lesson_type_id": course["lesson_type_id"],
-                            "group_size": teacher_price.get("group_size")
-                        }, {"_id": 0})
-                        if group_price:
-                            total_earnings += group_price["price"] * lesson["number_of_lessons"]
-                    else:
-                        total_earnings += teacher_price["price"] * lesson["number_of_lessons"]
+            branch_id = course.get("branch_id")
+            lesson_type_id = course.get("lesson_type_id")
+        
+        if branch_id and lesson_type_id:
+            # Ders tarihini parse et
+            lesson_date = None
+            lesson_date_str = lesson.get("date")
+            if lesson_date_str:
+                try:
+                    lesson_date = datetime.strptime(lesson_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Grup dersi mi kontrol et
+            group_size = None
+            if lesson.get("group_id"):
+                # Grup dersiyse grup boyutunu bul
+                group = await db.student_groups.find_one({"id": lesson["group_id"]}, {"_id": 0})
+                if group and group.get("student_ids"):
+                    group_size = len(group["student_ids"])
+            
+            # Fiyat geçmişinden hesapla
+            price_at_date = await get_teacher_price_at_date(
+                teacher_id=teacher_id,
+                branch_id=branch_id,
+                lesson_type_id=lesson_type_id,
+                group_size=group_size,
+                date=lesson_date
+            )
+            
+            total_earnings += price_at_date * lesson["number_of_lessons"]
     
     # Ödeme sorgusu - ay filtresi varsa uygula
     payment_query = {"teacher_id": teacher_id, "payment_type": "teacher_payment"}
@@ -3899,6 +3930,10 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
     """
     Öğrencinin branş bazlı finans detaylarını getir.
     Her branş için: girilen ders sayısı, ödenen tutar, kullanılan tutar, kalan bakiye, kalan ders
+    
+    FAZ 4 GÜNCELLEMESİ: Fiyat geçmişi snapshot'ını kullanır.
+    - Ders kaydında student_total_amount_at_lesson varsa onu kullan
+    - Yoksa o tarihteki fiyattan hesapla
     """
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Only admins can view student finance")
@@ -3931,19 +3966,51 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
             "student_course_id": course["id"]
         }, {"_id": 0}).to_list(10000)
         
-        # Ücretsiz olmayan derslerin toplam sayısı (bakiye hesabı için)
-        paid_lessons = [l for l in lessons if not l.get("is_free_lesson", False)]
-        total_paid_lessons = sum([l["number_of_lessons"] for l in paid_lessons])
-        
         # Tüm dersler (gösterim için)
         total_lessons = sum([l["number_of_lessons"] for l in lessons])
         free_lessons = sum([l["number_of_lessons"] for l in lessons if l.get("is_free_lesson", False)])
         
-        # Öğrenci ders ücreti
-        student_price = course.get("student_price") or course.get("price") or 0
+        # FAZ 4: Kullanılan tutar hesaplaması (snapshot bazlı)
+        used_amount = 0
+        current_student_price = course.get("student_price") or course.get("price") or 0
         
-        # Kullanılan tutar (sadece ücretli dersler)
-        used_amount = total_paid_lessons * student_price
+        for lesson in lessons:
+            if lesson.get("is_free_lesson", False):
+                continue  # Ücretsiz dersler sayılmaz
+            
+            # Önce snapshot'ı kontrol et
+            if lesson.get("student_total_amount_at_lesson") is not None:
+                used_amount += lesson["student_total_amount_at_lesson"]
+            elif lesson.get("student_unit_price_at_lesson") is not None:
+                used_amount += lesson["student_unit_price_at_lesson"] * lesson["number_of_lessons"]
+            else:
+                # Fallback: Ders tarihindeki fiyatı bul
+                lesson_date_str = lesson.get("date")
+                if lesson_date_str:
+                    try:
+                        lesson_date = datetime.strptime(lesson_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                        # Fiyat geçmişinden o tarihteki fiyatı bul
+                        lesson_type = "group" if lesson.get("group_id") else "birebir"
+                        price_at_date = await db.student_price_history.find_one({
+                            "student_id": student_id,
+                            "branch_id": branch_id,
+                            "lesson_type": lesson_type,
+                            "valid_from": {"$lte": lesson_date},
+                            "$or": [
+                                {"valid_to": None},
+                                {"valid_to": {"$gte": lesson_date}}
+                            ]
+                        }, {"_id": 0}, sort=[("valid_from", -1)])
+                        
+                        if price_at_date:
+                            used_amount += price_at_date["price"] * lesson["number_of_lessons"]
+                        else:
+                            # Son fallback: mevcut fiyat
+                            used_amount += current_student_price * lesson["number_of_lessons"]
+                    except (ValueError, TypeError):
+                        used_amount += current_student_price * lesson["number_of_lessons"]
+                else:
+                    used_amount += current_student_price * lesson["number_of_lessons"]
         
         # Bu branş için ödemeler
         payments = await db.payments.find({
@@ -3956,14 +4023,14 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
         
         # Kalan bakiye ve ders
         remaining_balance = total_paid - used_amount
-        remaining_lessons = remaining_balance / student_price if student_price > 0 else 0
+        remaining_lessons = remaining_balance / current_student_price if current_student_price > 0 else 0
         
         result.append({
             "branch_id": branch_id,
             "branch_name": branch.get("name", "Bilinmiyor"),
             "teacher_id": course.get("teacher_id"),
             "teacher_name": teacher.get("name", "Bilinmiyor"),
-            "student_price": student_price,
+            "student_price": current_student_price,
             "total_lessons": total_lessons,
             "free_lessons": free_lessons,
             "used_amount": used_amount,
@@ -7527,27 +7594,37 @@ async def get_teacher_price_at_date(
     date: datetime = None
 ) -> float:
     """
-    REVİZYON #6: Backend teacher_price_history'den fiyat hesaplar.
+    REVİZYON #7: Backend teacher_price_history'den fiyat hesaplar.
+    Tarih bazlı fiyat geçmişi desteği eklenmiştir.
     """
-    query = {
+    # Temel sorgu
+    base_query = {
         "teacher_id": teacher_id,
         "branch_id": branch_id,
         "lesson_type_id": lesson_type_id
     }
     
+    # Group size kontrolü
     if group_size:
-        query["group_size"] = group_size
+        base_query["group_size"] = group_size
     else:
-        query["$or"] = [{"group_size": None}, {"group_size": {"$exists": False}}]
+        base_query["$or"] = [{"group_size": None}, {"group_size": {"$exists": False}}]
     
     if date:
-        query["valid_from"] = {"$lte": date}
-        query["$or"] = [
-            {"valid_to": None},
-            {"valid_to": {"$gte": date}}
-        ]
+        # Tarih varsa: $and ile kombine sorgu
+        query = {
+            "$and": [
+                base_query,
+                {"valid_from": {"$lte": date}},
+                {"$or": [
+                    {"valid_to": None},
+                    {"valid_to": {"$gte": date}}
+                ]}
+            ]
+        }
     else:
-        query["valid_to"] = None
+        # Tarih yoksa: aktif fiyatı getir
+        query = {**base_query, "valid_to": None}
     
     price_record = await db.teacher_price_history.find_one(
         query, {"_id": 0}, sort=[("valid_from", -1)]
