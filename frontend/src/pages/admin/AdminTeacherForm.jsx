@@ -748,4 +748,3 @@ const AdminTeacherForm = () => {
 };
 
 export default AdminTeacherForm;
-nTeacherForm;

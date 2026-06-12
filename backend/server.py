@@ -320,6 +320,7 @@ class LessonCreate(BaseModel):
     date: str
     number_of_lessons: int
     season_id: Optional[str] = None
+    is_free_lesson: bool = False
 
 class PlannedLesson(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1672,8 +1673,9 @@ async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(
     teacher_total_earning = (teacher_rate or 0) * lesson_data.number_of_lessons
     
     # Ders kaydına course bilgilerini de ekle (course silinse bile kazanç hesaplanabilsin)
+    lesson_data_dict = lesson_data.model_dump(exclude={"season_id"})  # season_id'yi hariç tut, aktif dönemi kullan
     lesson = Lesson(
-        **lesson_data.model_dump(), 
+        **lesson_data_dict, 
         teacher_rate=teacher_rate,
         teacher_id=course["teacher_id"],
         branch_id=course["branch_id"],
