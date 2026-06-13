@@ -632,7 +632,7 @@ const AdminStudentForm = () => {
                       <div>
                         <p className="font-semibold text-slate-800">{branch?.name}</p>
                         <p className="text-sm text-slate-600">
-                          {teacher?.name} • {lessonType?.name} • <span className="font-medium text-green-700">{course.student_price || course.price} ₺</span>
+                          {teacher?.name} • {lessonType?.name} • <span className="font-medium text-green-700">{course.current_active_price || course.student_price || course.price} ₺</span>
                           {group && <span className="text-purple-600"> • Grup: {group.name}</span>}
                         </p>
                       </div>
@@ -724,12 +724,12 @@ const AdminStudentForm = () => {
                 {/* Fiyat Geçmişi */}
                 {priceHistory.length > 0 && (
                   <div className="mt-4 pt-4 border-t">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Fiyat Geçmişi</p>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Fiyat Geçmişi ({priceHistory.length} kayıt)</p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 border rounded-md p-2 bg-gray-50">
                       {priceHistory.map((ph, idx) => (
-                        <div key={idx} className="text-xs flex justify-between bg-gray-50 p-2 rounded">
+                        <div key={idx} className="text-xs flex justify-between bg-white p-2 rounded shadow-sm">
                           <span>{new Date(ph.valid_from).toLocaleDateString('tr-TR')} - {ph.valid_to ? new Date(ph.valid_to).toLocaleDateString('tr-TR') : 'Devam ediyor'}</span>
-                          <span className="font-medium">{ph.price} ₺</span>
+                          <span className="font-medium text-green-700">{ph.price} ₺</span>
                         </div>
                       ))}
                     </div>

@@ -1491,7 +1491,7 @@ async def delete_bank_account(account_id: str, current_user: User = Depends(get_
 
 # ============= STUDENT COURSE ROUTES =============
 
-@api_router.get("/student-courses", response_model=List[StudentCourse])
+@api_router.get("/student-courses")
 async def get_student_courses(student_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
     query = {}
     if student_id:
@@ -1501,9 +1501,25 @@ async def get_student_courses(student_id: Optional[str] = None, current_user: Us
         query["teacher_id"] = current_user.teacher_id
     
     courses = await db.student_courses.find(query, {"_id": 0}).to_list(1000)
+    
+    # Her course için aktif fiyat geçmişini ekle
     for course in courses:
         if isinstance(course.get('created_at'), str):
             course['created_at'] = datetime.fromisoformat(course['created_at'])
+        
+        # Aktif fiyat geçmişini bul (valid_to: None)
+        active_price = await db.student_price_history.find_one({
+            "student_id": course["student_id"],
+            "branch_id": course["branch_id"],
+            "lesson_type": "birebir",
+            "valid_to": None
+        }, {"_id": 0}, sort=[("valid_from", -1)])
+        
+        if active_price:
+            course["current_active_price"] = active_price["price"]
+        else:
+            course["current_active_price"] = course.get("student_price") or course.get("price") or 0
+    
     return courses
 
 @api_router.post("/student-courses", response_model=StudentCourse)
@@ -1626,38 +1642,77 @@ async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(
     active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
     season_id = active_season["id"] if active_season else None
     
-    # Ders oluşturulurken öğretmenin o anki ücretini kaydet (geriye dönük değişiklik olmaması için)
+    # Ders oluşturulurken öğretmenin DERS TARİHİNDEKİ ücretini kaydet
     teacher_rate = None
-    teacher_price = await db.teacher_prices.find_one({
-        "teacher_id": course["teacher_id"],
-        "branch_id": course["branch_id"],
-        "lesson_type_id": course["lesson_type_id"],
-        "group_size": None  # Birebir ders
-    }, {"_id": 0})
     
-    if teacher_price:
-        teacher_rate = teacher_price["price"]
+    # Önce ders tarihini parse et
+    try:
+        lesson_date_for_price = datetime.strptime(lesson_data.date, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        lesson_date_for_price = datetime.now()
+    
+    # Ders tarihindeki öğretmen fiyatını bul (teacher_price_history'den)
+    teacher_price_history_record = await db.teacher_price_history.find_one({
+        "$and": [
+            {"teacher_id": course["teacher_id"]},
+            {"branch_id": course["branch_id"]},
+            {"lesson_type_id": course["lesson_type_id"]},
+            {"$or": [{"group_size": None}, {"group_size": {"$exists": False}}]},
+            {"valid_from": {"$lte": lesson_date_for_price}},
+            {"$or": [
+                {"valid_to": None},
+                {"valid_to": {"$gte": lesson_date_for_price}}
+            ]}
+        ]
+    }, {"_id": 0}, sort=[("valid_from", -1)])
+    
+    if teacher_price_history_record:
+        teacher_rate = teacher_price_history_record["price"]
     else:
-        # Birebir bulunamazsa genel fiyatı al
+        # Fallback: güncel teacher_prices'tan al
         teacher_price = await db.teacher_prices.find_one({
             "teacher_id": course["teacher_id"],
             "branch_id": course["branch_id"],
-            "lesson_type_id": course["lesson_type_id"]
+            "lesson_type_id": course["lesson_type_id"],
+            "group_size": None  # Birebir ders
         }, {"_id": 0})
+        
         if teacher_price:
             teacher_rate = teacher_price["price"]
+        else:
+            # Birebir bulunamazsa genel fiyatı al
+            teacher_price = await db.teacher_prices.find_one({
+                "teacher_id": course["teacher_id"],
+                "branch_id": course["branch_id"],
+                "lesson_type_id": course["lesson_type_id"]
+            }, {"_id": 0})
+            if teacher_price:
+                teacher_rate = teacher_price["price"]
     
-    # FAZ 4: Öğrenci fiyat snapshot'ını al
+    # FAZ 4: Öğrenci fiyat snapshot'ını al - DERS TARİHİNDEKİ FİYATI KULLAN
     student_unit_price = None
     student_total_amount = None
     
     if not lesson_data.is_free_lesson:
-        # Önce student_price_history'den dene
+        # Ders tarihini parse et
+        try:
+            lesson_date = datetime.strptime(lesson_data.date, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            lesson_date = datetime.now()
+        
+        # Ders tarihindeki geçerli fiyatı bul
+        lesson_type = "birebir"  # TODO: Grup dersleri için farklı logic
         student_price_record = await db.student_price_history.find_one({
-            "student_id": course["student_id"],
-            "branch_id": course["branch_id"],
-            "lesson_type": "birebir",
-            "valid_to": None
+            "$and": [
+                {"student_id": course["student_id"]},
+                {"branch_id": course["branch_id"]},
+                {"lesson_type": lesson_type},
+                {"valid_from": {"$lte": lesson_date}},
+                {"$or": [
+                    {"valid_to": None},
+                    {"valid_to": {"$gte": lesson_date}}
+                ]}
+            ]
         }, {"_id": 0}, sort=[("valid_from", -1)])
         
         if student_price_record:
@@ -4134,8 +4189,19 @@ async def get_students_by_branch(branch_id: str, current_user: User = Depends(ge
         total_lessons = sum([l["number_of_lessons"] for l in lessons])
         free_lessons = sum([l["number_of_lessons"] for l in lessons if l.get("is_free_lesson", False)])
         
-        # Öğrenci ders ücreti (güncel - gösterim için)
-        student_price = course.get("student_price") or course.get("price") or 0
+        # Öğrenci ders ücreti (güncel aktif fiyat - gösterim için)
+        # Aktif fiyat geçmişinden al
+        active_price_record = await db.student_price_history.find_one({
+            "student_id": student["id"],
+            "branch_id": branch_id,
+            "lesson_type": "birebir",
+            "valid_to": None
+        }, {"_id": 0}, sort=[("valid_from", -1)])
+        
+        if active_price_record:
+            student_price = active_price_record["price"]
+        else:
+            student_price = course.get("student_price") or course.get("price") or 0
         
         # FAZ 4: Kullanılan tutar hesaplaması (tarih bazlı fiyat geçmişi ile)
         used_amount = 0
