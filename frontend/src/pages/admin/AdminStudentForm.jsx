@@ -8,7 +8,7 @@ import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { toast } from 'sonner';
-import { Plus, X, Users, AlertTriangle, Edit, Calendar, TrendingUp } from 'lucide-react';
+import { Plus, X, Users, AlertTriangle, Edit, Calendar, TrendingUp, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../../components/ui/dialog';
 import { Checkbox } from '../../components/ui/checkbox';
 
@@ -280,6 +280,63 @@ const AdminStudentForm = () => {
       fetchCourses();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Fiyat güncellenemedi');
+    }
+  };
+
+  // Fiyat geçmişi kaydını güncelle
+  const [editingPriceHistory, setEditingPriceHistory] = useState(null);
+  
+  const handleEditPriceHistory = async (priceRecord) => {
+    if (!editingPriceHistory) {
+      setEditingPriceHistory({...priceRecord});
+      return;
+    }
+    
+    // Kaydet
+    try {
+      const updateData = {};
+      if (editingPriceHistory.price !== priceRecord.price) {
+        updateData.price = parseFloat(editingPriceHistory.price);
+      }
+      if (editingPriceHistory.valid_from !== priceRecord.valid_from) {
+        const vf = editingPriceHistory.valid_from;
+        updateData.valid_from = typeof vf === 'string' && vf.includes('T') 
+          ? vf.split('T')[0] 
+          : vf;
+      }
+      if (editingPriceHistory.valid_to !== priceRecord.valid_to) {
+        const vt = editingPriceHistory.valid_to;
+        updateData.valid_to = vt ? (typeof vt === 'string' && vt.includes('T') ? vt.split('T')[0] : vt) : '';
+      }
+      
+      await apiClient.put(`/student-price-history/${priceRecord.id}`, updateData);
+      toast.success('Fiyat geçmişi güncellendi');
+      
+      // Listeyi yenile
+      const response = await apiClient.get(`/student-price-history/${id}?branch_id=${selectedCourseForPriceUpdate.branch_id}`);
+      setPriceHistory(response.data);
+      setEditingPriceHistory(null);
+      fetchCourses();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Güncelleme başarısız');
+    }
+  };
+  
+  const handleDeletePriceHistory = async (priceId) => {
+    if (!confirm('Bu fiyat kaydını silmek istediğinize emin misiniz?')) {
+      return;
+    }
+    
+    try {
+      await apiClient.delete(`/student-price-history/${priceId}`);
+      toast.success('Fiyat kaydı silindi');
+      
+      // Listeyi yenile
+      const response = await apiClient.get(`/student-price-history/${id}?branch_id=${selectedCourseForPriceUpdate.branch_id}`);
+      setPriceHistory(response.data);
+      fetchCourses();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Silme başarısız');
     }
   };
 
@@ -725,14 +782,76 @@ const AdminStudentForm = () => {
                 {priceHistory.length > 0 && (
                   <div className="mt-4 pt-4 border-t">
                     <p className="text-sm font-medium text-gray-700 mb-2">Fiyat Geçmişi ({priceHistory.length} kayıt)</p>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 border rounded-md p-2 bg-gray-50">
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2 border rounded-md p-2 bg-gray-50">
                       {priceHistory.map((ph, idx) => (
-                        <div key={idx} className="text-xs flex justify-between bg-white p-2 rounded shadow-sm">
-                          <span>{new Date(ph.valid_from).toLocaleDateString('tr-TR')} - {ph.valid_to ? new Date(ph.valid_to).toLocaleDateString('tr-TR') : 'Devam ediyor'}</span>
-                          <span className="font-medium text-green-700">{ph.price} ₺</span>
+                        <div key={ph.id || idx} className="bg-white p-3 rounded shadow-sm border">
+                          {editingPriceHistory && editingPriceHistory.id === ph.id ? (
+                            // Düzenleme modu
+                            <div className="space-y-2">
+                              <div className="flex gap-2">
+                                <div className="flex-1">
+                                  <Label className="text-xs">Başlangıç</Label>
+                                  <Input
+                                    type="date"
+                                    className="h-8 text-xs"
+                                    value={editingPriceHistory.valid_from?.split('T')[0] || ''}
+                                    onChange={(e) => setEditingPriceHistory({...editingPriceHistory, valid_from: e.target.value})}
+                                  />
+                                </div>
+                                <div className="flex-1">
+                                  <Label className="text-xs">Bitiş</Label>
+                                  <Input
+                                    type="date"
+                                    className="h-8 text-xs"
+                                    value={editingPriceHistory.valid_to?.split('T')[0] || ''}
+                                    onChange={(e) => setEditingPriceHistory({...editingPriceHistory, valid_to: e.target.value || null})}
+                                    placeholder="Boş = Devam ediyor"
+                                  />
+                                </div>
+                                <div className="w-24">
+                                  <Label className="text-xs">Fiyat (₺)</Label>
+                                  <Input
+                                    type="number"
+                                    className="h-8 text-xs"
+                                    value={editingPriceHistory.price}
+                                    onChange={(e) => setEditingPriceHistory({...editingPriceHistory, price: e.target.value})}
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingPriceHistory(null)}>
+                                  İptal
+                                </Button>
+                                <Button size="sm" className="h-7 text-xs bg-green-600 hover:bg-green-700" onClick={() => handleEditPriceHistory(ph)}>
+                                  Kaydet
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            // Görüntüleme modu
+                            <div className="flex items-center justify-between">
+                              <div className="text-xs">
+                                <span className="font-medium">{new Date(ph.valid_from).toLocaleDateString('tr-TR')}</span>
+                                <span className="text-gray-400 mx-1">→</span>
+                                <span className="font-medium">{ph.valid_to ? new Date(ph.valid_to).toLocaleDateString('tr-TR') : 'Devam ediyor'}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-green-700">{ph.price} ₺</span>
+                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingPriceHistory({...ph})}>
+                                  <Pencil size={12} />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500 hover:text-red-700" onClick={() => handleDeletePriceHistory(ph.id)}>
+                                  <Trash2 size={12} />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      💡 Tarih aralığına düşmeyen dersler <strong>en eski fiyat</strong> üzerinden hesaplanır.
+                    </p>
                   </div>
                 )}
               </div>
