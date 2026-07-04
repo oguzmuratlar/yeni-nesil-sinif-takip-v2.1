@@ -5,9 +5,23 @@
 
 ---
 
-## Son Güncelleme: 12 Haziran 2026
+## Son Güncelleme: 4 Temmuz 2026
 
-### YENİ ÖZELLİK: Tarih Bazlı Fiyat Güncelleme ✅
+### YENİ ÖZELLİK: Günlük Değişiklikler Filtresi ✅ (4 Temmuz 2026)
+
+Admin kullanıcılar, Günlük Değişiklikler sayfasında öğrenci ve öğretmen filtresi kullanabilir:
+- **Öğrenci Filtresi**: Seçilen öğrencinin derslerini (grup dersleri dahil) filtreler
+- **Öğretmen Filtresi**: Seçilen öğretmenin yaptığı değişiklikleri filtreler
+- **Tarih Aralığı**: Başlangıç ve bitiş tarihi ile kombinasyon mümkün
+
+#### Güncellenen Endpoint:
+```
+GET /api/admin/audit-logs?student_id={id}&teacher_id={id}
+```
+
+---
+
+### Tarih Bazlı Fiyat Güncelleme ✅
 
 Admin kullanıcılar, öğrenci ve öğretmen fiyatlarını tarih bazlı güncelleyebilir:
 - **Geçerlilik Tarihi**: Fiyat değişikliğinin başlangıç tarihi belirlenebilir

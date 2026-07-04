@@ -50,6 +50,12 @@ const AdminAuditLogs = () => {
   // Filters
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedStudentId, setSelectedStudentId] = useState('');
+  const [selectedTeacherId, setSelectedTeacherId] = useState('');
+  
+  // Data lists
+  const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
   
   // Pagination
   const [page, setPage] = useState(1);
@@ -57,9 +63,26 @@ const AdminAuditLogs = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
+  // Öğrenci ve öğretmen listelerini yükle
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [studentsRes, teachersRes] = await Promise.all([
+          apiClient.get('/students'),
+          apiClient.get('/teachers')
+        ]);
+        setStudents(studentsRes.data || []);
+        setTeachers(teachersRes.data || []);
+      } catch (error) {
+        console.error('Failed to fetch students/teachers:', error);
+      }
+    };
+    fetchData();
+  }, []);
+
   useEffect(() => {
     fetchLogs();
-  }, [page, pageSize, startDate, endDate]);
+  }, [page, pageSize, startDate, endDate, selectedStudentId, selectedTeacherId]);
 
   const fetchLogs = async () => {
     try {
@@ -69,6 +92,8 @@ const AdminAuditLogs = () => {
       params.append('page_size', pageSize);
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
+      if (selectedStudentId) params.append('student_id', selectedStudentId);
+      if (selectedTeacherId) params.append('teacher_id', selectedTeacherId);
       
       const response = await apiClient.get(`/admin/audit-logs?${params.toString()}`);
       setLogs(response.data.logs || []);
@@ -84,6 +109,8 @@ const AdminAuditLogs = () => {
   const handleClearFilters = () => {
     setStartDate('');
     setEndDate('');
+    setSelectedStudentId('');
+    setSelectedTeacherId('');
     setPage(1);
   };
 
@@ -153,8 +180,9 @@ const AdminAuditLogs = () => {
 
         {/* Filters */}
         <div className="admin-card p-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-end">
-            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-4">
+            {/* İlk satır: Tarih filtreleri */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="text-sm font-medium text-slate-600 mb-1 block">Başlangıç Tarihi</label>
                 <Input
@@ -174,6 +202,54 @@ const AdminAuditLogs = () => {
                 />
               </div>
               <div>
+                <label className="text-sm font-medium text-slate-600 mb-1 block">Öğrenci Filtresi</label>
+                <Select value={selectedStudentId} onValueChange={(v) => { setSelectedStudentId(v === 'all' ? '' : v); setPage(1); }}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Tüm öğrenciler" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm öğrenciler</SelectItem>
+                    {students.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        <span className="flex items-center gap-2">
+                          <User className="w-3 h-3" />
+                          {s.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedStudentId && (
+                  <p className="text-xs text-blue-600 mt-1">Grup dersleri de gösterilir</p>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-600 mb-1 block">Öğretmen Filtresi</label>
+                <Select value={selectedTeacherId} onValueChange={(v) => { setSelectedTeacherId(v === 'all' ? '' : v); setPage(1); }}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Tüm öğretmenler" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tüm öğretmenler</SelectItem>
+                    {teachers.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        <span className="flex items-center gap-2">
+                          <Users className="w-3 h-3" />
+                          {t.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTeacherId && (
+                  <p className="text-xs text-green-600 mt-1">Öğretmenin değişiklikleri</p>
+                )}
+              </div>
+            </div>
+            
+            {/* İkinci satır: Sayfa başına ve filtre temizle */}
+            <div className="flex flex-col sm:flex-row items-end gap-4">
+              <div className="w-full sm:w-40">
                 <label className="text-sm font-medium text-slate-600 mb-1 block">Sayfa Başına</label>
                 <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
                   <SelectTrigger className="h-10">
@@ -187,13 +263,13 @@ const AdminAuditLogs = () => {
                   </SelectContent>
                 </Select>
               </div>
+              {(startDate || endDate || selectedStudentId || selectedTeacherId) && (
+                <Button variant="outline" onClick={handleClearFilters} className="shrink-0">
+                  <Filter className="w-4 h-4 mr-2" />
+                  Filtreleri Temizle
+                </Button>
+              )}
             </div>
-            {(startDate || endDate) && (
-              <Button variant="outline" onClick={handleClearFilters} className="shrink-0">
-                <Filter className="w-4 h-4 mr-2" />
-                Filtreleri Temizle
-              </Button>
-            )}
           </div>
         </div>
 

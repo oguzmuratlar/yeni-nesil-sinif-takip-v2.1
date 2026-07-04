@@ -5254,12 +5254,19 @@ async def get_recent_audit_logs(current_user: User = Depends(get_current_user)):
 async def get_audit_logs(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    student_id: Optional[str] = None,
+    teacher_id: Optional[str] = None,
     page: int = 1,
     page_size: int = 10,
     current_user: User = Depends(get_current_user)
 ):
     """
     Günlük Değişiklikler ekranı için pagination destekli audit log listesi.
+    
+    Filtreler:
+    - start_date, end_date: Tarih aralığı
+    - student_id: Öğrenci filtresi (o öğrencinin dersleri, grup dersiyse grubun dersleri)
+    - teacher_id: Öğretmen filtresi (öğretmenin yaptığı değişiklikler)
     """
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Only admins can access audit logs")
@@ -5275,6 +5282,37 @@ async def get_audit_logs(
             # End date'e 1 gün ekle (o günün sonuna kadar dahil etmek için)
             date_query["$lte"] = end_date + "T23:59:59"
         query["created_at"] = date_query
+    
+    # Öğrenci filtresi
+    if student_id:
+        # Öğrencinin dahil olduğu grupları bul
+        student_groups = await db.student_groups.find(
+            {"student_ids": student_id},
+            {"_id": 0, "id": 1}
+        ).to_list(100)
+        group_ids = [g["id"] for g in student_groups]
+        
+        # student_id veya group_id eşleşmesi
+        student_query = {"$or": [{"student_id": student_id}]}
+        if group_ids:
+            student_query["$or"].append({"group_id": {"$in": group_ids}})
+        
+        # Mevcut query'yi birleştir
+        if query:
+            query = {"$and": [query, student_query]}
+        else:
+            query = student_query
+    
+    # Öğretmen filtresi (öğretmenin yaptığı değişiklikler)
+    if teacher_id:
+        teacher_query = {"teacher_id": teacher_id}
+        if query:
+            if "$and" in query:
+                query["$and"].append(teacher_query)
+            else:
+                query = {"$and": [query, teacher_query]}
+        else:
+            query = teacher_query
     
     # Toplam sayı
     total_count = await db.audit_logs.count_documents(query)
