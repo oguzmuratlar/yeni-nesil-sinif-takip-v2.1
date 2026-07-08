@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
-import { Plus, Trash2 } from 'lucide-react';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Plus, Trash2, ArrowRightLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '../../components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +19,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
 
 const AdminBankAccounts = () => {
   const [accounts, setAccounts] = useState([]);
@@ -24,6 +35,17 @@ const AdminBankAccounts = () => {
   const [accountToDelete, setAccountToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
+
+  // Transfer state
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const [transferData, setTransferData] = useState({
+    from_account_id: '',
+    to_account_id: '',
+    amount: '',
+    description: '',
+    date: new Date().toISOString().split('T')[0]
+  });
 
   useEffect(() => {
     fetchAccounts();
@@ -75,6 +97,59 @@ const AdminBankAccounts = () => {
     }
   };
 
+  const handleTransferOpen = () => {
+    setTransferData({
+      from_account_id: '',
+      to_account_id: '',
+      amount: '',
+      description: '',
+      date: new Date().toISOString().split('T')[0]
+    });
+    setTransferDialogOpen(true);
+  };
+
+  const handleTransferSubmit = async () => {
+    // Validasyonlar
+    if (!transferData.from_account_id) {
+      toast.error('Lütfen çıkış hesabını seçin');
+      return;
+    }
+    if (!transferData.to_account_id) {
+      toast.error('Lütfen giriş hesabını seçin');
+      return;
+    }
+    if (transferData.from_account_id === transferData.to_account_id) {
+      toast.error('Aynı hesaba transfer yapılamaz');
+      return;
+    }
+    if (!transferData.amount || parseFloat(transferData.amount) <= 0) {
+      toast.error('Lütfen geçerli bir tutar girin');
+      return;
+    }
+    if (!transferData.date) {
+      toast.error('Lütfen tarih seçin');
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      const response = await apiClient.post('/bank-accounts/transfer', {
+        ...transferData,
+        amount: parseFloat(transferData.amount)
+      });
+      toast.success(`${response.data.amount.toFixed(2)} ₺ transfer edildi: ${response.data.from_account} → ${response.data.to_account}`);
+      setTransferDialogOpen(false);
+      fetchAccounts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Transfer işlemi başarısız');
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const fromAccount = accounts.find(a => a.id === transferData.from_account_id);
+  const toAccount = accounts.find(a => a.id === transferData.to_account_id);
+
   return (
     <AdminLayout>
       <div>
@@ -85,14 +160,25 @@ const AdminBankAccounts = () => {
             </h1>
             <p className="text-slate-600">Ödeme hesaplarını yönetin</p>
           </div>
-          <Button
-            onClick={() => navigate('/admin/bank-accounts/new')}
-            data-testid="add-bank-account-btn"
-            className="admin-btn"
-          >
-            <Plus size={20} className="mr-2" />
-            Hesap Ekle
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={handleTransferOpen}
+              data-testid="transfer-btn"
+              variant="outline"
+              className="border-blue-200 text-blue-700 hover:bg-blue-50"
+            >
+              <ArrowRightLeft size={20} className="mr-2" />
+              Hesaplar Arası Transfer
+            </Button>
+            <Button
+              onClick={() => navigate('/admin/bank-accounts/new')}
+              data-testid="add-bank-account-btn"
+              className="admin-btn"
+            >
+              <Plus size={20} className="mr-2" />
+              Hesap Ekle
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -179,6 +265,166 @@ const AdminBankAccounts = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Transfer Dialog */}
+        <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5 text-blue-600" />
+                Hesaplar Arası Transfer
+              </DialogTitle>
+              <DialogDescription>
+                Banka hesapları arasında para transferi yapın. Bu işlem branş kasalarını etkilemez.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              {/* Çıkış Hesabı */}
+              <div className="space-y-2">
+                <Label htmlFor="from_account" className="text-sm font-medium">
+                  Paranın Çıkacağı Hesap <span className="text-red-500">*</span>
+                </Label>
+                <Select 
+                  value={transferData.from_account_id} 
+                  onValueChange={(value) => setTransferData({...transferData, from_account_id: value})}
+                >
+                  <SelectTrigger data-testid="from-account-select">
+                    <SelectValue placeholder="Hesap seçin..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map(account => (
+                      <SelectItem 
+                        key={account.id} 
+                        value={account.id}
+                        disabled={account.id === transferData.to_account_id}
+                      >
+                        <span className="flex items-center justify-between w-full gap-4">
+                          <span>{account.bank_name}</span>
+                          <span className="text-slate-500 text-sm">
+                            ({account.balance?.toFixed(2)} ₺)
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {fromAccount && (
+                  <p className="text-xs text-slate-500">
+                    Mevcut bakiye: <span className="font-semibold">{fromAccount.balance?.toFixed(2)} ₺</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Giriş Hesabı */}
+              <div className="space-y-2">
+                <Label htmlFor="to_account" className="text-sm font-medium">
+                  Paranın Geçeceği Hesap <span className="text-red-500">*</span>
+                </Label>
+                <Select 
+                  value={transferData.to_account_id} 
+                  onValueChange={(value) => setTransferData({...transferData, to_account_id: value})}
+                >
+                  <SelectTrigger data-testid="to-account-select">
+                    <SelectValue placeholder="Hesap seçin..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accounts.map(account => (
+                      <SelectItem 
+                        key={account.id} 
+                        value={account.id}
+                        disabled={account.id === transferData.from_account_id}
+                      >
+                        <span className="flex items-center justify-between w-full gap-4">
+                          <span>{account.bank_name}</span>
+                          <span className="text-slate-500 text-sm">
+                            ({account.balance?.toFixed(2)} ₺)
+                          </span>
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {toAccount && (
+                  <p className="text-xs text-slate-500">
+                    Mevcut bakiye: <span className="font-semibold">{toAccount.balance?.toFixed(2)} ₺</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Transfer Özeti */}
+              {fromAccount && toAccount && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800 flex items-center gap-2">
+                    <span className="font-medium">{fromAccount.bank_name}</span>
+                    <ArrowRightLeft className="w-4 h-4" />
+                    <span className="font-medium">{toAccount.bank_name}</span>
+                  </p>
+                </div>
+              )}
+
+              {/* Tutar */}
+              <div className="space-y-2">
+                <Label htmlFor="amount" className="text-sm font-medium">
+                  Tutar (₺) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0.00"
+                  value={transferData.amount}
+                  onChange={(e) => setTransferData({...transferData, amount: e.target.value})}
+                  data-testid="transfer-amount-input"
+                />
+              </div>
+
+              {/* Tarih */}
+              <div className="space-y-2">
+                <Label htmlFor="date" className="text-sm font-medium">
+                  Tarih <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={transferData.date}
+                  onChange={(e) => setTransferData({...transferData, date: e.target.value})}
+                  data-testid="transfer-date-input"
+                />
+              </div>
+
+              {/* Açıklama */}
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-sm font-medium">
+                  Açıklama (Opsiyonel)
+                </Label>
+                <Input
+                  id="description"
+                  type="text"
+                  placeholder="Transfer açıklaması..."
+                  value={transferData.description}
+                  onChange={(e) => setTransferData({...transferData, description: e.target.value})}
+                  data-testid="transfer-description-input"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>
+                İptal
+              </Button>
+              <Button 
+                onClick={handleTransferSubmit} 
+                disabled={transferring}
+                className="bg-blue-600 hover:bg-blue-700"
+                data-testid="confirm-transfer-btn"
+              >
+                {transferring ? 'Transfer Yapılıyor...' : 'Transfer Yap'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminLayout>
   );

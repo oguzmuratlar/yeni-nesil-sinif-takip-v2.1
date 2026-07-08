@@ -7,7 +7,24 @@
 
 ## Son Güncelleme: 4 Temmuz 2026
 
-### YENİ ÖZELLİK: Günlük Değişiklikler Filtresi ✅ (4 Temmuz 2026)
+### YENİ ÖZELLİK: Banka Hesapları Arası Transfer ✅ (4 Temmuz 2026)
+
+Admin kullanıcılar, banka hesapları arasında para transferi yapabilir:
+- **Çıkış Hesabı**: Paranın çıkacağı banka hesabı seçilir
+- **Giriş Hesabı**: Paranın geçeceği banka hesabı seçilir
+- **Tutar ve Tarih**: Zorunlu alanlar
+- **Açıklama**: Opsiyonel alan
+- **Branş Kasaları Etkilenmez**: Transfer sadece banka hesapları arasında gerçekleşir
+
+#### Yeni Endpoint:
+```
+POST /api/bank-accounts/transfer
+Body: { "from_account_id": "...", "to_account_id": "...", "amount": 100, "date": "2026-07-04", "description": "..." }
+```
+
+---
+
+### Günlük Değişiklikler Filtresi ✅ (4 Temmuz 2026)
 
 Admin kullanıcılar, Günlük Değişiklikler sayfasında öğrenci ve öğretmen filtresi kullanabilir:
 - **Öğrenci Filtresi**: Seçilen öğrencinin derslerini (grup dersleri dahil) filtreler

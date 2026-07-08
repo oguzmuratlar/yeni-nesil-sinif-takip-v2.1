@@ -405,6 +405,27 @@ class CashboxTransferCreate(BaseModel):
     description: Optional[str] = None
     date: str
 
+# ============= BANK ACCOUNT TRANSFER MODELS =============
+
+class BankAccountTransfer(BaseModel):
+    """Banka hesapları arası transfer modeli"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    from_account_id: str  # Çıkış hesabı
+    to_account_id: str  # Giriş hesabı
+    amount: float
+    description: Optional[str] = None
+    date: str
+    created_by: Optional[str] = None  # Admin user id
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class BankAccountTransferCreate(BaseModel):
+    from_account_id: str
+    to_account_id: str
+    amount: float
+    description: Optional[str] = None
+    date: str
+
 # ============= CAMP MODELS =============
 
 class CampStatus:
@@ -1394,17 +1415,17 @@ async def get_bank_accounts(current_user: User = Depends(get_current_user)):
     for account in accounts:
         account_id = account["id"]
         
-        # Gelen ödemeler (student_payment)
+        # Gelen ödemeler (student_payment + bank_transfer_in)
         income_payments = await db.payments.find({
             "bank_account_id": account_id,
-            "payment_type": "student_payment"
+            "payment_type": {"$in": ["student_payment", "bank_transfer_in"]}
         }, {"_id": 0, "amount": 1}).to_list(10000)
         total_income = sum([p["amount"] for p in income_payments])
         
-        # Giden ödemeler (expense, teacher_payment)
+        # Giden ödemeler (expense, teacher_payment, bank_transfer_out)
         expense_payments = await db.payments.find({
             "bank_account_id": account_id,
-            "payment_type": {"$in": ["expense", "teacher_payment"]}
+            "payment_type": {"$in": ["expense", "teacher_payment", "bank_transfer_out"]}
         }, {"_id": 0, "amount": 1}).to_list(10000)
         total_expense = sum([p["amount"] for p in expense_payments])
         
@@ -1431,17 +1452,17 @@ async def get_bank_account_balance(account_id: str, current_user: User = Depends
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Only admins can view account balance")
     
-    # Gelen ödemeler (student_payment)
+    # Gelen ödemeler (student_payment + bank_transfer_in)
     income_payments = await db.payments.find({
         "bank_account_id": account_id,
-        "payment_type": "student_payment"
+        "payment_type": {"$in": ["student_payment", "bank_transfer_in"]}
     }, {"_id": 0, "amount": 1}).to_list(10000)
     total_income = sum([p["amount"] for p in income_payments])
     
-    # Giden ödemeler (expense, teacher_payment)
+    # Giden ödemeler (expense, teacher_payment, bank_transfer_out)
     expense_payments = await db.payments.find({
         "bank_account_id": account_id,
-        "payment_type": {"$in": ["expense", "teacher_payment"]}
+        "payment_type": {"$in": ["expense", "teacher_payment", "bank_transfer_out"]}
     }, {"_id": 0, "amount": 1}).to_list(10000)
     total_expense = sum([p["amount"] for p in expense_payments])
     
@@ -1468,13 +1489,13 @@ async def delete_bank_account(account_id: str, current_user: User = Depends(get_
     # Bu hesaba bağlı tüm ödemeleri hesapla
     income_payments = await db.payments.find({
         "bank_account_id": account_id,
-        "payment_type": "student_payment"
+        "payment_type": {"$in": ["student_payment", "bank_transfer_in"]}
     }, {"_id": 0, "amount": 1}).to_list(10000)
     total_income = sum([p["amount"] for p in income_payments])
     
     expense_payments = await db.payments.find({
         "bank_account_id": account_id,
-        "payment_type": {"$in": ["expense", "teacher_payment"]}
+        "payment_type": {"$in": ["expense", "teacher_payment", "bank_transfer_out"]}
     }, {"_id": 0, "amount": 1}).to_list(10000)
     total_expense = sum([p["amount"] for p in expense_payments])
     
@@ -1488,6 +1509,88 @@ async def delete_bank_account(account_id: str, current_user: User = Depends(get_
     
     await db.bank_accounts.delete_one({"id": account_id})
     return {"message": "Banka hesabı başarıyla silindi"}
+
+
+@api_router.post("/bank-accounts/transfer")
+async def create_bank_account_transfer(
+    transfer_data: BankAccountTransferCreate, 
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Banka hesapları arası transfer yap.
+    Bu işlem branş kasalarını (Fen, Matematik, Türkçe) ETKİLEMEZ.
+    Sadece banka hesapları arasında para hareketi kaydeder.
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin hesaplar arası transfer yapabilir")
+    
+    # Hesapları kontrol et
+    from_account = await db.bank_accounts.find_one({"id": transfer_data.from_account_id}, {"_id": 0})
+    to_account = await db.bank_accounts.find_one({"id": transfer_data.to_account_id}, {"_id": 0})
+    
+    if not from_account:
+        raise HTTPException(status_code=404, detail="Çıkış hesabı bulunamadı")
+    if not to_account:
+        raise HTTPException(status_code=404, detail="Giriş hesabı bulunamadı")
+    
+    if transfer_data.from_account_id == transfer_data.to_account_id:
+        raise HTTPException(status_code=400, detail="Aynı hesaba transfer yapılamaz")
+    
+    if transfer_data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Transfer tutarı sıfırdan büyük olmalıdır")
+    
+    # Transfer kaydı oluştur
+    transfer = BankAccountTransfer(
+        **transfer_data.model_dump(),
+        created_by=current_user.username
+    )
+    transfer_doc = transfer.model_dump()
+    transfer_doc['created_at'] = transfer_doc['created_at'].isoformat()
+    await db.bank_account_transfers.insert_one(transfer_doc)
+    
+    # Çıkış hesabından düşüm (bank_transfer_out)
+    out_payment = Payment(
+        payment_type="bank_transfer_out",
+        amount=transfer_data.amount,
+        date=transfer_data.date,
+        bank_account_id=transfer_data.from_account_id,
+        description=f"Havale: {from_account['bank_name']} → {to_account['bank_name']}" + (f" - {transfer_data.description}" if transfer_data.description else ""),
+        transfer_id=transfer.id
+    )
+    out_doc = out_payment.model_dump()
+    out_doc['created_at'] = out_doc['created_at'].isoformat()
+    await db.payments.insert_one(out_doc)
+    
+    # Giriş hesabına ekleme (bank_transfer_in)
+    in_payment = Payment(
+        payment_type="bank_transfer_in",
+        amount=transfer_data.amount,
+        date=transfer_data.date,
+        bank_account_id=transfer_data.to_account_id,
+        description=f"Havale: {from_account['bank_name']} → {to_account['bank_name']}" + (f" - {transfer_data.description}" if transfer_data.description else ""),
+        transfer_id=transfer.id
+    )
+    in_doc = in_payment.model_dump()
+    in_doc['created_at'] = in_doc['created_at'].isoformat()
+    await db.payments.insert_one(in_doc)
+    
+    return {
+        "message": "Transfer başarılı",
+        "transfer_id": transfer.id,
+        "from_account": from_account['bank_name'],
+        "to_account": to_account['bank_name'],
+        "amount": transfer_data.amount
+    }
+
+
+@api_router.get("/bank-accounts/transfers")
+async def get_bank_account_transfers(current_user: User = Depends(get_current_user)):
+    """Tüm banka hesapları arası transferleri getir"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin transferleri görüntüleyebilir")
+    
+    transfers = await db.bank_account_transfers.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return transfers
 
 # ============= STUDENT COURSE ROUTES =============
 
