@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="1" tests="7" time="2.357" timestamp="2026-07-31T06:55:45.498657+00:00" hostname="agent-env-f36423ba-c9f4-435b-9ec5-ffcf70b21a80"><testcase classname="backend.tests.test_teacher_update_bugfix.TestTeachersList" name="test_list_teachers" time="0.623" /><testcase classname="backend.tests.test_teacher_update_bugfix.TestTeacherUpdate" name="test_update_teacher_preserves_branch[buse]" time="0.334" /><testcase classname="backend.tests.test_teacher_update_bugfix.TestTeacherUpdate" name="test_update_teacher_preserves_branch[aysegul]" time="0.327" /><testcase classname="backend.tests.test_teacher_update_bugfix.TestTeacherUpdate" name="test_update_teacher_preserves_branch[ilknur]" time="0.308" /><testcase classname="backend.tests.test_teacher_update_bugfix.TestTeacherContent" name="test_teacher_sees_own_branch_content[buse]" time="0.182"><failure message="AssertionError: login failed for buse.ozakdas: 401 {&quot;detail&quot;:&quot;Incorrect username or password&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code">backend/tests/test_teacher_update_bugfix.py:113: in test_teacher_sees_own_branch_content
+    token = _login(info["username"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/test_teacher_update_bugfix.py:32: in _login
+    assert r.status_code == 200, f"login failed for {username}: {r.status_code} {r.text}"
+E   AssertionError: login failed for buse.ozakdas: 401 {"detail":"Incorrect username or password"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_teacher_update_bugfix.TestTeacherContent" name="test_teacher_sees_own_branch_content[aysegul]" time="0.149"><failure message="AssertionError: login failed for aysegul.muratlar: 401 {&quot;detail&quot;:&quot;Incorrect username or password&quot;}&#10;assert 401 == 200&#10; +  where 401 = &lt;Response [401]&gt;.status_code">backend/tests/test_teacher_update_bugfix.py:113: in test_teacher_sees_own_branch_content
+    token = _login(info["username"])
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/test_teacher_update_bugfix.py:32: in _login
+    assert r.status_code == 200, f"login failed for {username}: {r.status_code} {r.text}"
+E   AssertionError: login failed for aysegul.muratlar: 401 {"detail":"Incorrect username or password"}
+E   assert 401 == 200
+E    +  where 401 = &lt;Response [401]&gt;.status_code</failure></testcase><testcase classname="backend.tests.test_teacher_update_bugfix.TestTeacherContent" name="test_teacher_sees_own_branch_content[ilknur]" time="0.252"><skipped type="pytest.skip" message="/api/teacher/content endpoint not available">/app/backend/tests/test_teacher_update_bugfix.py:119: /api/teacher/content endpoint not available</skipped></testcase></testsuite></testsuites>

@@ -1302,8 +1302,15 @@ async def create_teacher(teacher_data: TeacherCreate, current_user: User = Depen
     teacher = Teacher(**create_data)
     doc = teacher.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
+    # branches field'ını kaydetme - teacher_branches tablosundan çekilecek
+    if 'branches' in doc:
+        del doc['branches']
     await db.teachers.insert_one(doc)
-    return teacher
+    
+    # Branşları boş olarak döndür (yeni öğretmenin henüz branşı yok)
+    teacher_dict = teacher.model_dump()
+    teacher_dict['branches'] = []
+    return Teacher(**teacher_dict)
 
 @api_router.put("/teachers/{teacher_id}", response_model=Teacher)
 async def update_teacher(teacher_id: str, teacher_data: TeacherCreate, current_user: User = Depends(get_current_user)):
@@ -1320,6 +1327,19 @@ async def update_teacher(teacher_id: str, teacher_data: TeacherCreate, current_u
     updated = await db.teachers.find_one({"id": teacher_id}, {"_id": 0})
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    
+    # Branşları teacher_branches tablosundan çek (eski branches field'ını görmezden gel)
+    teacher_branches = await db.teacher_branches.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(100)
+    branches_with_names = []
+    for tb in teacher_branches:
+        branch = await db.branches.find_one({"id": tb["branch_id"]}, {"_id": 0, "id": 1, "name": 1})
+        if branch:
+            branches_with_names.append({
+                "branch_id": branch["id"],
+                "branch_name": branch["name"]
+            })
+    updated["branches"] = branches_with_names
+    
     return Teacher(**updated)
 
 @api_router.delete("/teachers/{teacher_id}")
