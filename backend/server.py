@@ -98,6 +98,7 @@ class Teacher(BaseModel):
     phone: str
     status: str = "active"
     season_id: Optional[str] = None
+    branches: Optional[List[dict]] = None  # [{branch_id, branch_name}]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class TeacherCreate(BaseModel):
@@ -1262,6 +1263,19 @@ async def get_teacher(teacher_id: str, current_user: User = Depends(get_current_
         raise HTTPException(status_code=404, detail="Teacher not found")
     if isinstance(teacher.get('created_at'), str):
         teacher['created_at'] = datetime.fromisoformat(teacher['created_at'])
+    
+    # Branşları ekle
+    teacher_branches = await db.teacher_branches.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(100)
+    branches_with_names = []
+    for tb in teacher_branches:
+        branch = await db.branches.find_one({"id": tb["branch_id"]}, {"_id": 0, "id": 1, "name": 1})
+        if branch:
+            branches_with_names.append({
+                "branch_id": branch["id"],
+                "branch_name": branch["name"]
+            })
+    teacher["branches"] = branches_with_names
+    
     return Teacher(**teacher)
 
 @api_router.post("/teachers", response_model=Teacher)
