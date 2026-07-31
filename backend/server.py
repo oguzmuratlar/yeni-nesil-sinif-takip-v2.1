@@ -1255,12 +1255,24 @@ async def get_teachers(current_user: User = Depends(get_current_user)):
         if isinstance(teacher.get('created_at'), str):
             teacher['created_at'] = datetime.fromisoformat(teacher['created_at'])
         
-        # Branşları düzgün formatta ekle
+        # Branşları hem teacher_branches hem de teacher_prices tablosundan al
         teacher_id = teacher.get("id")
-        teacher_branches = await db.teacher_branches.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(100)
-        branches_with_names = []
+        branch_ids = set()
+        
+        # teacher_branches tablosundan
+        teacher_branches = await db.teacher_branches.find({"teacher_id": teacher_id}, {"_id": 0, "branch_id": 1}).to_list(100)
         for tb in teacher_branches:
-            branch = await db.branches.find_one({"id": tb["branch_id"]}, {"_id": 0, "id": 1, "name": 1})
+            branch_ids.add(tb["branch_id"])
+        
+        # teacher_prices tablosundan (UI'dan eklenen branşlar)
+        teacher_prices = await db.teacher_prices.find({"teacher_id": teacher_id}, {"_id": 0, "branch_id": 1}).to_list(100)
+        for tp in teacher_prices:
+            branch_ids.add(tp["branch_id"])
+        
+        # Branş isimlerini al
+        branches_with_names = []
+        for branch_id in branch_ids:
+            branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1, "name": 1})
             if branch:
                 branches_with_names.append({
                     "branch_id": branch["id"],
@@ -1278,11 +1290,23 @@ async def get_teacher(teacher_id: str, current_user: User = Depends(get_current_
     if isinstance(teacher.get('created_at'), str):
         teacher['created_at'] = datetime.fromisoformat(teacher['created_at'])
     
-    # Branşları ekle
-    teacher_branches = await db.teacher_branches.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(100)
-    branches_with_names = []
+    # Branşları hem teacher_branches hem de teacher_prices tablosundan al
+    branch_ids = set()
+    
+    # teacher_branches tablosundan
+    teacher_branches = await db.teacher_branches.find({"teacher_id": teacher_id}, {"_id": 0, "branch_id": 1}).to_list(100)
     for tb in teacher_branches:
-        branch = await db.branches.find_one({"id": tb["branch_id"]}, {"_id": 0, "id": 1, "name": 1})
+        branch_ids.add(tb["branch_id"])
+    
+    # teacher_prices tablosundan (UI'dan eklenen branşlar buraya kaydediliyor)
+    teacher_prices = await db.teacher_prices.find({"teacher_id": teacher_id}, {"_id": 0, "branch_id": 1}).to_list(100)
+    for tp in teacher_prices:
+        branch_ids.add(tp["branch_id"])
+    
+    # Branş isimlerini al
+    branches_with_names = []
+    for branch_id in branch_ids:
+        branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1, "name": 1})
         if branch:
             branches_with_names.append({
                 "branch_id": branch["id"],
