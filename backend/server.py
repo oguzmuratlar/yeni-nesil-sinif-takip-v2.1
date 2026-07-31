@@ -6058,6 +6058,18 @@ async def get_unit_topics(unit_id: str, current_user: User = Depends(get_current
     topics = await db.book_topics.find({"unit_id": unit_id}, {"_id": 0}).sort("order", 1).to_list(100)
     return topics
 
+
+@api_router.put("/homework/units/{unit_id}/topics/reorder")
+async def reorder_topics(unit_id: str, topic_orders: List[dict], current_user: User = Depends(get_current_user)):
+    """Konuların sıralamasını güncelle - body: [{"id": "xxx", "order": 1}, ...]"""
+    for item in topic_orders:
+        await db.book_topics.update_one(
+            {"id": item["id"], "unit_id": unit_id},
+            {"$set": {"order": item["order"]}}
+        )
+    return {"message": "Konu sıralaması güncellendi"}
+
+
 @api_router.post("/homework/topics")
 async def create_topic(topic_data: BookTopicCreate, current_user: User = Depends(get_current_user)):
     """Yeni konu oluştur"""

@@ -213,6 +213,36 @@ const TeacherHomeworkContent = () => {
     }
   };
 
+  // Reorder topics within a unit
+  const handleMoveTopic = async (unitId, topicId, direction) => {
+    if (!bookTree) return;
+    
+    const unit = bookTree.tree.find(u => u.id === unitId);
+    if (!unit || !unit.topics) return;
+    
+    const topics = [...unit.topics];
+    const currentIndex = topics.findIndex(t => t.id === topicId);
+    
+    if (direction === 'up' && currentIndex > 0) {
+      [topics[currentIndex], topics[currentIndex - 1]] = [topics[currentIndex - 1], topics[currentIndex]];
+    } else if (direction === 'down' && currentIndex < topics.length - 1) {
+      [topics[currentIndex], topics[currentIndex + 1]] = [topics[currentIndex + 1], topics[currentIndex]];
+    } else {
+      return;
+    }
+    
+    // Update order numbers
+    const topicOrders = topics.map((t, idx) => ({ id: t.id, order: idx + 1 }));
+    
+    try {
+      await apiClient.put(`/homework/units/${unitId}/topics/reorder`, topicOrders);
+      toast.success('Konu sıralaması güncellendi');
+      fetchBookTree(selectedBook.id);
+    } catch (error) {
+      toast.error('Konu sıralaması güncellenemedi');
+    }
+  };
+
   // Unit CRUD
   const openUnitDialog = (unit = null) => {
     if (unit) {
@@ -595,7 +625,7 @@ const TeacherHomeworkContent = () => {
                                 Konu Ekle
                               </button>
                             </div>
-                            {unit.topics?.map(topic => (
+                            {unit.topics?.map((topic, topicIndex) => (
                               <div key={topic.id} className="border-t">
                                 <div
                                   className="flex items-center gap-2 p-2 pl-8 cursor-pointer hover:bg-slate-50"
@@ -610,6 +640,22 @@ const TeacherHomeworkContent = () => {
                                   <span className="text-sm text-slate-700 flex-1">{topic.name}</span>
                                   <span className="text-xs text-slate-500">{topic.tests?.length || 0} test</span>
                                   <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      className={`p-1 hover:bg-slate-200 rounded ${topicIndex === 0 ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                      onClick={() => handleMoveTopic(unit.id, topic.id, 'up')}
+                                      disabled={topicIndex === 0}
+                                      title="Yukarı Taşı"
+                                    >
+                                      <ArrowUp className="w-3 h-3 text-slate-500" />
+                                    </button>
+                                    <button
+                                      className={`p-1 hover:bg-slate-200 rounded ${topicIndex === unit.topics.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}`}
+                                      onClick={() => handleMoveTopic(unit.id, topic.id, 'down')}
+                                      disabled={topicIndex === unit.topics.length - 1}
+                                      title="Aşağı Taşı"
+                                    >
+                                      <ArrowDown className="w-3 h-3 text-slate-500" />
+                                    </button>
                                     <button
                                       className="p-1 hover:bg-slate-200 rounded"
                                       onClick={() => openTopicDialog(unit.id, topic)}
