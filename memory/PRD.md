@@ -24,6 +24,21 @@ Body: { "from_account_id": "...", "to_account_id": "...", "amount": 100, "date":
 
 ---
 
+### YENİ ÖZELLİK: Öğretmen İçerik Yönetimi ✅ (4 Temmuz 2026)
+
+Öğretmenler artık kendi branşlarına ait kitap ve içerikleri yönetebilir:
+- **Dashboard'da 6. Kart**: "İçerik Yönetimi" kartı eklendi
+- **Tam Özellik**: Admin sayfasıyla aynı tüm özellikler (ekle, düzenle, sil, kopyala)
+- **Branş Kısıtlaması**: Sadece öğretmenin branşına ait kitaplar görünür
+- **Branş Filtresi Gizli**: Öğretmen başka branşlara geçemez
+
+#### Yeni Sayfa:
+```
+/teacher/content - TeacherHomeworkContent.jsx
+```
+
+---
+
 ### Günlük Değişiklikler Filtresi ✅ (4 Temmuz 2026)
 
 Admin kullanıcılar, Günlük Değişiklikler sayfasında öğrenci ve öğretmen filtresi kullanabilir:

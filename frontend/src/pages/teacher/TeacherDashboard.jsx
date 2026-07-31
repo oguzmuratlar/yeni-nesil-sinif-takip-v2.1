@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import TeacherLayout from '../../components/layouts/TeacherLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/axios';
-import { Users, Wallet, ArrowRight, Calendar, Tent, Youtube, AlertTriangle, X } from 'lucide-react';
+import { Users, Wallet, ArrowRight, Calendar, Tent, Youtube, AlertTriangle, X, BookOpen } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import PlanningMasterCard from './PlanningMasterCard';
 
@@ -90,6 +90,14 @@ const TeacherDashboard = () => {
       color: 'bg-red-500',
       path: '/teacher/youtube',
       testId: 'teacher-dashboard-youtube-card'
+    },
+    {
+      title: 'İçerik Yönetimi',
+      description: 'Branşınıza ait kitap ve içerikleri yönetin',
+      icon: BookOpen,
+      color: 'bg-purple-500',
+      path: '/teacher/content',
+      testId: 'teacher-dashboard-content-card'
     },
   ];
 

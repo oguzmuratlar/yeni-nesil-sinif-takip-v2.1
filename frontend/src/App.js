@@ -58,6 +58,7 @@ import TeacherLessonIncomeDetail from "./pages/teacher/TeacherLessonIncomeDetail
 import TeacherCampIncomeDetail from "./pages/teacher/TeacherCampIncomeDetail";
 import TeacherYoutubeIncomeDetail from "./pages/teacher/TeacherYoutubeIncomeDetail";
 import TeacherHomeworkEntry from "./pages/teacher/TeacherHomeworkEntry";
+import TeacherHomeworkContent from "./pages/teacher/TeacherHomeworkContent";
 
 // Production'da aynı origin kullan, development'ta .env'den al
 const getBaseUrl = () => {
@@ -361,6 +362,11 @@ function App() {
             <Route path="/teacher/students/:studentId/homework/:branchId" element={
               <ProtectedRoute requiredRole="teacher">
                 <TeacherHomeworkEntry />
+              </ProtectedRoute>
+            } />
+            <Route path="/teacher/content" element={
+              <ProtectedRoute requiredRole="teacher">
+                <TeacherHomeworkContent />
               </ProtectedRoute>
             } />
           </Routes>
