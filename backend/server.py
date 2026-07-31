@@ -5877,12 +5877,20 @@ async def update_book(book_id: str, book_data: BookCreate, current_user: User = 
     
     # Öğretmen yetki kontrolü
     if current_user.user_type == "teacher":
+        # Öğretmenin branşlarını kontrol et (hem teacher_branches hem teacher_prices)
+        branch_ids = set()
         teacher_branches = await db.teacher_branches.find(
-            {"teacher_id": current_user.teacher_id},
-            {"_id": 0}
+            {"teacher_id": current_user.teacher_id}, {"_id": 0, "branch_id": 1}
         ).to_list(100)
-        teacher_branch_ids = [tb["branch_id"] for tb in teacher_branches]
-        if existing["branch_id"] not in teacher_branch_ids:
+        for tb in teacher_branches:
+            branch_ids.add(tb["branch_id"])
+        teacher_prices = await db.teacher_prices.find(
+            {"teacher_id": current_user.teacher_id}, {"_id": 0, "branch_id": 1}
+        ).to_list(100)
+        for tp in teacher_prices:
+            branch_ids.add(tp["branch_id"])
+        
+        if existing["branch_id"] not in branch_ids:
             raise HTTPException(status_code=403, detail="Bu kitabı düzenleme yetkiniz yok")
     
     await db.books.update_one({"id": book_id}, {"$set": book_data.model_dump()})
@@ -5890,9 +5898,28 @@ async def update_book(book_id: str, book_data: BookCreate, current_user: User = 
 
 @api_router.delete("/homework/books/{book_id}")
 async def delete_book(book_id: str, current_user: User = Depends(get_current_user)):
-    """Kitap sil - sadece admin"""
-    if current_user.user_type != "admin":
-        raise HTTPException(status_code=403, detail="Kitap silme yetkisi sadece admin'e aittir")
+    """Kitap sil - admin veya kitabın branşına sahip öğretmen"""
+    existing = await db.books.find_one({"id": book_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    # Öğretmen yetki kontrolü
+    if current_user.user_type == "teacher":
+        # Öğretmenin branşlarını kontrol et (hem teacher_branches hem teacher_prices)
+        branch_ids = set()
+        teacher_branches = await db.teacher_branches.find(
+            {"teacher_id": current_user.teacher_id}, {"_id": 0, "branch_id": 1}
+        ).to_list(100)
+        for tb in teacher_branches:
+            branch_ids.add(tb["branch_id"])
+        teacher_prices = await db.teacher_prices.find(
+            {"teacher_id": current_user.teacher_id}, {"_id": 0, "branch_id": 1}
+        ).to_list(100)
+        for tp in teacher_prices:
+            branch_ids.add(tp["branch_id"])
+        
+        if existing["branch_id"] not in branch_ids:
+            raise HTTPException(status_code=403, detail="Bu kitabı silme yetkiniz yok")
     
     # Cascade delete: üniteler, konular, testler
     units = await db.book_units.find({"book_id": book_id}, {"_id": 0}).to_list(1000)
@@ -5912,15 +5939,29 @@ async def delete_book(book_id: str, current_user: User = Depends(get_current_use
 
 @api_router.post("/homework/books/{book_id}/copy")
 async def copy_book(book_id: str, current_user: User = Depends(get_current_user)):
-    """Kitabı tüm içeriğiyle kopyala"""
-    # Sadece admin kopyalayabilir
-    if current_user.user_type != "admin":
-        raise HTTPException(status_code=403, detail="Sadece admin kitap kopyalayabilir")
-    
+    """Kitabı tüm içeriğiyle kopyala - admin veya kitabın branşına sahip öğretmen"""
     # Orijinal kitabı bul
     original_book = await db.books.find_one({"id": book_id}, {"_id": 0})
     if not original_book:
         raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    
+    # Öğretmen yetki kontrolü
+    if current_user.user_type == "teacher":
+        # Öğretmenin branşlarını kontrol et (hem teacher_branches hem teacher_prices)
+        branch_ids = set()
+        teacher_branches = await db.teacher_branches.find(
+            {"teacher_id": current_user.teacher_id}, {"_id": 0, "branch_id": 1}
+        ).to_list(100)
+        for tb in teacher_branches:
+            branch_ids.add(tb["branch_id"])
+        teacher_prices = await db.teacher_prices.find(
+            {"teacher_id": current_user.teacher_id}, {"_id": 0, "branch_id": 1}
+        ).to_list(100)
+        for tp in teacher_prices:
+            branch_ids.add(tp["branch_id"])
+        
+        if original_book["branch_id"] not in branch_ids:
+            raise HTTPException(status_code=403, detail="Bu kitabı kopyalama yetkiniz yok")
     
     # Yeni kitap oluştur
     new_book_id = str(uuid.uuid4())
