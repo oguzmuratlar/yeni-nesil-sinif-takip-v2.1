@@ -1352,6 +1352,52 @@ async def delete_teacher(teacher_id: str, current_user: User = Depends(get_curre
         raise HTTPException(status_code=404, detail="Teacher not found")
     return {"message": "Teacher deleted successfully"}
 
+
+@api_router.post("/teachers/{teacher_id}/branches/{branch_id}")
+async def add_teacher_branch(teacher_id: str, branch_id: str, current_user: User = Depends(get_current_user)):
+    """Öğretmene branş ata"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin öğretmene branş atayabilir")
+    
+    # Öğretmen kontrolü
+    teacher = await db.teachers.find_one({"id": teacher_id})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Öğretmen bulunamadı")
+    
+    # Branş kontrolü
+    branch = await db.branches.find_one({"id": branch_id})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branş bulunamadı")
+    
+    # Zaten atanmış mı kontrol et
+    existing = await db.teacher_branches.find_one({"teacher_id": teacher_id, "branch_id": branch_id})
+    if existing:
+        return {"message": "Branş zaten atanmış", "teacher": teacher.get("name"), "branch": branch.get("name")}
+    
+    # Yeni atama oluştur
+    import uuid
+    await db.teacher_branches.insert_one({
+        "id": str(uuid.uuid4()),
+        "teacher_id": teacher_id,
+        "branch_id": branch_id
+    })
+    
+    return {"message": "Branş başarıyla atandı", "teacher": teacher.get("name"), "branch": branch.get("name")}
+
+
+@api_router.delete("/teachers/{teacher_id}/branches/{branch_id}")
+async def remove_teacher_branch(teacher_id: str, branch_id: str, current_user: User = Depends(get_current_user)):
+    """Öğretmenden branş kaldır"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin branş kaldırabilir")
+    
+    result = await db.teacher_branches.delete_one({"teacher_id": teacher_id, "branch_id": branch_id})
+    if result.deleted_count == 0:
+        return {"message": "Atama bulunamadı"}
+    
+    return {"message": "Branş ataması kaldırıldı"}
+
+
 # ============= BRANCH ROUTES =============
 
 @api_router.get("/branches", response_model=List[Branch])
