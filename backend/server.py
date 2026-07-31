@@ -1494,6 +1494,23 @@ async def create_bank_account(account_data: BankAccountCreate, current_user: Use
     await db.bank_accounts.insert_one(account.model_dump())
     return account
 
+
+@api_router.put("/bank-accounts/{account_id}", response_model=BankAccount)
+async def update_bank_account(account_id: str, account_data: BankAccountCreate, current_user: User = Depends(get_current_user)):
+    """Banka hesabı bilgilerini güncelle"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update bank accounts")
+    
+    existing = await db.bank_accounts.find_one({"id": account_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Banka hesabı bulunamadı")
+    
+    update_data = {k: v for k, v in account_data.model_dump().items() if v is not None}
+    await db.bank_accounts.update_one({"id": account_id}, {"$set": update_data})
+    
+    updated = await db.bank_accounts.find_one({"id": account_id}, {"_id": 0})
+    return BankAccount(**updated)
+
 @api_router.get("/bank-accounts/{account_id}/balance")
 async def get_bank_account_balance(account_id: str, current_user: User = Depends(get_current_user)):
     """Banka hesabının bakiyesini hesapla"""

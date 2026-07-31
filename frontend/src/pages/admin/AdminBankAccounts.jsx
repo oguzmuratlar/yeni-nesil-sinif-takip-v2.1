@@ -5,10 +5,11 @@ import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Plus, Trash2, ArrowRightLeft } from 'lucide-react';
+import { Plus, Trash2, ArrowRightLeft, Edit, Building2, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '../../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Switch } from '../../components/ui/switch';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +36,17 @@ const AdminBankAccounts = () => {
   const [accountToDelete, setAccountToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
+
+  // Edit state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    bank_name: '',
+    holder_name: '',
+    iban: '',
+    is_legal: false
+  });
 
   // Transfer state
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
@@ -72,6 +84,46 @@ const AdminBankAccounts = () => {
       toast.error('Hesaplar yüklenemedi');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Edit handlers
+  const handleEditClick = (account) => {
+    setEditingAccount(account);
+    setEditForm({
+      bank_name: account.bank_name || '',
+      holder_name: account.holder_name || '',
+      iban: account.iban || '',
+      is_legal: account.is_legal || false
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSave = async () => {
+    if (!editForm.bank_name.trim()) {
+      toast.error('Banka adı zorunludur');
+      return;
+    }
+    if (!editForm.holder_name.trim()) {
+      toast.error('Hesap sahibi zorunludur');
+      return;
+    }
+    if (!editForm.iban.trim()) {
+      toast.error('IBAN zorunludur');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await apiClient.put(`/bank-accounts/${editingAccount.id}`, editForm);
+      toast.success('Banka hesabı güncellendi');
+      setEditDialogOpen(false);
+      setEditingAccount(null);
+      fetchAccounts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Güncelleme başarısız');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -195,29 +247,49 @@ const AdminBankAccounts = () => {
               <div
                 key={account.id}
                 data-testid={`bank-account-card-${account.id}`}
-                className="admin-card p-6"
+                className="admin-card p-6 hover:shadow-lg transition-shadow"
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="text-xl font-bold text-slate-800 mb-1">{account.bank_name}</h3>
                     <div className="flex gap-2 flex-wrap">
                       {account.is_legal && (
-                        <Badge variant="secondary">Kurumsal</Badge>
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Building2 size={12} />
+                          Kurumsal
+                        </Badge>
+                      )}
+                      {!account.is_legal && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <User size={12} />
+                          Bireysel
+                        </Badge>
                       )}
                       <Badge variant={account.balance === 0 ? 'outline' : account.balance > 0 ? 'default' : 'destructive'}>
                         Bakiye: {account.balance?.toFixed(2) || '0.00'} ₺
                       </Badge>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteClick(account)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    data-testid={`delete-account-${account.id}`}
-                  >
-                    <Trash2 size={18} />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEditClick(account)}
+                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                      data-testid={`edit-account-${account.id}`}
+                    >
+                      <Edit size={18} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteClick(account)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      data-testid={`delete-account-${account.id}`}
+                    >
+                      <Trash2 size={18} />
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-2 text-slate-700">
                   <div>
@@ -233,6 +305,90 @@ const AdminBankAccounts = () => {
             ))}
           </div>
         )}
+
+        {/* Edit Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Edit className="w-5 h-5 text-blue-600" />
+                Banka Hesabı Düzenle
+              </DialogTitle>
+              <DialogDescription>
+                Hesap bilgilerini güncelleyin
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="bank_name" className="text-sm font-medium">
+                  Banka Adı <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="bank_name"
+                  value={editForm.bank_name}
+                  onChange={(e) => setEditForm({...editForm, bank_name: e.target.value})}
+                  placeholder="Örn: Ziraat Bankası"
+                  data-testid="edit-bank-name-input"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="holder_name" className="text-sm font-medium">
+                  Hesap Sahibi <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="holder_name"
+                  value={editForm.holder_name}
+                  onChange={(e) => setEditForm({...editForm, holder_name: e.target.value})}
+                  placeholder="Örn: Ahmet Yılmaz"
+                  data-testid="edit-holder-name-input"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="iban" className="text-sm font-medium">
+                  IBAN <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="iban"
+                  value={editForm.iban}
+                  onChange={(e) => setEditForm({...editForm, iban: e.target.value})}
+                  placeholder="TR00 0000 0000 0000 0000 0000 00"
+                  className="font-mono"
+                  data-testid="edit-iban-input"
+                />
+              </div>
+
+              <div className="flex items-center justify-between py-2">
+                <div className="space-y-0.5">
+                  <Label htmlFor="is_legal" className="text-sm font-medium">Kurumsal Hesap</Label>
+                  <p className="text-xs text-slate-500">Şirket veya kurum hesabı ise aktif edin</p>
+                </div>
+                <Switch
+                  id="is_legal"
+                  checked={editForm.is_legal}
+                  onCheckedChange={(checked) => setEditForm({...editForm, is_legal: checked})}
+                  data-testid="edit-is-legal-switch"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                İptal
+              </Button>
+              <Button 
+                onClick={handleEditSave} 
+                disabled={saving}
+                className="bg-blue-600 hover:bg-blue-700"
+                data-testid="save-edit-btn"
+              >
+                {saving ? 'Kaydediliyor...' : 'Kaydet'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
