@@ -5,7 +5,23 @@
 
 ---
 
-## Son Güncelleme: 4 Temmuz 2026
+## Son Güncelleme: 31 Temmuz 2026
+
+### YENİ ÖZELLİK: Enter Tuşu ile Kaydetme ✅ (31 Temmuz 2026)
+
+İçerik Yönetimi sayfalarında (Admin ve Öğretmen) popup'larda Enter tuşuna basılarak hızlı kaydetme özelliği eklendi:
+- **Ünite Ekleme/Düzenleme**: Enter ile kaydet
+- **Konu Ekleme/Düzenleme**: Enter ile kaydet
+- **Test Ekleme/Düzenleme**: Enter ile kaydet
+- **Shift+Enter Koruması**: Çok satırlı giriş için koruma
+
+#### Güncellenen Dosyalar:
+```
+AdminHomeworkContent.jsx   - Satır 781, 815, 850
+TeacherHomeworkContent.jsx - Satır 824, 857, 891
+```
+
+---
 
 ### YENİ ÖZELLİK: Banka Hesapları Arası Transfer ✅ (4 Temmuz 2026)
 
@@ -193,6 +209,7 @@ POST   /api/year-end/execute
 - [ ] Hızlı ders girişi butonu
 
 ### P3 - Uzak Vadeli
+- [ ] Test sıralama: Konular içindeki testler için yukarı/aşağı sıralama
 - [ ] Kamp SMS hatırlatmaları
 - [ ] WordPress entegrasyonu
 
@@ -208,5 +225,5 @@ POST   /api/year-end/execute
 
 ---
 
-Son Test: 12 Haziran 2026
+Son Test: 31 Temmuz 2026
 Durum: TÜM TESTLER GEÇTİ ✅

@@ -778,7 +778,7 @@ const AdminHomeworkContent = () => {
 
       {/* Unit Dialog */}
       <Dialog open={unitDialogOpen} onOpenChange={setUnitDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveUnit(); } }}>
           <DialogHeader>
             <DialogTitle>{editingUnit?.id ? 'Ünite Düzenle' : 'Yeni Ünite'}</DialogTitle>
           </DialogHeader>
@@ -790,6 +790,7 @@ const AdminHomeworkContent = () => {
                 onChange={(e) => setUnitForm({ ...unitForm, name: e.target.value })}
                 placeholder="Örn: Yazım Kuralları"
                 className="mt-1"
+                autoFocus
               />
             </div>
             <div>
@@ -811,7 +812,7 @@ const AdminHomeworkContent = () => {
 
       {/* Topic Dialog */}
       <Dialog open={topicDialogOpen} onOpenChange={setTopicDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveTopic(); } }}>
           <DialogHeader>
             <DialogTitle>{editingTopic?.id ? 'Konu Düzenle' : 'Yeni Konu'}</DialogTitle>
           </DialogHeader>
@@ -823,6 +824,7 @@ const AdminHomeworkContent = () => {
                 onChange={(e) => setTopicForm({ ...topicForm, name: e.target.value })}
                 placeholder="Örn: Büyük Harfler"
                 className="mt-1"
+                autoFocus
               />
             </div>
             <div>
@@ -845,7 +847,7 @@ const AdminHomeworkContent = () => {
 
       {/* Test Dialog */}
       <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveTest(); } }}>
           <DialogHeader>
             <DialogTitle>{editingTest?.id ? 'Test Düzenle' : 'Yeni Test'}</DialogTitle>
           </DialogHeader>

@@ -821,7 +821,7 @@ const TeacherHomeworkContent = () => {
 
       {/* Unit Dialog */}
       <Dialog open={unitDialogOpen} onOpenChange={setUnitDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveUnit(); } }}>
           <DialogHeader>
             <DialogTitle>{editingUnit?.id ? 'Ünite Düzenle' : 'Yeni Ünite'}</DialogTitle>
           </DialogHeader>
@@ -854,7 +854,7 @@ const TeacherHomeworkContent = () => {
 
       {/* Topic Dialog */}
       <Dialog open={topicDialogOpen} onOpenChange={setTopicDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveTopic(); } }}>
           <DialogHeader>
             <DialogTitle>{editingTopic?.id ? 'Konu Düzenle' : 'Yeni Konu'}</DialogTitle>
           </DialogHeader>
@@ -888,7 +888,7 @@ const TeacherHomeworkContent = () => {
 
       {/* Test Dialog */}
       <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveTest(); } }}>
           <DialogHeader>
             <DialogTitle>{editingTest?.id ? 'Test Düzenle' : 'Yeni Test'}</DialogTitle>
           </DialogHeader>
