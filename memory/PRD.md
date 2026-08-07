@@ -5,7 +5,52 @@
 
 ---
 
-## Son Güncelleme: 31 Temmuz 2026
+## Son Güncelleme: 7 Ağustos 2026
+
+### YENİ ÖZELLİK: Ders Linkleri ve Dersi Başlat ✅ (7 Ağustos 2026)
+
+Öğretmenler ders linkine giderken ayrıca manuel ders girişi yapmak zorunda kalmadan otomatik ders kaydı oluşturabilir.
+
+#### Admin Paneli - Ders Linkleri Sayfası
+- **Yeni Sayfa**: `Dersler > Ders Linkleri` menüsünde
+- **CRUD**: Ekle, düzenle, sil işlemleri
+- **Alanlar**: Branş, Öğretmen, Link Adı, Link URL
+- **Silme Onayı**: Confirmation modal
+
+#### Öğretmen Paneli - Dersi Başlat
+- **Yeni Buton**: Öğrencilerim > Aksiyon barında "Dersi Başlat"
+- **Popup**: Ders durumu seçimi + link seçimi
+- **Yeni Ders Başlat**: Ders kaydı oluşturur/günceller, link açar
+- **Mevcut Derse Devam**: Sadece link açar
+
+#### Aynı Gün Birleştirme
+- Aynı gün, aynı öğrenci/grup için ders varsa yeni satır açılmaz
+- Mevcut ders sayısı +1 artırılır
+- Fiyat/kazanç hesaplamaları otomatik güncellenir
+
+#### Feature Toggle
+- Yeni Geliştirmeler sayfasında `lesson_links_enabled` toggle
+- Kapalıyken "Dersi Başlat" butonu gizlenir
+
+#### Endpoint'ler:
+```
+GET/POST/PUT/DELETE /api/lesson-links (Admin)
+GET /api/teacher/lesson-links (Öğretmen)
+POST /api/lesson-links/start-lesson (Dersi başlat)
+GET /api/system-settings/lesson-links-status (Toggle durumu)
+```
+
+#### Güncellenen/Eklenen Dosyalar:
+```
+backend/server.py - lesson_links endpoints
+frontend/src/pages/admin/AdminLessonLinks.jsx (YENİ)
+frontend/src/pages/teacher/TeacherStudents.jsx - Dersi Başlat butonu/popup
+frontend/src/pages/admin/AdminSettings.jsx - lesson_links_enabled toggle
+frontend/src/components/layouts/AdminLayout.jsx - Menü
+frontend/src/App.js - Route
+```
+
+---
 
 ### YENİ ÖZELLİK: Enter Tuşu ile Kaydetme ✅ (31 Temmuz 2026)
 
@@ -166,6 +211,17 @@ POST   /api/teacher-price-history
 GET    /api/current-prices/{student_id}
 ```
 
+### Ders Linkleri (YENİ)
+```
+GET    /api/lesson-links              # Admin - tüm linkler
+POST   /api/lesson-links              # Admin - yeni link
+PUT    /api/lesson-links/{id}         # Admin - düzenle
+DELETE /api/lesson-links/{id}         # Admin - sil
+GET    /api/teacher/lesson-links      # Öğretmen - kendi linkleri
+POST   /api/lesson-links/start-lesson # Dersi başlat
+GET    /api/system-settings/lesson-links-status
+```
+
 ### Dönem (Season)
 ```
 GET    /api/seasons
@@ -183,17 +239,22 @@ POST   /api/year-end/execute
 ```
 /app
 ├── backend/
-│   ├── server.py          # Ana backend (8000+ satır)
+│   ├── server.py          # Ana backend (9000+ satır)
 │   └── tests/
-│       └── test_price_history.py
+│       ├── test_price_history.py
+│       └── test_lesson_links.py
 ├── frontend/
 │   └── src/
 │       └── pages/
-│           └── admin/
-│               ├── AdminStudentForm.jsx  (Fiyat güncelleme modal eklendi)
-│               ├── AdminTeacherForm.jsx  (Fiyat güncelleme modal eklendi)
-│               ├── AdminYearEndPreview.jsx
-│               └── AdminDashboard.jsx
+│           ├── admin/
+│           │   ├── AdminStudentForm.jsx
+│           │   ├── AdminTeacherForm.jsx
+│           │   ├── AdminYearEndPreview.jsx
+│           │   ├── AdminLessonLinks.jsx (YENİ)
+│           │   ├── AdminSettings.jsx
+│           │   └── AdminDashboard.jsx
+│           └── teacher/
+│               └── TeacherStudents.jsx (Dersi Başlat eklendi)
 └── memory/
     ├── PRD.md
     ├── test_credentials.md
@@ -207,6 +268,7 @@ POST   /api/year-end/execute
 ### P2 - Yakın Vadeli
 - [ ] Birebir öğrenci dersleri için pagination
 - [ ] Hızlı ders girişi butonu
+- [ ] Grup dersi için Dersi Başlat testi (şu an birebir test edildi)
 
 ### P3 - Uzak Vadeli
 - [ ] Test sıralama: Konular içindeki testler için yukarı/aşağı sıralama
@@ -225,5 +287,5 @@ POST   /api/year-end/execute
 
 ---
 
-Son Test: 31 Temmuz 2026
-Durum: TÜM TESTLER GEÇTİ ✅
+Son Test: 7 Ağustos 2026
+Durum: TÜM TESTLER GEÇTİ ✅ (Backend: 15/15, Frontend: 100%)

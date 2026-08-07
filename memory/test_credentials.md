@@ -10,13 +10,7 @@
 - **Password**: `test123`
 - **User Type**: teacher
 - **Teacher ID**: 5e5cbe5b-d9f7-49cc-af86-1075fb120d43
-- **Branch**: Türkçe
-
-- **Username**: `buse.ozakdas`
-- **Password**: `test123`
-- **User Type**: teacher
-- **Teacher ID**: 2c2ca5bd-05c2-411a-ae5a-9db4713d8e4c
-- **Branch**: Fen Bilimleri
+- **Branch**: Türkçe, Matematik
 
 - **Username**: `aysegul.muratlar`
 - **Password**: `test123`
@@ -29,6 +23,8 @@
 - **User Type**: teacher
 - **Teacher ID**: a9199ba8-ac4a-45d9-b766-8268c530507c
 - **Branch**: Matematik
+
+**Not**: buse.ozakdas için kullanıcı hesabı oluşturulmamış durumda.
 
 ---
 
@@ -52,4 +48,4 @@
 - `ab12a2cc-91ba-4d8b-96e9-846bbb3252a8` (Grup)
 
 ---
-Last Updated: 4 July 2026
+Last Updated: 7 Ağustos 2026
