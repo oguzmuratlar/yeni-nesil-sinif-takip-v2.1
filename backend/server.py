@@ -3344,7 +3344,7 @@ async def update_monthly_program_note(
         import json
         try:
             update_data["price_overrides"] = json.loads(price_overrides) if price_overrides else {}
-        except:
+        except (json.JSONDecodeError, TypeError):
             update_data["price_overrides"] = {}
     
     if existing:
@@ -5745,7 +5745,8 @@ async def get_system_settings(current_user: User = Depends(get_current_user)):
     
     # Default ayarları ekle (yoksa)
     default_settings = [
-        {"key": "homework_tool_enabled", "value": True, "description": "Ödev Takip Sistemi"}
+        {"key": "homework_tool_enabled", "value": True, "description": "Ödev Takip Sistemi"},
+        {"key": "lesson_links_enabled", "value": False, "description": "Ders Linkleri Sistemi"}
     ]
     
     existing_keys = [s["key"] for s in settings]
@@ -8299,8 +8300,10 @@ async def validate_student_price_date_range(
     
     if valid_to:
         query["$or"].append({
-            "valid_from": {"$gte": valid_from},
-            "valid_from": {"$lte": valid_to}
+            "$and": [
+                {"valid_from": {"$gte": valid_from}},
+                {"valid_from": {"$lte": valid_to}}
+            ]
         })
     
     if exclude_id:
@@ -8772,6 +8775,572 @@ async def get_season_summary(
     
     return summary
 
+
+# ============= LESSON LINKS (DERS LİNKLERİ) =============
+
+class LessonLink(BaseModel):
+    """Ders linki modeli"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    branch_id: str
+    teacher_id: str
+    link_name: str
+    link_url: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+class LessonLinkCreate(BaseModel):
+    branch_id: str
+    teacher_id: str
+    link_name: str
+    link_url: str
+
+class LessonLinkUpdate(BaseModel):
+    branch_id: str
+    teacher_id: str
+    link_name: str
+    link_url: str
+
+class StartLessonRequest(BaseModel):
+    selected_type: str  # "student" | "group"
+    student_course_id: Optional[str] = None
+    group_id: Optional[str] = None
+    lesson_link_id: str
+    mode: str  # "new_lesson" | "continue_existing"
+
+@api_router.get("/lesson-links")
+async def get_lesson_links(current_user: User = Depends(get_current_user)):
+    """Ders linklerini listele - Sadece admin"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece adminler ders linklerini görebilir")
+    
+    links = await db.lesson_links.find({}, {"_id": 0}).to_list(500)
+    
+    # Branş ve öğretmen bilgilerini ekle
+    for link in links:
+        branch = await db.branches.find_one({"id": link["branch_id"]}, {"_id": 0})
+        teacher = await db.teachers.find_one({"id": link["teacher_id"]}, {"_id": 0})
+        link["branch_name"] = branch["name"] if branch else "Bilinmiyor"
+        link["teacher_name"] = teacher["name"] if teacher else "Bilinmiyor"
+    
+    return links
+
+@api_router.post("/lesson-links")
+async def create_lesson_link(data: LessonLinkCreate, current_user: User = Depends(get_current_user)):
+    """Yeni ders linki oluştur - Sadece admin"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece adminler ders linki oluşturabilir")
+    
+    # Validasyonlar
+    if not data.branch_id or not data.teacher_id or not data.link_name or not data.link_url:
+        raise HTTPException(status_code=400, detail="Tüm alanlar zorunludur")
+    
+    # Branş kontrolü
+    branch = await db.branches.find_one({"id": data.branch_id}, {"_id": 0})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branş bulunamadı")
+    
+    # Öğretmen kontrolü
+    teacher = await db.teachers.find_one({"id": data.teacher_id}, {"_id": 0})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Öğretmen bulunamadı")
+    
+    link = LessonLink(
+        **data.model_dump(),
+        created_by=current_user.id
+    )
+    doc = link.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.lesson_links.insert_one(doc)
+    
+    return {"message": "Ders linki oluşturuldu", "id": link.id}
+
+@api_router.put("/lesson-links/{link_id}")
+async def update_lesson_link(link_id: str, data: LessonLinkUpdate, current_user: User = Depends(get_current_user)):
+    """Ders linkini güncelle - Sadece admin"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece adminler ders linkini güncelleyebilir")
+    
+    existing = await db.lesson_links.find_one({"id": link_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Ders linki bulunamadı")
+    
+    # Validasyonlar
+    if not data.branch_id or not data.teacher_id or not data.link_name or not data.link_url:
+        raise HTTPException(status_code=400, detail="Tüm alanlar zorunludur")
+    
+    update_data = data.model_dump()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = current_user.id
+    
+    await db.lesson_links.update_one({"id": link_id}, {"$set": update_data})
+    return {"message": "Ders linki güncellendi"}
+
+@api_router.delete("/lesson-links/{link_id}")
+async def delete_lesson_link(link_id: str, current_user: User = Depends(get_current_user)):
+    """Ders linkini sil - Sadece admin"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece adminler ders linkini silebilir")
+    
+    existing = await db.lesson_links.find_one({"id": link_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Ders linki bulunamadı")
+    
+    await db.lesson_links.delete_one({"id": link_id})
+    return {"message": "Ders linki silindi"}
+
+@api_router.get("/teacher/lesson-links")
+async def get_teacher_lesson_links(current_user: User = Depends(get_current_user)):
+    """Öğretmenin kendi ders linklerini al"""
+    if current_user.user_type != "teacher":
+        raise HTTPException(status_code=403, detail="Bu endpoint sadece öğretmenler içindir")
+    
+    if not current_user.teacher_id:
+        raise HTTPException(status_code=400, detail="Öğretmen ID bulunamadı")
+    
+    links = await db.lesson_links.find(
+        {"teacher_id": current_user.teacher_id}, 
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Branş bilgisi ekle
+    for link in links:
+        branch = await db.branches.find_one({"id": link["branch_id"]}, {"_id": 0})
+        link["branch_name"] = branch["name"] if branch else "Bilinmiyor"
+    
+    return links
+
+@api_router.get("/system-settings/lesson-links-status")
+async def get_lesson_links_status(current_user: User = Depends(get_current_user)):
+    """Ders linkleri özelliği durumunu kontrol et"""
+    setting = await db.system_settings.find_one({"key": "lesson_links_enabled"}, {"_id": 0})
+    return {"enabled": setting.get("value", False) if setting else False}
+
+@api_router.post("/lesson-links/start-lesson")
+async def start_lesson(data: StartLessonRequest, current_user: User = Depends(get_current_user)):
+    """Dersi başlat - öğretmen için"""
+    if current_user.user_type != "teacher":
+        raise HTTPException(status_code=403, detail="Bu işlem sadece öğretmenler içindir")
+    
+    if not current_user.teacher_id:
+        raise HTTPException(status_code=400, detail="Öğretmen ID bulunamadı")
+    
+    # Ders linkini kontrol et
+    lesson_link = await db.lesson_links.find_one({"id": data.lesson_link_id}, {"_id": 0})
+    if not lesson_link:
+        raise HTTPException(status_code=404, detail="Ders linki bulunamadı")
+    
+    # Öğretmenin kendi linki mi kontrol et
+    if lesson_link["teacher_id"] != current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Bu ders linkine erişim yetkiniz yok")
+    
+    # Mevcut derse devam et modunda sadece linki döndür
+    if data.mode == "continue_existing":
+        return {
+            "success": True,
+            "link_url": lesson_link["link_url"],
+            "lesson_created_or_updated": False,
+            "message": "Link açılabilir."
+        }
+    
+    # Yeni ders başlat modunda ders kaydı oluştur/güncelle
+    if data.mode == "new_lesson":
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        
+        if data.selected_type == "student":
+            # Birebir öğrenci dersi
+            if not data.student_course_id:
+                raise HTTPException(status_code=400, detail="Öğrenci kursu belirtilmedi")
+            
+            course = await db.student_courses.find_one({"id": data.student_course_id}, {"_id": 0})
+            if not course:
+                raise HTTPException(status_code=404, detail="Kurs bulunamadı")
+            
+            # Öğretmen yetkisi kontrolü
+            if course["teacher_id"] != current_user.teacher_id:
+                raise HTTPException(status_code=403, detail="Bu kursa erişim yetkiniz yok")
+            
+            # FAZ 5: Kapalı dönem kontrolü
+            await check_season_is_open()
+            
+            # Aynı gün, aynı kurs için ders var mı kontrol et
+            existing_lesson = await db.lessons.find_one({
+                "student_course_id": data.student_course_id,
+                "date": today,
+                "group_id": None  # Birebir ders
+            }, {"_id": 0})
+            
+            if existing_lesson:
+                # Mevcut dersin ders sayısını artır
+                new_count = existing_lesson.get("number_of_lessons", 1) + 1
+                
+                # Fiyat hesaplama (mevcut logic'i koru)
+                student_unit_price = existing_lesson.get("student_unit_price_at_lesson")
+                teacher_unit_price = existing_lesson.get("teacher_unit_price_at_lesson")
+                
+                student_total_amount = None
+                teacher_total_earning = None
+                
+                if student_unit_price is not None and not existing_lesson.get("is_free_lesson", False):
+                    student_total_amount = student_unit_price * new_count
+                
+                if teacher_unit_price is not None:
+                    teacher_total_earning = teacher_unit_price * new_count
+                
+                await db.lessons.update_one(
+                    {"id": existing_lesson["id"]},
+                    {"$set": {
+                        "number_of_lessons": new_count,
+                        "student_total_amount_at_lesson": student_total_amount,
+                        "teacher_total_earning_at_lesson": teacher_total_earning
+                    }}
+                )
+                
+                # Audit log - ders güncellendi
+                await create_audit_log(
+                    action_type=AuditLogActionType.UPDATE,
+                    category=AuditLogCategory.LESSON_ENTRY,
+                    teacher_id=current_user.teacher_id,
+                    entity_id=existing_lesson["id"],
+                    student_id=course.get("student_id"),
+                    group_id=None,
+                    old_data={
+                        "date": today,
+                        "number_of_lessons": existing_lesson.get("number_of_lessons", 1)
+                    },
+                    new_data={
+                        "date": today,
+                        "number_of_lessons": new_count
+                    }
+                )
+                
+                return {
+                    "success": True,
+                    "link_url": lesson_link["link_url"],
+                    "lesson_created_or_updated": True,
+                    "message": f"Mevcut ders sayısı {new_count}'e güncellendi."
+                }
+            else:
+                # Yeni ders oluştur - mevcut create_lesson mantığını kullan
+                lesson_data = LessonCreate(
+                    student_course_id=data.student_course_id,
+                    date=today,
+                    number_of_lessons=1,
+                    is_free_lesson=False
+                )
+                
+                # create_lesson fonksiyonunu simüle et (fiyat hesaplamaları dahil)
+                active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+                season_id = active_season["id"] if active_season else None
+                
+                # Öğretmen fiyatını hesapla
+                lesson_date_for_price = datetime.strptime(today, "%Y-%m-%d")
+                teacher_rate = None
+                
+                teacher_price_history_record = await db.teacher_price_history.find_one({
+                    "$and": [
+                        {"teacher_id": course["teacher_id"]},
+                        {"branch_id": course["branch_id"]},
+                        {"lesson_type_id": course["lesson_type_id"]},
+                        {"$or": [{"group_size": None}, {"group_size": {"$exists": False}}]},
+                        {"valid_from": {"$lte": lesson_date_for_price}},
+                        {"$or": [
+                            {"valid_to": None},
+                            {"valid_to": {"$gte": lesson_date_for_price}}
+                        ]}
+                    ]
+                }, {"_id": 0}, sort=[("valid_from", -1)])
+                
+                if teacher_price_history_record:
+                    teacher_rate = teacher_price_history_record["price"]
+                else:
+                    oldest_teacher_price = await db.teacher_price_history.find_one({
+                        "teacher_id": course["teacher_id"],
+                        "branch_id": course["branch_id"],
+                        "lesson_type_id": course["lesson_type_id"],
+                        "$or": [{"group_size": None}, {"group_size": {"$exists": False}}]
+                    }, {"_id": 0}, sort=[("valid_from", 1)])
+                    
+                    if oldest_teacher_price:
+                        teacher_rate = oldest_teacher_price["price"]
+                    else:
+                        teacher_price = await db.teacher_prices.find_one({
+                            "teacher_id": course["teacher_id"],
+                            "branch_id": course["branch_id"],
+                            "lesson_type_id": course["lesson_type_id"],
+                            "group_size": None
+                        }, {"_id": 0})
+                        if teacher_price:
+                            teacher_rate = teacher_price["price"]
+                
+                # Öğrenci fiyatını hesapla
+                student_unit_price = None
+                student_total_amount = None
+                
+                student_price_record = await db.student_price_history.find_one({
+                    "$and": [
+                        {"student_id": course["student_id"]},
+                        {"branch_id": course["branch_id"]},
+                        {"lesson_type": "birebir"},
+                        {"valid_from": {"$lte": lesson_date_for_price}},
+                        {"$or": [
+                            {"valid_to": None},
+                            {"valid_to": {"$gte": lesson_date_for_price}}
+                        ]}
+                    ]
+                }, {"_id": 0}, sort=[("valid_from", -1)])
+                
+                if student_price_record:
+                    student_unit_price = student_price_record["price"]
+                else:
+                    oldest_price = await db.student_price_history.find_one({
+                        "student_id": course["student_id"],
+                        "branch_id": course["branch_id"],
+                        "lesson_type": "birebir"
+                    }, {"_id": 0}, sort=[("valid_from", 1)])
+                    
+                    if oldest_price:
+                        student_unit_price = oldest_price["price"]
+                    else:
+                        student_unit_price = course.get("student_price") or course.get("price") or 0
+                
+                student_total_amount = student_unit_price * 1
+                teacher_total_earning = (teacher_rate or 0) * 1
+                
+                lesson = Lesson(
+                    student_course_id=data.student_course_id,
+                    date=today,
+                    number_of_lessons=1,
+                    teacher_rate=teacher_rate,
+                    teacher_id=course["teacher_id"],
+                    branch_id=course["branch_id"],
+                    student_id=course["student_id"],
+                    season_id=season_id,
+                    is_free_lesson=False,
+                    student_unit_price_at_lesson=student_unit_price,
+                    student_total_amount_at_lesson=student_total_amount,
+                    teacher_unit_price_at_lesson=teacher_rate,
+                    teacher_total_earning_at_lesson=teacher_total_earning
+                )
+                doc = lesson.model_dump()
+                doc['created_at'] = doc['created_at'].isoformat()
+                await db.lessons.insert_one(doc)
+                
+                # Audit log - ders eklendi
+                await create_audit_log(
+                    action_type=AuditLogActionType.ADD,
+                    category=AuditLogCategory.LESSON_ENTRY,
+                    teacher_id=current_user.teacher_id,
+                    entity_id=lesson.id,
+                    student_id=course.get("student_id"),
+                    group_id=None,
+                    old_data=None,
+                    new_data={
+                        "date": today,
+                        "number_of_lessons": 1,
+                        "teacher_rate": teacher_rate,
+                        "student_unit_price": student_unit_price
+                    }
+                )
+                
+                return {
+                    "success": True,
+                    "link_url": lesson_link["link_url"],
+                    "lesson_created_or_updated": True,
+                    "message": "Yeni ders kaydı oluşturuldu."
+                }
+        
+        elif data.selected_type == "group":
+            # Grup dersi
+            if not data.group_id:
+                raise HTTPException(status_code=400, detail="Grup belirtilmedi")
+            
+            group = await db.student_groups.find_one({"id": data.group_id}, {"_id": 0})
+            if not group:
+                raise HTTPException(status_code=404, detail="Grup bulunamadı")
+            
+            # Öğretmen yetkisi kontrolü
+            if group.get("teacher_id") != current_user.teacher_id:
+                raise HTTPException(status_code=403, detail="Bu gruba erişim yetkiniz yok")
+            
+            # FAZ 5: Kapalı dönem kontrolü
+            await check_season_is_open()
+            
+            # Aynı gün, aynı grup için ders var mı kontrol et
+            existing_group_lessons = await db.lessons.find({
+                "group_id": data.group_id,
+                "date": today
+            }, {"_id": 0}).to_list(100)
+            
+            if existing_group_lessons:
+                # Mevcut grup dersinin ders sayısını artır
+                new_count = existing_group_lessons[0].get("number_of_lessons", 1) + 1
+                
+                # Tüm grup derslerini güncelle
+                for lesson in existing_group_lessons:
+                    student_unit_price = lesson.get("student_unit_price_at_lesson")
+                    teacher_unit_price = lesson.get("teacher_unit_price_at_lesson")
+                    
+                    student_total_amount = None
+                    teacher_total_earning = None
+                    
+                    if student_unit_price is not None and not lesson.get("is_free_lesson", False):
+                        student_total_amount = student_unit_price * new_count
+                    
+                    if teacher_unit_price is not None:
+                        teacher_total_earning = teacher_unit_price * new_count
+                    
+                    await db.lessons.update_one(
+                        {"id": lesson["id"]},
+                        {"$set": {
+                            "number_of_lessons": new_count,
+                            "student_total_amount_at_lesson": student_total_amount,
+                            "teacher_total_earning_at_lesson": teacher_total_earning
+                        }}
+                    )
+                
+                # Audit log - grup dersi güncellendi
+                await create_audit_log(
+                    action_type=AuditLogActionType.UPDATE,
+                    category=AuditLogCategory.LESSON_ENTRY,
+                    teacher_id=current_user.teacher_id,
+                    entity_id=existing_group_lessons[0]["id"],
+                    student_id=None,
+                    group_id=data.group_id,
+                    old_data={
+                        "date": today,
+                        "number_of_lessons": existing_group_lessons[0].get("number_of_lessons", 1)
+                    },
+                    new_data={
+                        "date": today,
+                        "number_of_lessons": new_count
+                    }
+                )
+                
+                return {
+                    "success": True,
+                    "link_url": lesson_link["link_url"],
+                    "lesson_created_or_updated": True,
+                    "message": f"Grup dersi sayısı {new_count}'e güncellendi."
+                }
+            else:
+                # Yeni grup dersi oluştur - mevcut create_group_lesson mantığını kullan
+                active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+                season_id = active_season["id"] if active_season else None
+                
+                branch_id = group.get("branch_id")
+                group_size = len(group.get("student_ids", []))
+                effective_group_size = min(group_size, 4)
+                
+                # Öğretmen fiyatını al
+                teacher_rate = None
+                group_price = await db.teacher_prices.find_one({
+                    "teacher_id": group.get("teacher_id"),
+                    "branch_id": branch_id,
+                    "group_size": effective_group_size
+                }, {"_id": 0})
+                
+                if group_price:
+                    teacher_rate = group_price["price"]
+                else:
+                    teacher_price = await db.teacher_prices.find_one({
+                        "teacher_id": group.get("teacher_id"),
+                        "branch_id": branch_id,
+                        "group_size": None
+                    }, {"_id": 0})
+                    if teacher_price:
+                        teacher_rate = teacher_price["price"]
+                
+                created_lessons = []
+                is_first_student = True
+                
+                for student_id in group.get("student_ids", []):
+                    course = await db.student_courses.find_one({
+                        "student_id": student_id,
+                        "branch_id": branch_id,
+                        "teacher_id": group.get("teacher_id")
+                    }, {"_id": 0})
+                    
+                    if not course:
+                        course = await db.student_courses.find_one({
+                            "student_id": student_id,
+                            "branch_id": branch_id
+                        }, {"_id": 0})
+                    
+                    student_course_id = course["id"] if course else f"auto_{student_id}_{branch_id}"
+                    lesson_teacher_rate = teacher_rate if is_first_student else 0
+                    
+                    # Öğrenci fiyatı
+                    student_unit_price = None
+                    student_total_amount = None
+                    
+                    student_price_record = await db.student_price_history.find_one({
+                        "student_id": student_id,
+                        "branch_id": branch_id,
+                        "lesson_type": "group",
+                        "valid_to": None
+                    }, {"_id": 0}, sort=[("valid_from", -1)])
+                    
+                    if student_price_record:
+                        student_unit_price = student_price_record["price"]
+                    elif course:
+                        student_unit_price = course.get("student_price") or course.get("price") or 0
+                    
+                    if student_unit_price:
+                        student_total_amount = student_unit_price * 1
+                    
+                    teacher_total_earning = (lesson_teacher_rate or 0) * 1
+                    is_first_student = False
+                    
+                    lesson = Lesson(
+                        student_course_id=student_course_id,
+                        date=today,
+                        number_of_lessons=1,
+                        teacher_rate=lesson_teacher_rate,
+                        group_id=data.group_id,
+                        is_free_lesson=False,
+                        teacher_id=group.get("teacher_id"),
+                        branch_id=branch_id,
+                        student_id=student_id,
+                        season_id=season_id,
+                        student_unit_price_at_lesson=student_unit_price,
+                        student_total_amount_at_lesson=student_total_amount,
+                        teacher_unit_price_at_lesson=lesson_teacher_rate,
+                        teacher_total_earning_at_lesson=teacher_total_earning
+                    )
+                    doc = lesson.model_dump()
+                    doc['created_at'] = doc['created_at'].isoformat()
+                    await db.lessons.insert_one(doc)
+                    created_lessons.append(lesson)
+                
+                # Audit log - grup dersi eklendi
+                if created_lessons:
+                    await create_audit_log(
+                        action_type=AuditLogActionType.ADD,
+                        category=AuditLogCategory.LESSON_ENTRY,
+                        teacher_id=current_user.teacher_id,
+                        entity_id=created_lessons[0].id,
+                        student_id=None,
+                        group_id=data.group_id,
+                        old_data=None,
+                        new_data={
+                            "date": today,
+                            "number_of_lessons": 1,
+                            "teacher_rate": teacher_rate,
+                            "student_count": len(created_lessons)
+                        }
+                    )
+                
+                return {
+                    "success": True,
+                    "link_url": lesson_link["link_url"],
+                    "lesson_created_or_updated": True,
+                    "message": f"{len(created_lessons)} öğrenci için grup dersi oluşturuldu."
+                }
+    
+    raise HTTPException(status_code=400, detail="Geçersiz mod veya seçim tipi")
 
 # ============= INCLUDE ROUTER =============
 

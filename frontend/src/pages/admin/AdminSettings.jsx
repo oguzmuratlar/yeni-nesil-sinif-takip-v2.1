@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
-import { Settings, ToggleLeft, ToggleRight, BookOpen, Loader2, Calendar, ChevronRight } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, BookOpen, Loader2, Calendar, ChevronRight, Link2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Switch } from '../../components/ui/switch';
@@ -53,6 +53,8 @@ const AdminSettings = () => {
     switch (key) {
       case 'homework_tool_enabled':
         return <BookOpen className="h-5 w-5 text-blue-600" />;
+      case 'lesson_links_enabled':
+        return <Link2 className="h-5 w-5 text-teal-600" />;
       default:
         return <Settings className="h-5 w-5 text-slate-600" />;
     }
@@ -62,6 +64,8 @@ const AdminSettings = () => {
     switch (key) {
       case 'homework_tool_enabled':
         return 'Öğretmenlerin öğrenci panelinde "Ödev Girişi" butonunu görmesini ve ödev planı oluşturmasını kontrol eder.';
+      case 'lesson_links_enabled':
+        return 'Öğretmenlerin öğrenci panelinde "Dersi Başlat" butonunu görmesini ve ders linklerini kullanmasını kontrol eder.';
       default:
         return '';
     }
@@ -141,6 +145,22 @@ const AdminSettings = () => {
                       ) : (
                         <p className="text-sm text-amber-700">
                           ⚠ Ödev Takip Sistemi pasif. Öğretmenler "Ödev Girişi" butonunu görmeyecek.
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                )}
+                
+                {setting.key === 'lesson_links_enabled' && (
+                  <CardContent className="pt-0">
+                    <div className={`p-3 rounded-lg ${setting.value ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
+                      {setting.value ? (
+                        <p className="text-sm text-green-700">
+                          ✓ Ders Linkleri Sistemi aktif. Öğretmenler "Dersi Başlat" butonunu kullanabilir.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-700">
+                          ⚠ Ders Linkleri Sistemi pasif. Öğretmenler "Dersi Başlat" butonunu görmeyecek.
                         </p>
                       )}
                     </div>
