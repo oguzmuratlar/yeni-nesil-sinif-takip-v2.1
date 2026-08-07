@@ -65,7 +65,7 @@ const AdminSettings = () => {
       case 'homework_tool_enabled':
         return 'Öğretmenlerin öğrenci panelinde "Ödev Girişi" butonunu görmesini ve ödev planı oluşturmasını kontrol eder.';
       case 'lesson_links_enabled':
-        return 'Öğretmenlerin öğrenci panelinde "Dersi Başlat" butonunu görmesini ve ders linklerini kullanmasını kontrol eder.';
+        return 'Öğretmenlerin öğrenci panelinde "Dersi Başlat" butonunu görmesini ve ders linklerini kullanarak hızlı ders girişi yapmasını kontrol eder.';
       default:
         return '';
     }
@@ -156,11 +156,11 @@ const AdminSettings = () => {
                     <div className={`p-3 rounded-lg ${setting.value ? 'bg-green-50 border border-green-200' : 'bg-amber-50 border border-amber-200'}`}>
                       {setting.value ? (
                         <p className="text-sm text-green-700">
-                          ✓ Ders Linkleri Sistemi aktif. Öğretmenler "Dersi Başlat" butonunu kullanabilir.
+                          ✓ Ders Giriş Özelliği aktif. Öğretmenler "Dersi Başlat" butonunu kullanabilir.
                         </p>
                       ) : (
                         <p className="text-sm text-amber-700">
-                          ⚠ Ders Linkleri Sistemi pasif. Öğretmenler "Dersi Başlat" butonunu görmeyecek.
+                          ⚠ Ders Giriş Özelliği pasif. Öğretmenler "Dersi Başlat" butonunu görmeyecek.
                         </p>
                       )}
                     </div>
