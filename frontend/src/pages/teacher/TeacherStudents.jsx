@@ -194,10 +194,13 @@ const TeacherStudents = () => {
     
     setStartingLesson(true);
     try {
+      // "one_on_one_meeting" modu backend'e "continue_existing" olarak gönderilir
+      const backendMode = lessonMode === 'one_on_one_meeting' ? 'continue_existing' : lessonMode;
+      
       const payload = {
         selected_type: selectedItem.type,
         lesson_link_id: selectedLink.id,
-        mode: lessonMode
+        mode: backendMode
       };
       
       if (selectedItem.type === 'student') {
@@ -454,7 +457,8 @@ const TeacherStudents = () => {
                     <Button
                       onClick={handleOpenStartLesson}
                       data-testid="start-lesson-btn"
-                      className="flex-shrink-0 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-full"
+                      variant="outline"
+                      className="flex-shrink-0 rounded-full px-4 py-2 border-teal-300 text-teal-700 hover:bg-teal-50"
                     >
                       <Video size={16} className="mr-2" />
                       Dersi Başlat
@@ -463,7 +467,7 @@ const TeacherStudents = () => {
                   <Button
                     onClick={handleLessonEntry}
                     data-testid="lesson-entry-btn"
-                    className="teacher-btn flex-shrink-0 px-4 py-2"
+                    className="teacher-btn flex-shrink-0 rounded-full px-4 py-2"
                   >
                     <Edit size={16} className="mr-2" />
                     Ders Girişi
@@ -565,6 +569,13 @@ const TeacherStudents = () => {
                       <p className="text-xs text-slate-500 mt-0.5">Sadece linke yönlendirilir, ders kaydı oluşturulmaz</p>
                     </Label>
                   </div>
+                  <div className="flex items-center space-x-2 p-3 rounded-lg border border-slate-200 hover:border-teal-300 hover:bg-teal-50/50 cursor-pointer transition-all">
+                    <RadioGroupItem value="one_on_one_meeting" id="one_on_one_meeting" />
+                    <Label htmlFor="one_on_one_meeting" className="cursor-pointer flex-1">
+                      <span className="font-medium">Birebir görüşme</span>
+                      <p className="text-xs text-slate-500 mt-0.5">Sadece linke yönlendirilir, ders kaydı oluşturulmaz</p>
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
 
@@ -605,7 +616,8 @@ const TeacherStudents = () => {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {lessonMode === 'new_lesson' ? 'Yeni Ders Başlat' : 'Mevcut Derse Devam Et'}
+                {lessonMode === 'new_lesson' ? 'Yeni Ders Başlat' : 
+                 lessonMode === 'one_on_one_meeting' ? 'Birebir Görüşme' : 'Mevcut Derse Devam Et'}
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {lessonMode === 'new_lesson' ? (
