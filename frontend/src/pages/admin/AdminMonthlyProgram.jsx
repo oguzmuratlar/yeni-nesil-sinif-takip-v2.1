@@ -228,35 +228,48 @@ const AdminMonthlyProgram = () => {
       : <ArrowDown size={14} className="ml-1 text-blue-600" />;
   };
 
-  // Filtreleme
+  // Filtreleme - TÜM filtreler "VE" (AND) mantığıyla çalışır
   const filteredStudents = programData?.students?.filter(student => {
+    // Öğrenci adı filtresi
     if (filterStudent && !student.student_name.toLowerCase().includes(filterStudent.toLowerCase())) {
       return false;
     }
+    
     // Çoklu öğretmen filtresi
     if (filterTeachers.length > 0) {
       const teacherNames = filterTeachers.map(tId => programData.teachers.find(t => t.id === tId)?.name).filter(Boolean);
       const hasAnyTeacher = teacherNames.some(tName => Object.keys(student.teacher_earnings || {}).includes(tName));
       if (!hasAnyTeacher) return false;
     }
+    
     // Çoklu branş filtresi
     if (filterBranches.length > 0) {
       const hasAnyBranch = filterBranches.some(b => student.branch_details?.[b]);
       if (!hasAnyBranch) return false;
     }
-    // Çoklu ödeme durumu filtresi
+    
+    // Çoklu ödeme durumu filtresi - seçilen durumlardan BİRİ eşleşmeli
     if (filterPaymentStatuses.length > 0) {
-      const status = student.payment_status || '';
-      const hasEmpty = filterPaymentStatuses.includes('empty');
-      const hasStatus = filterPaymentStatuses.includes(status);
-      if (hasEmpty && status === '') return true;
-      if (!hasStatus && !(hasEmpty && status === '')) return false;
+      const studentStatus = student.payment_status || '';
+      const hasEmptyFilter = filterPaymentStatuses.includes('empty');
+      
+      // Öğrencinin durumu boş mu?
+      const studentHasEmptyStatus = studentStatus === '';
+      
+      // Öğrencinin durumu seçilen durumlardan birinde mi?
+      const studentStatusMatches = filterPaymentStatuses.includes(studentStatus);
+      
+      // "Boş" filtresi seçiliyse ve öğrenci durumu boşsa VEYA öğrencinin durumu seçilenlerden biriyse geç
+      const statusMatch = (hasEmptyFilter && studentHasEmptyStatus) || (studentStatusMatches && studentStatus !== '');
+      if (!statusMatch) return false;
     }
-    // Çoklu ödeme günü filtresi
+    
+    // Çoklu ödeme günü filtresi - seçilen günlerden BİRİ eşleşmeli
     if (filterPaymentDays.length > 0) {
-      const day = student.payment_day || '';
-      if (!filterPaymentDays.includes(day)) return false;
+      const studentPaymentDay = student.payment_day || '';
+      if (!filterPaymentDays.includes(studentPaymentDay)) return false;
     }
+    
     return true;
   }) || [];
 
