@@ -8,7 +8,7 @@ import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { ArrowLeft, Users, BookOpen, Calendar, Edit, ExternalLink } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
-import { formatDateTurkish, generateMonthOptions } from '../../lib/dateUtils';
+import { formatDateTurkish, generateMonthOptions, getCurrentMonth } from '../../lib/dateUtils';
 import { toast } from 'sonner';
 // AlertDialog removed - delete işlemi ders giriş ekranında yapılacak
 
@@ -21,7 +21,7 @@ const TeacherLessonIncomeDetail = () => {
   
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth()); // Mevcut ay varsayılan
   
   const Layout = isAdmin ? AdminLayout : TeacherLayout;
 

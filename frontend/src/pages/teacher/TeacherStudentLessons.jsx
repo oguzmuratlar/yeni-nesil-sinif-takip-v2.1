@@ -6,7 +6,6 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { DateInput } from '../../components/ui/date-input';
 import { Plus, Trash2, ArrowLeft, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTurkish } from '../../lib/dateUtils';
@@ -19,7 +18,10 @@ const TeacherStudentLessons = () => {
   const [lessons, setLessons] = useState([]);
   const [branch, setBranch] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newLesson, setNewLesson] = useState({ date: '', number_of_lessons: 2 });
+  const [newLesson, setNewLesson] = useState({ 
+    date: new Date().toISOString().split('T')[0], 
+    number_of_lessons: 2 
+  });
 
   useEffect(() => {
     fetchData();
@@ -50,6 +52,17 @@ const TeacherStudentLessons = () => {
 
   const handleAddLesson = async (e) => {
     e.preventDefault();
+    
+    // Validasyon
+    if (!newLesson.date) {
+      toast.error('Tarih seçiniz');
+      return;
+    }
+    if (!newLesson.number_of_lessons || newLesson.number_of_lessons < 1) {
+      toast.error('Ders adedi giriniz');
+      return;
+    }
+    
     try {
       await apiClient.post('/lessons', {
         student_course_id: courseId,
@@ -57,7 +70,7 @@ const TeacherStudentLessons = () => {
       });
       toast.success('Ders eklendi');
       setDialogOpen(false);
-      setNewLesson({ date: '', number_of_lessons: 2 });
+      setNewLesson({ date: new Date().toISOString().split('T')[0], number_of_lessons: 2 });
       fetchData();
     } catch (error) {
       toast.error('Ders eklenemedi');
@@ -115,23 +128,26 @@ const TeacherStudentLessons = () => {
                 </DialogHeader>
                 <form onSubmit={handleAddLesson} className="space-y-4 pb-2">
                   <div className="space-y-2">
-                    <Label htmlFor="date">Tarih</Label>
-                    <DateInput
+                    <Label htmlFor="date">Tarih *</Label>
+                    <Input
+                      id="date"
+                      type="date"
                       value={newLesson.date}
-                      onChange={(date) => setNewLesson({ ...newLesson, date })}
-                      placeholder="GG.AA.YYYY"
+                      onChange={(e) => setNewLesson({ ...newLesson, date: e.target.value })}
+                      required
+                      data-testid="lesson-date-input"
                     />
-                    <p className="text-xs text-muted-foreground">Örnek: 12.02.2025</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="number">Ders Adedi</Label>
+                    <Label htmlFor="number">Ders Adedi *</Label>
                     <Input
                       id="number"
                       type="number"
                       min="1"
                       value={newLesson.number_of_lessons}
-                      onChange={(e) => setNewLesson({ ...newLesson, number_of_lessons: parseInt(e.target.value) })}
+                      onChange={(e) => setNewLesson({ ...newLesson, number_of_lessons: parseInt(e.target.value) || '' })}
                       required
+                      data-testid="lesson-count-input"
                     />
                   </div>
                   <div className="flex gap-3">

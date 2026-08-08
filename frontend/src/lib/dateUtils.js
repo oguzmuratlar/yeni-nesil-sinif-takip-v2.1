@@ -156,3 +156,12 @@ export const getNextMonth = () => {
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
 };
+
+/**
+ * Mevcut ayın değerini döndürür
+ * @returns {string} YYYY-MM formatında mevcut ay
+ */
+export const getCurrentMonth = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};

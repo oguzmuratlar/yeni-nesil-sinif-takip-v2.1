@@ -7,7 +7,7 @@ import { Wallet, BookOpen, Tent, Youtube, Filter, ChevronRight, X, Banknote, Bui
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { ExpandableText } from '../../components/ui/expandable-text';
-import { formatDateTurkish, generateMonthOptions } from '../../lib/dateUtils';
+import { formatDateTurkish, generateMonthOptions, getCurrentMonth } from '../../lib/dateUtils';
 import { formatMoney } from '../../lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 
@@ -16,7 +16,7 @@ const TeacherBalance = () => {
   const navigate = useNavigate();
   const [balanceData, setBalanceData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState('all');
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth()); // Mevcut ay varsayılan
   const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
 
   // Dinamik ay listesi: 6 ay önce, 3 ay sonra

@@ -6,7 +6,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { DateInput } from '../../components/ui/date-input';
 import { toast } from 'sonner';
 import { Users, ArrowLeft, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
@@ -75,8 +74,12 @@ const TeacherGroupLessons = () => {
   };
 
   const handleAddLesson = async () => {
-    if (!newLesson.date || !newLesson.number_of_lessons) {
-      toast.error('Tüm alanları doldurun');
+    if (!newLesson.date) {
+      toast.error('Tarih seçiniz');
+      return;
+    }
+    if (!newLesson.number_of_lessons || newLesson.number_of_lessons < 1) {
+      toast.error('Ders adedi giriniz');
       return;
     }
 
@@ -240,21 +243,24 @@ const TeacherGroupLessons = () => {
               </DialogHeader>
               <div className="space-y-4 pb-2">
                 <div className="space-y-2">
-                  <Label>Tarih</Label>
-                  <DateInput
+                  <Label>Tarih *</Label>
+                  <Input
+                    type="date"
                     value={newLesson.date}
-                    onChange={(date) => setNewLesson({ ...newLesson, date })}
-                    placeholder="GG.AA.YYYY"
+                    onChange={(e) => setNewLesson({ ...newLesson, date: e.target.value })}
+                    required
+                    data-testid="group-lesson-date-input"
                   />
-                  <p className="text-xs text-muted-foreground">Örnek: 12.02.2025</p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Ders Sayısı</Label>
+                  <Label>Ders Sayısı *</Label>
                   <Input
                     type="number"
                     min="1"
                     value={newLesson.number_of_lessons}
-                    onChange={(e) => setNewLesson({ ...newLesson, number_of_lessons: parseInt(e.target.value) })}
+                    onChange={(e) => setNewLesson({ ...newLesson, number_of_lessons: parseInt(e.target.value) || '' })}
+                    required
+                    data-testid="group-lesson-count-input"
                   />
                 </div>
                 <div className="bg-purple-50 p-3 rounded-lg">
