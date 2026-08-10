@@ -1146,17 +1146,23 @@ async def get_students_summary(current_user: User = Depends(get_current_user)):
     total_active = await db.students.count_documents({"status": "active"})
     total_inactive = await db.students.count_documents({"status": "inactive"})
     
+    # Aktif öğrenci ID'lerini al
+    active_students = await db.students.find({"status": "active"}, {"_id": 0, "id": 1}).to_list(10000)
+    active_student_ids = set(s["id"] for s in active_students)
+    
     # Öğretmen bazında öğrenci sayısı
     student_courses = await db.student_courses.find({"status": "active"}, {"_id": 0}).to_list(10000)
     teachers = await db.teachers.find({"status": "active"}, {"_id": 0}).to_list(1000)
     
-    # Her öğretmenin benzersiz öğrenci sayısı
+    # Her öğretmenin benzersiz AKTİF öğrenci sayısı
     teacher_student_counts = {}
     for teacher in teachers:
         teacher_students = set()
         for course in student_courses:
             if course["teacher_id"] == teacher["id"]:
-                teacher_students.add(course["student_id"])
+                # Sadece aktif öğrencileri say
+                if course["student_id"] in active_student_ids:
+                    teacher_students.add(course["student_id"])
         teacher_student_counts[teacher["name"]] = len(teacher_students)
     
     return {
