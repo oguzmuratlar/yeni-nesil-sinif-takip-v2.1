@@ -107,6 +107,8 @@ const TeacherHomeworkEntry = () => {
   // Available books
   const [availableBooks, setAvailableBooks] = useState([]);
   const [allBranches, setAllBranches] = useState([]);
+  const [selectedBookLevel, setSelectedBookLevel] = useState(null); // Başka sınıf kitabı için
+  const [showOtherLevelBooks, setShowOtherLevelBooks] = useState(false);
   
   // Undo
   const [undoStack, setUndoStack] = useState([]);
@@ -228,13 +230,17 @@ const TeacherHomeworkEntry = () => {
     }
   };
 
-  const fetchAvailableBooks = async () => {
+  const fetchAvailableBooks = async (customLevel = null) => {
     try {
-      // Öğrencinin sınıf seviyesini al
-      const studentLevel = student?.level || '';
-      // Sınıf numarasını çıkar (örn: "5. Sınıf" -> "5")
-      const levelMatch = studentLevel.match(/(\d+)/);
-      const levelNum = levelMatch ? levelMatch[1] : '';
+      // Öğrencinin sınıf seviyesini al veya custom level kullan
+      let levelNum = customLevel;
+      
+      if (!levelNum) {
+        const studentLevel = student?.level || '';
+        // Sınıf numarasını çıkar (örn: "5. Sınıf" -> "5")
+        const levelMatch = studentLevel.match(/(\d+)/);
+        levelNum = levelMatch ? levelMatch[1] : '';
+      }
       
       const response = await apiClient.get(`/homework/books?branch_id=${branchId}${levelNum ? `&level=${levelNum}` : ''}`);
       const assignedBookIds = books.map(b => b.id);
@@ -242,6 +248,19 @@ const TeacherHomeworkEntry = () => {
     } catch (error) {
       toast.error('Kitaplar yüklenemedi');
     }
+  };
+
+  // Başka sınıf kitaplarını getir
+  const handleSelectOtherLevel = (level) => {
+    setSelectedBookLevel(level);
+    fetchAvailableBooks(level);
+  };
+
+  // Öğrencinin sınıf seviyesini al
+  const getStudentLevel = () => {
+    const studentLevel = student?.level || '';
+    const levelMatch = studentLevel.match(/(\d+)/);
+    return levelMatch ? levelMatch[1] : '';
   };
 
   // Refresh books list after assignment
@@ -1507,6 +1526,8 @@ const TeacherHomeworkEntry = () => {
                       size="sm" 
                       className="h-7 text-xs"
                       onClick={() => {
+                        setShowOtherLevelBooks(false);
+                        setSelectedBookLevel(null);
                         fetchAvailableBooks();
                         setAddBookDialog(true);
                       }}
@@ -2064,15 +2085,62 @@ const TeacherHomeworkEntry = () => {
       </Dialog>
 
       {/* Kitap Ekleme Dialog */}
-      <Dialog open={addBookDialog} onOpenChange={setAddBookDialog}>
+      <Dialog open={addBookDialog} onOpenChange={(open) => {
+        setAddBookDialog(open);
+        if (!open) {
+          setShowOtherLevelBooks(false);
+          setSelectedBookLevel(null);
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Kitap Ekle</DialogTitle>
+            <DialogTitle>
+              {showOtherLevelBooks 
+                ? (selectedBookLevel ? `Kitap Ekle - ${selectedBookLevel}. Sınıf` : 'Başka Sınıf Kitabı Ekle')
+                : `Kitap Ekle${getStudentLevel() ? ` - ${getStudentLevel()}. Sınıf` : ''}`}
+            </DialogTitle>
           </DialogHeader>
-          <ScrollArea className="max-h-80">
+          
+          {/* Başka Sınıf Kitabı Seçimi */}
+          {showOtherLevelBooks && (
+            <div className="border-b pb-3 mb-3">
+              <p className="text-sm text-slate-500 mb-2">Sınıf seçin:</p>
+              <div className="flex flex-wrap gap-2">
+                {['5', '6', '7', '8'].map((level) => (
+                  <Button
+                    key={level}
+                    variant={selectedBookLevel === level ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handleSelectOtherLevel(level)}
+                    className={selectedBookLevel === level ? "bg-purple-600" : ""}
+                  >
+                    {level}. Sınıf
+                  </Button>
+                ))}
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="mt-2 text-slate-500"
+                onClick={() => {
+                  setShowOtherLevelBooks(false);
+                  setSelectedBookLevel(null);
+                  fetchAvailableBooks();
+                }}
+              >
+                ← Geri Dön
+              </Button>
+            </div>
+          )}
+          
+          <ScrollArea className="max-h-72">
             <div className="space-y-2 py-2">
               {availableBooks.length === 0 ? (
-                <p className="text-center text-slate-500 py-4">Eklenebilecek kitap yok</p>
+                <p className="text-center text-slate-500 py-4">
+                  {showOtherLevelBooks && selectedBookLevel 
+                    ? `${selectedBookLevel}. sınıf için eklenebilecek kitap yok`
+                    : 'Eklenebilecek kitap yok'}
+                </p>
               ) : (
                 availableBooks.map(book => (
                   <div
@@ -2091,6 +2159,25 @@ const TeacherHomeworkEntry = () => {
               )}
             </div>
           </ScrollArea>
+          
+          {/* Başka Sınıf Kitabı Ekle Butonu */}
+          {!showOtherLevelBooks && (
+            <div className="border-t pt-3 mt-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
+                onClick={() => {
+                  setShowOtherLevelBooks(true);
+                  setSelectedBookLevel(null);
+                  setAvailableBooks([]);
+                }}
+              >
+                <Book className="w-4 h-4" />
+                Başka Sınıf Kitabı Ekle
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
