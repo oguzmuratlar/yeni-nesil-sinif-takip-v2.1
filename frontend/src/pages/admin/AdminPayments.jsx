@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../../components/ui/command';
-import { DateInput } from '../../components/ui/date-input';
 import { ExpandableText } from '../../components/ui/expandable-text';
 import { Plus, ArrowUpCircle, ArrowDownCircle, Filter, X, Edit, Trash2, Check, ChevronsUpDown, User } from 'lucide-react';
 import { toast } from 'sonner';
@@ -909,12 +908,14 @@ const AdminPayments = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="date">Tarih *</Label>
-                <DateInput
+                <Input
+                  id="date"
+                  type="date"
                   value={newPayment.date}
-                  onChange={(date) => setNewPayment({ ...newPayment, date })}
-                  placeholder="GG.AA.YYYY"
+                  onChange={(e) => setNewPayment({ ...newPayment, date: e.target.value })}
+                  required
+                  className="h-12"
                 />
-                <p className="text-xs text-muted-foreground">Örnek: 12.02.2025</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="bank_account">Banka Hesabı *</Label>
