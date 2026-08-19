@@ -7,7 +7,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { toast } from 'sonner';
-import { Users, ArrowLeft, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, ArrowLeft, Plus, Trash2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { formatDateTurkish } from '../../lib/dateUtils';
 
@@ -22,6 +22,7 @@ const TeacherGroupLessons = () => {
   const [allLessons, setAllLessons] = useState([]); // Tüm dersler
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [saving, setSaving] = useState(false); // Double-click koruması
   const [newLesson, setNewLesson] = useState({
     date: new Date().toISOString().split('T')[0],
     number_of_lessons: 2
@@ -74,6 +75,9 @@ const TeacherGroupLessons = () => {
   };
 
   const handleAddLesson = async () => {
+    // Double-click koruması
+    if (saving) return;
+    
     if (!newLesson.date) {
       toast.error('Tarih seçiniz');
       return;
@@ -83,6 +87,7 @@ const TeacherGroupLessons = () => {
       return;
     }
 
+    setSaving(true);
     try {
       await apiClient.post('/group-lessons', null, {
         params: {
@@ -98,7 +103,14 @@ const TeacherGroupLessons = () => {
       setNewLesson({ date: new Date().toISOString().split('T')[0], number_of_lessons: 2 });
       fetchData();
     } catch (error) {
-      toast.error('Ders eklenemedi');
+      // Duplicate request hatası (429) sessizce yutulur
+      if (error.response?.status === 429 || error.response?.data?.duplicate) {
+        console.log('Duplicate request ignored');
+      } else {
+        toast.error(error.response?.data?.detail || 'Ders eklenemedi');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -249,6 +261,7 @@ const TeacherGroupLessons = () => {
                     value={newLesson.date}
                     onChange={(e) => setNewLesson({ ...newLesson, date: e.target.value })}
                     required
+                    disabled={saving}
                     data-testid="group-lesson-date-input"
                   />
                 </div>
@@ -260,6 +273,7 @@ const TeacherGroupLessons = () => {
                     value={newLesson.number_of_lessons}
                     onChange={(e) => setNewLesson({ ...newLesson, number_of_lessons: parseInt(e.target.value) || '' })}
                     required
+                    disabled={saving}
                     data-testid="group-lesson-count-input"
                   />
                 </div>
@@ -269,8 +283,22 @@ const TeacherGroupLessons = () => {
                   </p>
                 </div>
                 <div className="flex gap-3">
-                  <Button onClick={handleAddLesson} className="flex-1">Kaydet</Button>
-                  <Button variant="outline" onClick={() => setDialogOpen(false)}>İptal</Button>
+                  <Button 
+                    onClick={handleAddLesson} 
+                    className="flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={saving}
+                    data-testid="save-group-lesson-btn"
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        İşleniyor...
+                      </>
+                    ) : (
+                      'Kaydet'
+                    )}
+                  </Button>
+                  <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>İptal</Button>
                 </div>
               </div>
             </DialogContent>

@@ -1,0 +1,37 @@
+{
+  "summary": "Verified double-click protection for manual lesson creation on POST /api/lessons (birebir) and POST /api/group-lessons (group). Backend correctly returns 429 for the second identical request within 1.5s and only 1 record is persisted. Frontend Kaydet button transitions to disabled + 'İşleniyor...' state within ~30ms of first click, preventing any second HTTP request from being fired. All 3 backend pytest cases pass; end-to-end Playwright flow confirmed single-request behavior.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/lessons and /api/group-lessons", "issue": "Same in-memory _lesson_start_locks dict (shared with /api/lesson-links/start-lesson). Not shared across worker processes — fine for single-worker uvicorn, breaks under horizontal scaling. Consider Redis / DB idempotency key."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Yeni Ders Ekle dialog (TeacherStudentLessons, TeacherGroupLessons)", "issues": ["Uses native <input type=\"date\"> browser date picker instead of shadcn Calendar/DatePicker component for consistency with rest of app."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_manual_lesson_double_click.py",
+    "/app/test_reports/pytest/manual_lesson_double_click.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Duplicate lock logic (compute lock_key, sweep expired keys, check, insert) is copy-pasted in 3 endpoints (create_lesson, create_group_lesson, create_lesson_link, lesson-links/start-lesson). Extract into a reusable decorator or dependency (e.g. @debounce(1.5, key=lambda ...)).",
+    "server.py is ~9448 lines — split into routers/services modules.",
+    "Lock key for /api/lessons includes user_id + student_course_id + date + number_of_lessons. Two legitimate rapid additions of e.g. 1 lesson on the same date would be blocked as duplicates — this is the intended trade-off but worth documenting in code.",
+    "Backend does not verify whether the created lesson actually differs from an existing one when the lock has expired (>1.5s). A user could still create a genuine duplicate by waiting 2 seconds. If true idempotency is desired, use a client-side idempotency key."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_manual_lesson_double_click.py"
+  ],
+  "success_rate": {"backend": "100% (3/3)", "frontend": "100% (E2E flow verified for birebir; group flow inferred from identical code pattern + backend pytest)"},
+  "test_credentials": "teacher: ilknur.uzunal / test123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created test lessons on 2024-01-15 and 2024-01-16 for a birebir student_course of teacher ilknur, and one group lesson on 2024-01-15. Existing data may need cleanup: TEST dates 2024-01-15 and 2024-01-16 for teacher 5e5cbe5b-d9f7-49cc-af86-1075fb120d43 birebir student_course id 9ee2c4e0-2270-4090-9999-43c30d27e91f.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Manual lesson double-click protection is in place on 4 endpoints total (all sharing _lesson_start_locks dict): POST /api/lessons, POST /api/group-lessons, POST /api/lesson-links/start-lesson, and one create_lesson_link path. Backend returns 429 with detail 'İşlem zaten başlatıldı. Lütfen bekleyin.' and header X-Duplicate-Request: true. Frontend swallows 429 silently (no toast) — TeacherStudentLessons.jsx and TeacherGroupLessons.jsx. Test file: /app/backend/tests/test_manual_lesson_double_click.py.",
+  "rca of the issue": "Bug fix RCA (verified): Fast double-click on 'Kaydet' in Yeni Ders Ekle dialog fired two identical POSTs before the first response returned, creating duplicate lesson rows that corrupted student balances and teacher earnings. Fix: (1) Backend adds an in-memory dict `_lesson_start_locks` keyed by teacher+course+date+count; any second request within 1.5s returns HTTP 429 before DB writes. (2) Frontend uses `saving` state to disable the Kaydet button and swap its label to 'İşleniyor...' as soon as the first submit fires; disabled state is applied so quickly (<30ms observed) that a rapid second click never triggers an HTTP request. During Playwright reproduction (birebir), the first click posted successfully (200) and the immediate second click on the disabled button did NOT produce any additional HTTP request — perfect protection. Backend pytest also independently confirms 429 is returned when two overlapping requests race past the disabled UI (e.g. from scripted/parallel clients)."
+}

@@ -1877,6 +1877,28 @@ async def get_lessons_paginated(
 
 @api_router.post("/lessons", response_model=Lesson)
 async def create_lesson(lesson_data: LessonCreate, current_user: User = Depends(get_current_user)):
+    # Double-click koruması - Manuel ders ekleme için
+    lock_key = f"manual_lesson:{current_user.id}:{lesson_data.student_course_id}:{lesson_data.date}:{lesson_data.number_of_lessons}"
+    current_time = time.time()
+    
+    # Eski lock'ları temizle (1.5 saniyeden eski olanlar)
+    expired_keys = [k for k, v in _lesson_start_locks.items() if current_time - v > 1.5]
+    for k in expired_keys:
+        del _lesson_start_locks[k]
+    
+    # Duplicate kontrolü
+    if lock_key in _lesson_start_locks:
+        time_diff = current_time - _lesson_start_locks[lock_key]
+        if time_diff < 1.5:
+            raise HTTPException(
+                status_code=429,
+                detail="İşlem zaten başlatıldı. Lütfen bekleyin.",
+                headers={"X-Duplicate-Request": "true"}
+            )
+    
+    # Lock'u koy
+    _lesson_start_locks[lock_key] = current_time
+    
     # Check if user has access to this course
     course = await db.student_courses.find_one({"id": lesson_data.student_course_id}, {"_id": 0})
     if not course:
@@ -2690,6 +2712,28 @@ async def create_group_lesson(
     is_free_lesson: bool = False,
     current_user: User = Depends(get_current_user)
 ):
+    # Double-click koruması - Grup dersi ekleme için
+    lock_key = f"group_lesson:{current_user.id}:{group_id}:{date}:{number_of_lessons}"
+    current_time = time.time()
+    
+    # Eski lock'ları temizle (1.5 saniyeden eski olanlar)
+    expired_keys = [k for k, v in _lesson_start_locks.items() if current_time - v > 1.5]
+    for k in expired_keys:
+        del _lesson_start_locks[k]
+    
+    # Duplicate kontrolü
+    if lock_key in _lesson_start_locks:
+        time_diff = current_time - _lesson_start_locks[lock_key]
+        if time_diff < 1.5:
+            raise HTTPException(
+                status_code=429,
+                detail="İşlem zaten başlatıldı. Lütfen bekleyin.",
+                headers={"X-Duplicate-Request": "true"}
+            )
+    
+    # Lock'u koy
+    _lesson_start_locks[lock_key] = current_time
+    
     # Get group
     group = await db.student_groups.find_one({"id": group_id}, {"_id": 0})
     if not group:

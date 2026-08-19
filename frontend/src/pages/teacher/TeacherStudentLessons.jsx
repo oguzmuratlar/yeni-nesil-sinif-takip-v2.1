@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Plus, Trash2, ArrowLeft, User } from 'lucide-react';
+import { Plus, Trash2, ArrowLeft, User, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateTurkish } from '../../lib/dateUtils';
 
@@ -18,6 +18,7 @@ const TeacherStudentLessons = () => {
   const [lessons, setLessons] = useState([]);
   const [branch, setBranch] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [saving, setSaving] = useState(false); // Double-click koruması
   const [newLesson, setNewLesson] = useState({ 
     date: new Date().toISOString().split('T')[0], 
     number_of_lessons: 2 
@@ -53,6 +54,9 @@ const TeacherStudentLessons = () => {
   const handleAddLesson = async (e) => {
     e.preventDefault();
     
+    // Double-click koruması
+    if (saving) return;
+    
     // Validasyon
     if (!newLesson.date) {
       toast.error('Tarih seçiniz');
@@ -63,6 +67,7 @@ const TeacherStudentLessons = () => {
       return;
     }
     
+    setSaving(true);
     try {
       await apiClient.post('/lessons', {
         student_course_id: courseId,
@@ -73,7 +78,14 @@ const TeacherStudentLessons = () => {
       setNewLesson({ date: new Date().toISOString().split('T')[0], number_of_lessons: 2 });
       fetchData();
     } catch (error) {
-      toast.error('Ders eklenemedi');
+      // Duplicate request hatası (429) sessizce yutulur
+      if (error.response?.status === 429 || error.response?.data?.duplicate) {
+        console.log('Duplicate request ignored');
+      } else {
+        toast.error(error.response?.data?.detail || 'Ders eklenemedi');
+      }
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -135,6 +147,7 @@ const TeacherStudentLessons = () => {
                       value={newLesson.date}
                       onChange={(e) => setNewLesson({ ...newLesson, date: e.target.value })}
                       required
+                      disabled={saving}
                       data-testid="lesson-date-input"
                     />
                   </div>
@@ -147,12 +160,27 @@ const TeacherStudentLessons = () => {
                       value={newLesson.number_of_lessons}
                       onChange={(e) => setNewLesson({ ...newLesson, number_of_lessons: parseInt(e.target.value) || '' })}
                       required
+                      disabled={saving}
                       data-testid="lesson-count-input"
                     />
                   </div>
                   <div className="flex gap-3">
-                    <Button type="submit" className="flex-1 teacher-btn">Kaydet</Button>
-                    <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="rounded-full">İptal</Button>
+                    <Button 
+                      type="submit" 
+                      className="flex-1 teacher-btn disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={saving}
+                      data-testid="save-lesson-btn"
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                          İşleniyor...
+                        </>
+                      ) : (
+                        'Kaydet'
+                      )}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="rounded-full" disabled={saving}>İptal</Button>
                   </div>
                 </form>
               </DialogContent>

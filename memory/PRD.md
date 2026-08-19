@@ -5,7 +5,40 @@
 
 ---
 
-## Son Güncelleme: 7 Ağustos 2026
+## Son Güncelleme: 19 Ağustos 2026
+
+### BUG FIX: Manuel Ders Ekleme Double-Click Koruması ✅ (19 Ağustos 2026)
+
+Öğretmen panelinden manuel ders ekleme formlarında çift tıklama sorunu düzeltildi.
+
+#### Sorun
+- Öğretmen "Kaydet" butonuna çift tıkladığında duplicate ders kayıtları oluşuyordu
+- Bu, öğrenci bakiyelerini ve öğretmen kazançlarını bozuyordu
+
+#### Çözüm
+**Frontend Koruması:**
+- `saving` state ile Kaydet butonu ilk tıklamada disabled oluyor
+- Buton metni "İşleniyor..." olarak değişiyor ve Loader2 animasyonu gösteriliyor
+- Input alanları da disabled oluyor
+
+**Backend Koruması:**
+- `_lesson_start_locks` in-memory dictionary ile 1.5 saniye içindeki duplicate request'ler 429 ile reddediliyor
+- Lock key: `manual_lesson:{user_id}:{student_course_id}:{date}:{number_of_lessons}`
+- Grup dersleri için: `group_lesson:{user_id}:{group_id}:{date}:{number_of_lessons}`
+
+#### Etkilenen Dosyalar
+```
+backend/server.py - create_lesson (~1879), create_group_lesson (~2685) endpoints
+frontend/src/pages/teacher/TeacherStudentLessons.jsx - saving state, disabled button
+frontend/src/pages/teacher/TeacherGroupLessons.jsx - saving state, disabled button
+```
+
+#### Test Sonuçları
+- Backend: 3/3 test geçti ✅
+- Frontend: E2E flow doğrulandı ✅
+- Test dosyası: `/app/backend/tests/test_manual_lesson_double_click.py`
+
+---
 
 ### YENİ ÖZELLİK: Ders Linkleri ve Dersi Başlat ✅ (7 Ağustos 2026)
 
@@ -268,7 +301,6 @@ POST   /api/year-end/execute
 ### P2 - Yakın Vadeli
 - [ ] Birebir öğrenci dersleri için pagination
 - [ ] Hızlı ders girişi butonu
-- [ ] Grup dersi için Dersi Başlat testi (şu an birebir test edildi)
 
 ### P3 - Uzak Vadeli
 - [ ] Test sıralama: Konular içindeki testler için yukarı/aşağı sıralama
@@ -287,5 +319,5 @@ POST   /api/year-end/execute
 
 ---
 
-Son Test: 7 Ağustos 2026
-Durum: TÜM TESTLER GEÇTİ ✅ (Backend: 15/15, Frontend: 100%)
+Son Test: 19 Ağustos 2026
+Durum: TÜM TESTLER GEÇTİ ✅ (Backend: 18/18, Frontend: 100%)
