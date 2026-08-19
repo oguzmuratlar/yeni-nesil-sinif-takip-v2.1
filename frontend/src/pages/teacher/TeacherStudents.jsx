@@ -190,6 +190,8 @@ const TeacherStudents = () => {
   };
 
   const handleConfirmStartLesson = async () => {
+    // Double-click koruması - zaten işlem devam ediyorsa çık
+    if (startingLesson) return;
     if (!selectedLink || !lessonMode || !selectedItem) return;
     
     setStartingLesson(true);
@@ -207,6 +209,7 @@ const TeacherStudents = () => {
         const studentCourse = courses.find(c => c.student_id === selectedItem.data.id);
         if (!studentCourse) {
           toast.error('Öğrenciye ait kurs bulunamadı');
+          setStartingLesson(false);
           return;
         }
         payload.student_course_id = studentCourse.id;
@@ -228,7 +231,13 @@ const TeacherStudents = () => {
         setStartLessonDialog(false);
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'İşlem başarısız');
+      // Duplicate request hatası (429) sessizce yutulur
+      if (error.response?.status === 429 || error.response?.data?.duplicate) {
+        // Sessizce ignore et - kullanıcıya gösterme
+        console.log('Duplicate request ignored');
+      } else {
+        toast.error(error.response?.data?.detail || 'İşlem başarısız');
+      }
     } finally {
       setStartingLesson(false);
     }
@@ -640,13 +649,17 @@ const TeacherStudents = () => {
               <AlertDialogAction
                 onClick={handleConfirmStartLesson}
                 disabled={startingLesson}
-                className="bg-teal-600 hover:bg-teal-700"
+                className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 data-testid="confirm-start-lesson-btn"
               >
                 {startingLesson ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
-                Onayla
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    İşleniyor...
+                  </>
+                ) : (
+                  'Onayla'
+                )}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

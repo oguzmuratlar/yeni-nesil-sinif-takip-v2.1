@@ -1,0 +1,35 @@
+{
+  "summary": "Verified double-click protection for POST /api/lesson-links/start-lesson (backend 1.5s in-memory lock returning 429) and frontend confirm button (disabled + 'İşleniyor...' text + silent 429 handling). All backend pytest cases pass and end-to-end Playwright flow captures exactly the expected behavior: first request 200, immediate duplicate 429, UI never surfaces an error.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/lesson-links/start-lesson", "issue": "In-memory _lesson_start_locks dict is not shared across worker processes (single-worker uvicorn currently, so OK); if backend is ever scaled to multiple workers or replicas, the lock will become ineffective. Consider Redis or a DB-based idempotency key. Also uses time.time() and manual expiry sweep on every request — fine at current scale."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_lesson_start_double_click.py",
+    "/app/test_reports/pytest/lesson_start_double_click.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~9400 lines — long overdue for modular split (routers/, services/). Not blocking this fix but a maintainability risk.",
+    "Lock cleanup runs on every request (O(n) scan). Fine now (small cache), but if traffic grows move to a TTL-cache lib (cachetools.TTLCache) or Redis.",
+    "Lock key includes date (today) but expires in 1.5s, so date component is essentially unused; harmless but misleading — could be dropped.",
+    "Group double-click test showed second call returns 429 => backend correctly prevents duplicate group student rows. However, no test explicitly asserts the group student rows in DB haven't doubled. Consider adding a DB-level verification test in a future iteration."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_lesson_start_double_click.py"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (E2E flow verified)"},
+  "test_credentials": "teacher: ilknur.uzunal / test123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Tests used existing lesson-link 22d16262-d529-4136-8ba7-508ca68dbdd6 and existing student courses for teacher 5e5cbe5b-d9f7-49cc-af86-1075fb120d43. Note: successful requests actually incremented today's lesson counts (observed number_of_lessons -> 3 -> 6 for Ali Yılmaz Matematik course today).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend endpoint /api/lesson-links/start-lesson has 1.5s in-memory duplicate lock keyed by teacher_id+mode+type+entity_id+link_id+date. Only 'new_lesson' mode is locked; 'continue_existing' / 'one_on_one_meeting' are not. Frontend confirm button uses startingLesson state to disable + show 'İşleniyor...' and silently swallows 429 via response status check. All good. If retesting after main-agent changes, use test file /app/backend/tests/test_lesson_start_double_click.py.",
+  "rca of the issue": "Original bug RCA: Fast double-click on 'Onayla' fired two identical POSTs before the first one returned. For group lessons the endpoint iterates group members and inserts student rows; two overlapping requests produced 2x student rows (6 rows for 3 students). Fix (verified): (1) Frontend guards with startingLesson state + disabled button + 'İşleniyor...' label + silent 429 handling. (2) Backend keeps an in-memory dict `_lesson_start_locks`; any second request with identical key inside 1.5s window is rejected with 429 before touching DB. Reproduction: log in as teacher, open student > Dersi Başlat > Yeni ders başlat > pick link > double-click Onayla. Observed: first POST 200 (lesson upserted), second POST 429 (duplicate suppressed)."
+}

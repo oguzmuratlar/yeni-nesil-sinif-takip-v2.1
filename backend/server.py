@@ -28,6 +28,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production'
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
+# Double-click koruması için in-memory cache
+# Key: "lesson_start:{teacher_id}:{mode}:{type}:{id}:{link_id}:{date}"
+# Value: timestamp
+import time
+_lesson_start_locks = {}
+
 # Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -8932,6 +8938,32 @@ async def start_lesson(data: StartLessonRequest, current_user: User = Depends(ge
     
     if not current_user.teacher_id:
         raise HTTPException(status_code=400, detail="Öğretmen ID bulunamadı")
+    
+    # Double-click koruması - sadece new_lesson modunda
+    if data.mode == "new_lesson":
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        entity_id = data.student_course_id if data.selected_type == "student" else data.group_id
+        lock_key = f"lesson_start:{current_user.teacher_id}:{data.mode}:{data.selected_type}:{entity_id}:{data.lesson_link_id}:{today}"
+        
+        current_time = time.time()
+        
+        # Eski lock'ları temizle (1.5 saniyeden eski olanlar)
+        expired_keys = [k for k, v in _lesson_start_locks.items() if current_time - v > 1.5]
+        for k in expired_keys:
+            del _lesson_start_locks[k]
+        
+        # Duplicate kontrolü
+        if lock_key in _lesson_start_locks:
+            time_diff = current_time - _lesson_start_locks[lock_key]
+            if time_diff < 1.5:
+                raise HTTPException(
+                    status_code=429,
+                    detail="İşlem zaten başlatıldı. Lütfen bekleyin.",
+                    headers={"X-Duplicate-Request": "true"}
+                )
+        
+        # Lock'u koy
+        _lesson_start_locks[lock_key] = current_time
     
     # Ders linkini kontrol et
     lesson_link = await db.lesson_links.find_one({"id": data.lesson_link_id}, {"_id": 0})
