@@ -166,18 +166,22 @@ const AdminCalendar = () => {
       return 'bg-pink-400 text-white';
     }
     
+    // Video paylaşımı için sadece text rengi ver, arka plan gradient ile yapılacak
     if (event_type === 'video_paylasimi') {
-      // Status-based background - farklı renkler
-      const statusColors = {
-        'cekilecek': 'bg-white border border-slate-300 text-slate-600',
-        'cekildi': 'bg-orange-200 text-orange-800',
-        'duzenlendi': 'bg-blue-200 text-blue-800',
-        'planlandi': 'bg-green-500 text-white'
-      };
-      return statusColors[status] || 'bg-slate-100';
+      return 'text-white';
     }
     
     return 'bg-slate-200';
+  };
+
+  const getStatusColor = (status) => {
+    const statusColors = {
+      'cekilecek': '#e2e8f0', // slate-200
+      'cekildi': '#fed7aa', // orange-200
+      'duzenlendi': '#93c5fd', // blue-300
+      'planlandi': '#22c55e' // green-500
+    };
+    return statusColors[status] || '#e2e8f0';
   };
 
   const getEventIcon = (eventType) => {
@@ -372,22 +376,34 @@ const AdminCalendar = () => {
             <span>Buluşma</span>
           </div>
           <div className="border-l pl-4 flex items-center gap-2">
-            <span>📺 Video Paylaşımı:</span>
+            <span>📺 Video Paylaşımı (Hoca %80 + Statü %20):</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-white border-2 border-slate-300" />
+            <div className="w-8 h-4 rounded overflow-hidden flex">
+              <div className="w-4/5 bg-purple-500" />
+              <div className="w-1/5 bg-slate-200" />
+            </div>
             <span>Çekilecek</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-orange-200" />
+            <div className="w-8 h-4 rounded overflow-hidden flex">
+              <div className="w-4/5 bg-purple-500" />
+              <div className="w-1/5 bg-orange-200" />
+            </div>
             <span>Çekildi</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-blue-200" />
+            <div className="w-8 h-4 rounded overflow-hidden flex">
+              <div className="w-4/5 bg-purple-500" />
+              <div className="w-1/5 bg-blue-300" />
+            </div>
             <span>Düzenlendi</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-green-500" />
+            <div className="w-8 h-4 rounded overflow-hidden flex">
+              <div className="w-4/5 bg-purple-500" />
+              <div className="w-1/5 bg-green-500" />
+            </div>
             <span>Planlandı</span>
           </div>
         </div>
@@ -423,38 +439,62 @@ const AdminCalendar = () => {
                     {dayInfo.day}
                   </div>
                   <div className="space-y-1">
-                    {dayEvents.slice(0, 3).map(event => (
-                      <div
-                        key={event.id}
-                        onClick={(e) => handleEventClick(event, e)}
-                        className={`relative text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 ${getEventColor(event)}`}
-                      >
-                        {event.event_type === 'video_paylasimi' && event.teacher_colors?.length > 0 && (
-                          renderMultiColorStripe(event.teacher_colors)
-                        )}
-                        <span className="relative z-10 flex items-center gap-1">
-                          <span>{getEventIcon(event.event_type)}</span>
-                          {event.event_time && <span className="font-medium">{event.event_time}</span>}
-                          {event.event_type === 'video_paylasimi' ? (
-                            <span className="truncate">
-                              {event.branch_abbrevs?.length > 0 && (
-                                <span className="font-semibold">{event.branch_abbrevs.join('/')}</span>
-                              )}
-                              {event.video_name && (
-                                <span> - {event.video_name}</span>
-                              )}
-                            </span>
-                          ) : event.event_type === 'canli_yayin' && event.video_name ? (
-                            <span className="truncate">{event.video_name}</span>
-                          ) : (
-                            <>
-                              {event.teacher_names?.[0]?.split(' ')[0] || ''}
-                              {event.teacher_names?.length > 1 && ` +${event.teacher_names.length - 1}`}
-                            </>
-                          )}
-                        </span>
-                      </div>
-                    ))}
+                    {dayEvents.slice(0, 3).map(event => {
+                      // Video paylaşımı için özel gradient arka plan (%80 hoca, %20 statü)
+                      const isVideoPaylasimi = event.event_type === 'video_paylasimi';
+                      const teacherColor = event.teacher_colors?.[0] || '#6366f1';
+                      const statusColor = getStatusColor(event.status);
+                      
+                      // Birden fazla hoca varsa, hoca renklerini eşit böl (%80 içinde)
+                      let gradientStyle = {};
+                      if (isVideoPaylasimi && event.teacher_colors?.length > 0) {
+                        const teacherCount = event.teacher_colors.length;
+                        const teacherWidth = 80 / teacherCount;
+                        let gradientParts = [];
+                        
+                        event.teacher_colors.forEach((color, idx) => {
+                          const start = idx * teacherWidth;
+                          const end = (idx + 1) * teacherWidth;
+                          gradientParts.push(`${color} ${start}%, ${color} ${end}%`);
+                        });
+                        gradientParts.push(`${statusColor} 80%, ${statusColor} 100%`);
+                        
+                        gradientStyle = {
+                          background: `linear-gradient(to right, ${gradientParts.join(', ')})`
+                        };
+                      }
+                      
+                      return (
+                        <div
+                          key={event.id}
+                          onClick={(e) => handleEventClick(event, e)}
+                          className={`relative text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 ${getEventColor(event)}`}
+                          style={isVideoPaylasimi ? gradientStyle : {}}
+                        >
+                          <span className="relative z-10 flex items-center gap-1">
+                            <span>{getEventIcon(event.event_type)}</span>
+                            {event.event_time && <span className="font-medium">{event.event_time}</span>}
+                            {event.event_type === 'video_paylasimi' ? (
+                              <span className="truncate">
+                                {event.branch_abbrevs?.length > 0 && (
+                                  <span className="font-semibold">{event.branch_abbrevs.join('/')}</span>
+                                )}
+                                {event.video_name && (
+                                  <span> - {event.video_name}</span>
+                                )}
+                              </span>
+                            ) : event.event_type === 'canli_yayin' && event.video_name ? (
+                              <span className="truncate">{event.video_name}</span>
+                            ) : (
+                              <>
+                                {event.teacher_names?.[0]?.split(' ')[0] || ''}
+                                {event.teacher_names?.length > 1 && ` +${event.teacher_names.length - 1}`}
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
                     {dayEvents.length > 3 && (
                       <div className="text-xs text-slate-500 text-center">
                         +{dayEvents.length - 3} daha
