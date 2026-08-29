@@ -7,6 +7,20 @@
 
 ## Son Güncelleme: 29 Ağustos 2026
 
+### YENİ ÖZELLİK: Kitap Sıralama ve Admin Grup Arama ✅ (29 Ağustos 2026)
+
+**1. Öğrenci Kitap Sıralama**
+- Öğretmen ödev takip ekranında kitap listesinin solunda yukarı/aşağı ok butonları eklendi
+- Kitaplar sürükle-bırak olmadan kolayca sıralanabiliyor
+- Sıralama otomatik olarak backend'e kaydediliyor
+
+**2. Admin Grup Arama**
+- Admin Gruplar sayfasına isimle arama alanı eklendi
+- "Grup adına göre ara..." placeholder
+- Anlık filtreleme (hem aktif hem pasif grupları filtreler)
+
+---
+
 ### YENİ ÖZELLİK: Ünite/Konu Checkbox ve Yüzdeleri + Gün Gruplu Ödev Kontrolü ✅ (29 Ağustos 2026)
 
 Öğretmen ödev takip ekranında kapsamlı geliştirmeler yapıldı.

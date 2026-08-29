@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
-import { Plus, Users, Edit, Trash2, Book, RotateCcw, Eye, EyeOff } from 'lucide-react';
+import { Input } from '../../components/ui/input';
+import { Plus, Users, Edit, Trash2, Book, RotateCcw, Eye, EyeOff, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '../../components/ui/badge';
 
@@ -14,6 +15,7 @@ const AdminGroups = () => {
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -66,6 +68,16 @@ const AdminGroups = () => {
   const activeGroups = groups.filter(g => g.status !== 'inactive');
   const inactiveGroups = groups.filter(g => g.status === 'inactive');
 
+  // Arama filtreleme
+  const filterBySearch = (groupList) => {
+    if (!searchQuery.trim()) return groupList;
+    const query = searchQuery.toLowerCase().trim();
+    return groupList.filter(g => g.name?.toLowerCase().includes(query));
+  };
+
+  const filteredActiveGroups = filterBySearch(activeGroups);
+  const filteredInactiveGroups = filterBySearch(inactiveGroups);
+
   return (
     <AdminLayout>
       <div>
@@ -96,6 +108,21 @@ const AdminGroups = () => {
           </div>
         </div>
 
+        {/* Arama Alanı */}
+        <div className="mb-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Grup adına göre ara..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+              data-testid="group-search-input"
+            />
+          </div>
+        </div>
+
         {loading ? (
           <div className="text-center py-12">
             <p className="text-slate-600">Yükleniyor...</p>
@@ -109,13 +136,13 @@ const AdminGroups = () => {
         ) : (
           <>
             {/* Aktif Gruplar */}
-            {activeGroups.length > 0 && (
+            {filteredActiveGroups.length > 0 && (
               <div className="mb-8">
                 <h2 className="text-lg font-semibold text-slate-700 mb-4">
-                  Aktif Gruplar ({activeGroups.length})
+                  Aktif Gruplar ({filteredActiveGroups.length})
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {activeGroups.map((group) => {
+                  {filteredActiveGroups.map((group) => {
                     const branch = branches.find(b => b.id === group.branch_id);
                     const teacher = teachers.find(t => t.id === group.teacher_id);
                     return (
@@ -176,13 +203,13 @@ const AdminGroups = () => {
             )}
 
             {/* Pasif Gruplar */}
-            {showInactive && inactiveGroups.length > 0 && (
+            {showInactive && filteredInactiveGroups.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold text-slate-500 mb-4">
-                  Pasif Gruplar ({inactiveGroups.length})
+                  Pasif Gruplar ({filteredInactiveGroups.length})
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {inactiveGroups.map((group) => {
+                  {filteredInactiveGroups.map((group) => {
                     const branch = branches.find(b => b.id === group.branch_id);
                     const teacher = teachers.find(t => t.id === group.teacher_id);
                     return (
@@ -232,6 +259,13 @@ const AdminGroups = () => {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Arama sonucu boşsa */}
+            {searchQuery && filteredActiveGroups.length === 0 && filteredInactiveGroups.length === 0 && (
+              <div className="admin-card p-12 text-center">
+                <p className="text-slate-600">"{searchQuery}" aramasına uygun grup bulunamadı.</p>
               </div>
             )}
 

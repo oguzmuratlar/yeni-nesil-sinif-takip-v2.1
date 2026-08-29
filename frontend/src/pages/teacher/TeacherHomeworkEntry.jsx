@@ -6,7 +6,7 @@ import { Input } from '../../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../components/ui/dialog';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { 
-  Book, ChevronLeft, ChevronDown, Plus, Check, X, 
+  Book, ChevronLeft, ChevronDown, ChevronUp, Plus, Check, X, 
   Calendar, FileText, RotateCcw, Trash2, Clock, AlertCircle,
   Undo2, Edit, Download, CheckCircle2, GripVertical, ClipboardCheck, RefreshCw, Pencil
 } from 'lucide-react';
@@ -427,6 +427,33 @@ const TeacherHomeworkEntry = () => {
       refreshBooks();
     } catch (error) {
       toast.error('Kitap kaldırılamadı');
+    }
+  };
+
+  // Kitap sırasını değiştir (yukarı/aşağı)
+  const handleMoveBook = async (bookId, direction) => {
+    const currentIndex = books.findIndex(b => b.id === bookId);
+    if (currentIndex === -1) return;
+    
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= books.length) return;
+    
+    // Yeni sıralama oluştur
+    const newBooks = [...books];
+    const [movedBook] = newBooks.splice(currentIndex, 1);
+    newBooks.splice(newIndex, 0, movedBook);
+    
+    // Hızlı UI güncellemesi
+    setBooks(newBooks);
+    
+    // Backend'e kaydet
+    try {
+      await apiClient.put(`/homework/students/${studentId}/books/reorder`, {
+        book_ids: newBooks.map(b => b.id)
+      });
+    } catch (error) {
+      toast.error('Sıralama kaydedilemedi');
+      refreshBooks(); // Hata olursa eski sırayı geri yükle
     }
   };
 
@@ -1610,6 +1637,25 @@ const TeacherHomeworkEntry = () => {
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2">
+                            {/* Yukarı/Aşağı Butonları */}
+                            <div className="flex flex-col gap-0.5 shrink-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleMoveBook(book.id, 'up'); }}
+                                disabled={books.indexOf(book) === 0}
+                                className={`p-0.5 rounded hover:bg-slate-200 ${books.indexOf(book) === 0 ? 'opacity-30 cursor-not-allowed' : 'text-slate-400 hover:text-slate-600'}`}
+                                title="Yukarı taşı"
+                              >
+                                <ChevronUp className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleMoveBook(book.id, 'down'); }}
+                                disabled={books.indexOf(book) === books.length - 1}
+                                className={`p-0.5 rounded hover:bg-slate-200 ${books.indexOf(book) === books.length - 1 ? 'opacity-30 cursor-not-allowed' : 'text-slate-400 hover:text-slate-600'}`}
+                                title="Aşağı taşı"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                            </div>
                             <div className="min-w-0 flex-1">
                               <h3 className="font-medium text-slate-800 text-sm truncate">{book.name}</h3>
                               <div className="flex items-center gap-2 mt-1">

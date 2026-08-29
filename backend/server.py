@@ -6333,10 +6333,11 @@ async def get_student_books(
     if branch_id:
         query["branch_id"] = branch_id
     
-    assignments = await db.student_book_assignments.find(query, {"_id": 0}).to_list(100)
+    # Sıralamaya göre getir (order field yoksa assigned_at'e göre)
+    assignments = await db.student_book_assignments.find(query, {"_id": 0}).sort([("order", 1), ("assigned_at", 1)]).to_list(100)
     
     result = []
-    for assignment in assignments:
+    for idx, assignment in enumerate(assignments):
         book = await db.books.find_one({"id": assignment["book_id"]}, {"_id": 0})
         if book:
             # İlerleme hesapla
@@ -6369,7 +6370,8 @@ async def get_student_books(
                 "completed_tests": completed_count,
                 "assigned_tests": assigned_count,
                 "remaining_tests": total_tests - completed_count,
-                "progress_percent": round((completed_count / total_tests * 100) if total_tests > 0 else 0, 1)
+                "progress_percent": round((completed_count / total_tests * 100) if total_tests > 0 else 0, 1),
+                "order": assignment.get("order", idx)
             })
     
     return result
@@ -6435,6 +6437,23 @@ async def remove_book_from_student(
         {"$set": {"status": "removed", "removed_at": datetime.now(timezone.utc).isoformat()}}
     )
     return {"message": "Kitap öğrenciden kaldırıldı"}
+
+@api_router.put("/homework/students/{student_id}/books/reorder")
+async def reorder_student_books(
+    student_id: str,
+    order_data: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğrencinin kitaplarının sırasını güncelle"""
+    book_ids = order_data.get("book_ids", [])
+    
+    for index, book_id in enumerate(book_ids):
+        await db.student_book_assignments.update_one(
+            {"student_id": student_id, "book_id": book_id, "status": "active"},
+            {"$set": {"order": index}}
+        )
+    
+    return {"message": "Kitap sırası güncellendi"}
 
 # ------------- TEST İLERLEME DURUMU -------------
 
