@@ -7,6 +7,27 @@
 
 ## Son Güncelleme: 29 Ağustos 2026
 
+### GÜNCELLEME: Etkinlik Renk Özelleştirme ✅ (29 Ağustos 2026)
+
+**Renk Seçici Özelliği:**
+- Lejant'taki etkinlik renk kutularına tıklayarak renk değiştirebilirsiniz
+- Hoca renklerine de tıklayarak değiştirebilirsiniz
+- 20 hazır renk paleti + özel renk seçici (color picker)
+- Renkler veritabanında kalıcı olarak saklanır
+- Değişiklikler anında takvime yansır
+
+**Varsayılan Etkinlik Renkleri (artık farklı):**
+- Video Çekimi: Sarı (#facc15)
+- Kamp: Yeşil (#10b981) - eskiden mor, artık farklı
+- Canlı Yayın: Mor (#8b5cf6)
+- Buluşma: Pembe (#f472b6)
+
+**API Endpoints:**
+- GET /api/calendar/event-type-colors - Renkleri getir
+- PUT /api/calendar/event-type-colors - Renkleri güncelle
+
+---
+
 ### GÜNCELLEME: Takvim UI ve Mantık İyileştirmeleri ✅ (29 Ağustos 2026)
 
 **1. Lejant Kompakt Hale Getirildi:**

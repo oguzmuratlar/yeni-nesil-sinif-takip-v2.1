@@ -40,6 +40,25 @@ const AdminCalendar = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
   
+  // Color picker state
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [colorPickerTarget, setColorPickerTarget] = useState(null); // {type: 'event_type', key: 'kamp'} or {type: 'teacher', id: '...'}
+  const [eventTypeColors, setEventTypeColors] = useState({
+    video_cekimi: '#facc15',
+    video_paylasimi: '#8b5cf6',
+    kamp: '#10b981',
+    canli_yayin: '#8b5cf6',
+    bulusma: '#f472b6'
+  });
+  
+  // Preset colors for picker
+  const presetColors = [
+    '#ef4444', '#f97316', '#f59e0b', '#facc15', '#84cc16',
+    '#22c55e', '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9',
+    '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+    '#ec4899', '#f472b6', '#fb7185', '#64748b', '#1e293b'
+  ];
+  
   // Form state
   const [eventForm, setEventForm] = useState({
     event_type: '',
@@ -88,10 +107,19 @@ const AdminCalendar = () => {
     }
   };
 
+  const fetchEventTypeColors = async () => {
+    try {
+      const response = await apiClient.get('/calendar/event-type-colors');
+      setEventTypeColors(response.data);
+    } catch (error) {
+      console.error('Event type colors fetch error:', error);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchEvents(), fetchTeachers(), fetchBranches()]);
+      await Promise.all([fetchEvents(), fetchTeachers(), fetchBranches(), fetchEventTypeColors()]);
       setLoading(false);
     };
     loadData();
@@ -151,27 +179,53 @@ const AdminCalendar = () => {
     return events.filter(e => e.event_date === dateStr);
   };
 
+  // Dinamik etkinlik rengi (eventTypeColors state'inden)
+  const getEventTypeColor = (eventType) => {
+    return eventTypeColors[eventType] || '#8b5cf6';
+  };
+
   const getEventColor = (event) => {
-    const { event_type, status } = event;
-    
-    if (event_type === 'canli_yayin' || event_type === 'kamp') {
-      return 'bg-purple-500 text-white';
-    }
-    
-    if (event_type === 'video_cekimi') {
-      return 'bg-yellow-400 text-slate-800';
-    }
-    
-    if (event_type === 'bulusma') {
-      return 'bg-pink-400 text-white';
-    }
+    const { event_type } = event;
     
     // Video paylaşımı için sadece text rengi ver, arka plan gradient ile yapılacak
     if (event_type === 'video_paylasimi') {
       return 'text-white';
     }
     
-    return 'bg-slate-200';
+    // Diğer etkinlik tipleri için dinamik renk kullan
+    return 'text-white';
+  };
+
+  // Renk seçme işlevi
+  const handleColorSelect = async (color) => {
+    if (!colorPickerTarget) return;
+    
+    try {
+      if (colorPickerTarget.type === 'event_type') {
+        // Etkinlik tipi rengi güncelle
+        const newColors = { [colorPickerTarget.key]: color };
+        await apiClient.put('/calendar/event-type-colors', newColors);
+        setEventTypeColors(prev => ({ ...prev, [colorPickerTarget.key]: color }));
+        toast.success('Renk güncellendi');
+      } else if (colorPickerTarget.type === 'teacher') {
+        // Öğretmen rengi güncelle
+        await apiClient.put(`/teachers/${colorPickerTarget.id}/color`, { color });
+        setTeachers(prev => prev.map(t => 
+          t.id === colorPickerTarget.id ? { ...t, color } : t
+        ));
+        toast.success('Öğretmen rengi güncellendi');
+      }
+    } catch (error) {
+      toast.error('Renk güncellenemedi');
+    }
+    
+    setShowColorPicker(false);
+    setColorPickerTarget(null);
+  };
+
+  const openColorPicker = (type, key) => {
+    setColorPickerTarget({ type, key: type === 'teacher' ? undefined : key, id: type === 'teacher' ? key : undefined });
+    setShowColorPicker(true);
   };
 
   const getStatusInfo = (status) => {
@@ -364,14 +418,19 @@ const AdminCalendar = () => {
           </Button>
         </div>
 
-        {/* Legend - Kompakt Versiyon */}
+        {/* Legend - Kompakt Versiyon + Renk Seçici */}
         <div className="bg-white rounded-lg p-3 shadow-sm mb-4">
           {/* Etkinlik Tipleri - İlk Satır */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mb-2">
             <span className="font-semibold text-slate-700">Etkinlikler:</span>
             <div className="flex items-center gap-1">
               <span>🎬</span>
-              <div className="w-3 h-3 rounded bg-yellow-400" />
+              <div 
+                className="w-4 h-4 rounded cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-slate-400 transition-all"
+                style={{ backgroundColor: eventTypeColors.video_cekimi }}
+                onClick={() => openColorPicker('event_type', 'video_cekimi')}
+                title="Rengi değiştirmek için tıkla"
+              />
               <span>Video Çekimi</span>
             </div>
             <div className="flex items-center gap-1">
@@ -381,19 +440,35 @@ const AdminCalendar = () => {
             </div>
             <div className="flex items-center gap-1">
               <span>🏕️</span>
-              <div className="w-3 h-3 rounded bg-purple-500" />
+              <div 
+                className="w-4 h-4 rounded cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-slate-400 transition-all"
+                style={{ backgroundColor: eventTypeColors.kamp }}
+                onClick={() => openColorPicker('event_type', 'kamp')}
+                title="Rengi değiştirmek için tıkla"
+              />
               <span>Kamp</span>
             </div>
             <div className="flex items-center gap-1">
               <span>📡</span>
-              <div className="w-3 h-3 rounded bg-purple-500" />
+              <div 
+                className="w-4 h-4 rounded cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-slate-400 transition-all"
+                style={{ backgroundColor: eventTypeColors.canli_yayin }}
+                onClick={() => openColorPicker('event_type', 'canli_yayin')}
+                title="Rengi değiştirmek için tıkla"
+              />
               <span>Canlı Yayın</span>
             </div>
             <div className="flex items-center gap-1">
               <span>☕</span>
-              <div className="w-3 h-3 rounded bg-pink-400" />
+              <div 
+                className="w-4 h-4 rounded cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-slate-400 transition-all"
+                style={{ backgroundColor: eventTypeColors.bulusma }}
+                onClick={() => openColorPicker('event_type', 'bulusma')}
+                title="Rengi değiştirmek için tıkla"
+              />
               <span>Buluşma</span>
             </div>
+            <span className="text-slate-400 ml-2 italic">(renklere tıklayarak değiştir)</span>
           </div>
           
           {/* Statüler - İkinci Satır */}
@@ -414,13 +489,45 @@ const AdminCalendar = () => {
               <span className="font-semibold text-slate-700">Hocalar:</span>
               {teachers.map(teacher => (
                 <div key={teacher.id} className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: teacher.color }} />
+                  <div 
+                    className="w-4 h-4 rounded-full cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-slate-400 transition-all"
+                    style={{ backgroundColor: teacher.color }}
+                    onClick={() => openColorPicker('teacher', teacher.id)}
+                    title={`${teacher.name} - Rengi değiştirmek için tıkla`}
+                  />
                   <span>{teacher.name.split(' ')[0]}</span>
                 </div>
               ))}
             </div>
           )}
         </div>
+
+        {/* Color Picker Dialog */}
+        <Dialog open={showColorPicker} onOpenChange={setShowColorPicker}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Renk Seç</DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-5 gap-2 py-4">
+              {presetColors.map(color => (
+                <div
+                  key={color}
+                  onClick={() => handleColorSelect(color)}
+                  className="w-10 h-10 rounded-lg cursor-pointer hover:scale-110 transition-transform border-2 border-transparent hover:border-slate-400"
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+            <div className="flex items-center gap-2 pt-2 border-t">
+              <Label className="text-sm">Özel:</Label>
+              <Input
+                type="color"
+                className="w-12 h-10 p-1 cursor-pointer"
+                onChange={(e) => handleColorSelect(e.target.value)}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Calendar Grid */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -509,12 +616,15 @@ const AdminCalendar = () => {
                         return teacherName + (event.teacher_names?.length > 1 ? ` +${event.teacher_names.length - 1}` : '');
                       };
                       
+                      // Dinamik etkinlik rengi
+                      const eventBgColor = isVideoPaylasimi ? {} : { backgroundColor: getEventTypeColor(event.event_type) };
+                      
                       return (
                         <div
                           key={event.id}
                           onClick={(e) => handleEventClick(event, e)}
                           className={`relative text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 ${getEventColor(event)}`}
-                          style={isVideoPaylasimi ? gradientStyle : {}}
+                          style={isVideoPaylasimi ? gradientStyle : eventBgColor}
                           title={`${EVENT_TYPES.find(t => t.value === event.event_type)?.label || ''} - ${event.teacher_names?.join(', ') || ''}`}
                         >
                           <span className="relative z-10 flex items-center gap-1">

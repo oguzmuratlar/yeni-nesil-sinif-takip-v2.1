@@ -854,6 +854,15 @@ TEACHER_COLORS = [
     "#F44336", "#E040FB", "#7C4DFF", "#448AFF", "#18FFFF"
 ]
 
+# Varsayılan etkinlik tipi renkleri
+DEFAULT_EVENT_TYPE_COLORS = {
+    "video_cekimi": "#facc15",   # Sarı
+    "video_paylasimi": "#8b5cf6", # Mor (hoca rengiyle değişecek)
+    "kamp": "#10b981",           # Yeşil
+    "canli_yayin": "#8b5cf6",    # Mor
+    "bulusma": "#f472b6"         # Pembe
+}
+
 # ============= AUTH HELPERS =============
 
 def verify_password(plain_password, hashed_password):
@@ -9743,6 +9752,39 @@ async def get_teachers_with_colors(current_user: User = Depends(get_current_user
             color_index += 1
     
     return teachers
+
+@api_router.get("/calendar/event-type-colors")
+async def get_event_type_colors(current_user: User = Depends(get_current_user)):
+    """Etkinlik tipi renklerini getir"""
+    # Veritabanından kayıtlı renkleri al
+    settings = await db.settings.find_one({"key": "event_type_colors"}, {"_id": 0})
+    if settings:
+        return settings.get("value", DEFAULT_EVENT_TYPE_COLORS)
+    return DEFAULT_EVENT_TYPE_COLORS
+
+@api_router.put("/calendar/event-type-colors")
+async def update_event_type_colors(
+    colors: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Etkinlik tipi renklerini güncelle (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin renkleri güncelleyebilir")
+    
+    # Mevcut renkleri al ve güncelle
+    current_colors = await db.settings.find_one({"key": "event_type_colors"}, {"_id": 0})
+    if current_colors:
+        merged_colors = {**current_colors.get("value", DEFAULT_EVENT_TYPE_COLORS), **colors}
+    else:
+        merged_colors = {**DEFAULT_EVENT_TYPE_COLORS, **colors}
+    
+    await db.settings.update_one(
+        {"key": "event_type_colors"},
+        {"$set": {"key": "event_type_colors", "value": merged_colors}},
+        upsert=True
+    )
+    
+    return {"message": "Renkler güncellendi", "colors": merged_colors}
 
 # ============= INCLUDE ROUTER =============
 
