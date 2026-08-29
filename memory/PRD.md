@@ -5,7 +5,39 @@
 
 ---
 
-## Son Güncelleme: 19 Ağustos 2026
+## Son Güncelleme: 29 Ağustos 2026
+
+### YENİ ÖZELLİK: Ünite/Konu Checkbox ve Yüzdeleri + Gün Gruplu Ödev Kontrolü ✅ (29 Ağustos 2026)
+
+Öğretmen ödev takip ekranında kapsamlı geliştirmeler yapıldı.
+
+#### Özellikler
+
+**1. Ünite ve Konu Tamamlanma Yüzdeleri**
+- Her ünitenin yanında %0-%100 arası tamamlanma yüzdesi gösteriliyor
+- Her konunun yanında %0-%100 arası tamamlanma yüzdesi gösteriliyor
+- Yüzdeler renk kodlu: %0 gri, %1-99 sarı, %100 yeşil
+
+**2. Ünite ve Konu Checkbox'ları**
+- Her ünitenin solunda tamamlama checkbox'u
+- Her konunun solunda tamamlama checkbox'u
+- Ünite checkbox tıklanınca: Altındaki TÜM konuların TÜM testleri tamamlandı/sıfırlandı işaretlenir
+- Konu checkbox tıklanınca: Altındaki TÜM testler tamamlandı/sıfırlandı işaretlenir
+
+**3. Gün Gruplu Ödev Kontrolü**
+- Ödevler tarihe göre gruplandı (Perşembe 13, Cuma 14, vb.)
+- Her günün başında gün tamamlama checkbox'u
+- "Günü Tamamla" butonu (bekleyen ödev varsa)
+- "Tüm Ödevi Tamamla" butonu (footer'da)
+
+#### Test Sonuçları
+- Ünite checkbox çalışıyor ✅
+- Konu checkbox çalışıyor ✅
+- Yüzde hesaplamaları doğru ✅
+- Gün gruplama çalışıyor ✅
+- Günü tamamla özelliği çalışıyor ✅
+
+---
 
 ### BUG FIX: İçerik Yönetimi Sıralama Sorunu ✅ (19 Ağustos 2026)
 

@@ -317,6 +317,61 @@ const TeacherHomeworkEntry = () => {
       await updateTestStatus(testId, newStatus, true);
     }
     toast.success(`Ünite durumu güncellendi (${testIds.length} test)`);
+    refreshBooks();
+  };
+
+  // Konu için tüm testleri güncelle
+  const updateTopicStatus = async (topic, newStatus) => {
+    const testIds = topic.tests?.map(test => test.id) || [];
+    
+    for (const testId of testIds) {
+      await updateTestStatus(testId, newStatus, true);
+    }
+    toast.success(`Konu durumu güncellendi (${testIds.length} test)`);
+    refreshBooks();
+  };
+
+  // Ünite tamamlanma yüzdesi hesapla
+  const getUnitCompletionPercent = (unit) => {
+    let totalTests = 0;
+    let completedTests = 0;
+    
+    unit.topics?.forEach(topic => {
+      topic.tests?.forEach(test => {
+        totalTests++;
+        const status = testProgress[test.id]?.status;
+        if (status === 'completed' || status === 'skipped') {
+          completedTests++;
+        }
+      });
+    });
+    
+    return totalTests > 0 ? Math.round((completedTests / totalTests) * 100) : 0;
+  };
+
+  // Konu tamamlanma yüzdesi hesapla
+  const getTopicCompletionPercent = (topic) => {
+    const totalTests = topic.tests?.length || 0;
+    let completedTests = 0;
+    
+    topic.tests?.forEach(test => {
+      const status = testProgress[test.id]?.status;
+      if (status === 'completed' || status === 'skipped') {
+        completedTests++;
+      }
+    });
+    
+    return totalTests > 0 ? Math.round((completedTests / totalTests) * 100) : 0;
+  };
+
+  // Ünite tamamen tamamlandı mı?
+  const isUnitCompleted = (unit) => {
+    return getUnitCompletionPercent(unit) === 100;
+  };
+
+  // Konu tamamen tamamlandı mı?
+  const isTopicCompleted = (topic) => {
+    return getTopicCompletionPercent(topic) === 100;
   };
 
   // Undo
@@ -1621,7 +1676,11 @@ const TeacherHomeworkEntry = () => {
                     </div>
                   ) : (
                     <div className="space-y-1 pr-2">
-                      {bookTree.tree.map(unit => (
+                      {bookTree.tree.map(unit => {
+                        const unitPercent = getUnitCompletionPercent(unit);
+                        const unitCompleted = isUnitCompleted(unit);
+                        
+                        return (
                         <div key={unit.id} className="border rounded-lg overflow-hidden">
                           {/* Unit Header - Draggable */}
                           <div
@@ -1630,11 +1689,34 @@ const TeacherHomeworkEntry = () => {
                             className="flex items-center gap-2 p-2 bg-slate-50 cursor-grab hover:bg-slate-100 group"
                           >
                             <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                            {/* Ünite Tamamlama Checkbox */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateUnitStatus(unit, unitCompleted ? 'not_started' : 'completed');
+                              }}
+                              className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                                unitCompleted 
+                                  ? 'bg-green-500 border-green-500 text-white' 
+                                  : 'border-slate-300 hover:border-green-400'
+                              }`}
+                              title={unitCompleted ? 'Üniteyi sıfırla' : 'Üniteyi tamamla'}
+                            >
+                              {unitCompleted && <Check className="w-3 h-3" />}
+                            </button>
                             <button onClick={() => toggleUnit(unit.id)}>
                               <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedUnits[unit.id] ? '-rotate-90' : ''}`} />
                             </button>
                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: unit.color || '#94a3b8' }} />
                             <span className="text-xs font-medium text-slate-700 flex-1 truncate" onClick={() => toggleUnit(unit.id)}>{unit.name}</span>
+                            {/* Ünite Yüzdesi */}
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                              unitPercent === 100 ? 'bg-green-100 text-green-700' :
+                              unitPercent > 0 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-slate-100 text-slate-500'
+                            }`}>
+                              %{unitPercent}
+                            </span>
                             <button
                               onClick={(e) => { 
                                 e.stopPropagation(); 
@@ -1668,7 +1750,11 @@ const TeacherHomeworkEntry = () => {
                                   </button>
                                 </div>
                               )}
-                              {unit.topics?.map(topic => (
+                              {unit.topics?.map(topic => {
+                                const topicPercent = getTopicCompletionPercent(topic);
+                                const topicCompleted = isTopicCompleted(topic);
+                                
+                                return (
                                 <div key={topic.id}>
                                   {/* Topic - Draggable */}
                                   <div
@@ -1677,10 +1763,33 @@ const TeacherHomeworkEntry = () => {
                                     className="flex items-center gap-2 p-1.5 pl-6 cursor-grab hover:bg-slate-50 border-b group"
                                   >
                                     <GripVertical className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+                                    {/* Konu Tamamlama Checkbox */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateTopicStatus(topic, topicCompleted ? 'not_started' : 'completed');
+                                      }}
+                                      className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                                        topicCompleted 
+                                          ? 'bg-green-500 border-green-500 text-white' 
+                                          : 'border-slate-300 hover:border-green-400'
+                                      }`}
+                                      title={topicCompleted ? 'Konuyu sıfırla' : 'Konuyu tamamla'}
+                                    >
+                                      {topicCompleted && <Check className="w-3 h-3" />}
+                                    </button>
                                     <button onClick={() => toggleTopic(topic.id)}>
                                       <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${!expandedTopics[topic.id] ? '-rotate-90' : ''}`} />
                                     </button>
                                     <span className="text-xs text-slate-600 flex-1 truncate" onClick={() => toggleTopic(topic.id)}>{topic.name}</span>
+                                    {/* Konu Yüzdesi */}
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                                      topicPercent === 100 ? 'bg-green-100 text-green-700' :
+                                      topicPercent > 0 ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-slate-100 text-slate-500'
+                                    }`}>
+                                      %{topicPercent}
+                                    </span>
                                     <span className="text-[10px] text-slate-400">{topic.tests?.length || 0}</span>
                                     <button
                                       onClick={(e) => { 
@@ -1753,11 +1862,13 @@ const TeacherHomeworkEntry = () => {
                                     </>
                                   )}
                                 </div>
-                              ))}
+                              );
+                              })}
                             </div>
                           )}
                         </div>
-                      ))}
+                      );
+                      })}
                     </div>
                   )}
                 </ScrollArea>
@@ -1990,7 +2101,7 @@ const TeacherHomeworkEntry = () => {
         </>
       )}
 
-      {/* Ödev Kontrol Dialog */}
+      {/* Ödev Kontrol Dialog - Gün Gruplu */}
       <Dialog open={homeworkCheckDialog} onOpenChange={setHomeworkCheckDialog}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
@@ -2004,70 +2115,160 @@ const TeacherHomeworkEntry = () => {
               const allHomework = getAllPlanHomework();
               const pendingCount = allHomework.filter(h => h.status === 'assigned').length;
               
+              // Günlere göre grupla
+              const homeworkByDate = {};
+              allHomework.forEach(hw => {
+                if (!homeworkByDate[hw.date]) {
+                  homeworkByDate[hw.date] = {
+                    date: hw.date,
+                    dayName: hw.dayName,
+                    dayNum: hw.dayNum,
+                    items: []
+                  };
+                }
+                homeworkByDate[hw.date].items.push(hw);
+              });
+              
+              const sortedDates = Object.keys(homeworkByDate).sort((a, b) => new Date(a) - new Date(b));
+              
+              // Gün bazlı tamamlama fonksiyonu
+              const markDayCompleted = async (date) => {
+                const dayItems = homeworkByDate[date]?.items || [];
+                const pendingItems = dayItems.filter(hw => hw.status === 'assigned');
+                for (const hw of pendingItems) {
+                  await updateTestStatus(hw.id, 'completed', true);
+                }
+                if (pendingItems.length > 0) {
+                  toast.success(`${pendingItems.length} ödev tamamlandı`);
+                  refreshBooks();
+                }
+              };
+              
+              // Gün tamamlanma durumu
+              const isDayCompleted = (date) => {
+                const dayItems = homeworkByDate[date]?.items || [];
+                return dayItems.length > 0 && dayItems.every(hw => hw.status === 'completed' || hw.status === 'skipped');
+              };
+              
               return (
                 <>
-                  <div className="flex gap-4 mb-4 text-sm sticky top-0 bg-white pb-2 border-b">
+                  <div className="flex gap-4 mb-4 text-sm sticky top-0 bg-white pb-2 border-b z-10">
                     <span className="text-slate-600">Toplam: <strong>{allHomework.length}</strong> ödev</span>
                     <span className="text-yellow-600">Bekleyen: <strong>{pendingCount}</strong></span>
                     <span className="text-green-600">Tamamlanan: <strong>{allHomework.filter(h => h.status === 'completed').length}</strong></span>
                   </div>
                   
-                  <div className="space-y-2">
-                      {allHomework.length === 0 ? (
-                        <p className="text-center text-slate-500 py-8">Henüz ödev atanmamış</p>
-                      ) : (
-                        allHomework.map(hw => {
-                          const statusInfo = TEST_STATUSES[hw.status] || TEST_STATUSES.not_started;
-                          const StatusIcon = statusInfo.icon;
-                          
-                          return (
-                            <div key={`${hw.id}-${hw.date}`} className={`p-3 rounded-lg border ${statusInfo.bgClass}`}>
-                              <div className="flex items-start gap-3">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                                      {hw.dayName} {hw.dayNum}
-                                    </span>
-                                    {StatusIcon && (
-                                      <span className={`flex items-center gap-1 text-xs ${statusInfo.textColor}`}>
-                                        <StatusIcon className="w-3 h-3" />
-                                        {statusInfo.label}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm font-bold text-slate-800">{hw.bookName}</p>
-                                  <p className="text-xs text-purple-600">{hw.unitName} {hw.topicName && `• ${hw.topicName}`}</p>
-                                  <p className="text-xs text-slate-600 mt-0.5">{hw.testName}</p>
+                  {allHomework.length === 0 ? (
+                    <p className="text-center text-slate-500 py-8">Henüz ödev atanmamış</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {sortedDates.map(date => {
+                        const dayData = homeworkByDate[date];
+                        const dayCompleted = isDayCompleted(date);
+                        const dayPendingCount = dayData.items.filter(hw => hw.status === 'assigned').length;
+                        
+                        return (
+                          <div key={date} className="border rounded-lg overflow-hidden">
+                            {/* Gün Başlığı */}
+                            <div className={`flex items-center justify-between p-3 ${dayCompleted ? 'bg-green-50' : 'bg-slate-50'}`}>
+                              <div className="flex items-center gap-3">
+                                {/* Gün Tamamlama Checkbox */}
+                                <button
+                                  onClick={() => {
+                                    if (!dayCompleted) {
+                                      markDayCompleted(date);
+                                    }
+                                  }}
+                                  disabled={dayCompleted}
+                                  className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                    dayCompleted 
+                                      ? 'bg-green-500 border-green-500 text-white cursor-default' 
+                                      : 'border-slate-300 hover:border-green-400 cursor-pointer'
+                                  }`}
+                                  title={dayCompleted ? 'Gün tamamlandı' : 'Günü tamamla'}
+                                >
+                                  {dayCompleted && <Check className="w-3 h-3" />}
+                                </button>
+                                <div>
+                                  <span className="font-semibold text-slate-800">{dayData.dayName}</span>
+                                  <span className="text-slate-500 ml-2">({dayData.dayNum})</span>
                                 </div>
-                                <div className="flex gap-1 shrink-0">
-                                  <button
-                                    onClick={() => updateTestStatus(hw.id, 'completed')}
-                                    className={`p-1.5 rounded ${hw.status === 'completed' ? 'bg-green-500 text-white' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
-                                    title="Tamamlandı"
-                                  >
-                                    <Check className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => updateTestStatus(hw.id, 'incomplete')}
-                                    className={`p-1.5 rounded ${hw.status === 'incomplete' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
-                                    title="Eksik"
-                                  >
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => updateTestStatus(hw.id, 'needs_review')}
-                                    className={`p-1.5 rounded ${hw.status === 'needs_review' ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-600 hover:bg-purple-200'}`}
-                                    title="Tekrar Gerekli"
-                                  >
-                                    <RotateCcw className="w-4 h-4" />
-                                  </button>
-                                </div>
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                  dayCompleted ? 'bg-green-100 text-green-700' : 
+                                  dayPendingCount > 0 ? 'bg-yellow-100 text-yellow-700' : 
+                                  'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {dayData.items.length} ödev
+                                </span>
                               </div>
+                              {!dayCompleted && dayPendingCount > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => markDayCompleted(date)}
+                                  className="text-xs h-7 gap-1 text-green-600 border-green-300 hover:bg-green-50"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Günü Tamamla
+                                </Button>
+                              )}
                             </div>
-                          );
-                        })
-                      )}
+                            
+                            {/* Gün İçindeki Ödevler */}
+                            <div className="divide-y">
+                              {dayData.items.map(hw => {
+                                const statusInfo = TEST_STATUSES[hw.status] || TEST_STATUSES.not_started;
+                                const StatusIcon = statusInfo.icon;
+                                
+                                return (
+                                  <div key={`${hw.id}-${hw.date}`} className={`p-3 ${statusInfo.bgClass}`}>
+                                    <div className="flex items-start gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          {StatusIcon && (
+                                            <span className={`flex items-center gap-1 text-xs ${statusInfo.textColor}`}>
+                                              <StatusIcon className="w-3 h-3" />
+                                              {statusInfo.label}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-800">{hw.bookName}</p>
+                                        <p className="text-xs text-purple-600">{hw.unitName} {hw.topicName && `• ${hw.topicName}`}</p>
+                                        <p className="text-xs text-slate-600 mt-0.5">{hw.testName}</p>
+                                      </div>
+                                      <div className="flex gap-1 shrink-0">
+                                        <button
+                                          onClick={() => updateTestStatus(hw.id, 'completed')}
+                                          className={`p-1.5 rounded ${hw.status === 'completed' ? 'bg-green-500 text-white' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
+                                          title="Tamamlandı"
+                                        >
+                                          <Check className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => updateTestStatus(hw.id, 'incomplete')}
+                                          className={`p-1.5 rounded ${hw.status === 'incomplete' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                          title="Eksik"
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                          onClick={() => updateTestStatus(hw.id, 'needs_review')}
+                                          className={`p-1.5 rounded ${hw.status === 'needs_review' ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-600 hover:bg-purple-200'}`}
+                                          title="Tekrar Gerekli"
+                                        >
+                                          <RotateCcw className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                  )}
                 </>
               );
             })()}
@@ -2077,7 +2278,7 @@ const TeacherHomeworkEntry = () => {
             {getAssignedTests().length > 0 && (
               <Button onClick={handleMarkAllCompleted} className="gap-1 bg-green-600 hover:bg-green-700">
                 <CheckCircle2 className="w-4 h-4" />
-                Bekleyenleri Tamamla ({getAssignedTests().length})
+                Tüm Ödevi Tamamla ({getAssignedTests().length})
               </Button>
             )}
           </DialogFooter>
