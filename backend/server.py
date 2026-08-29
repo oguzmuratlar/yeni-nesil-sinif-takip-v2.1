@@ -9538,8 +9538,10 @@ async def get_calendar_events(
     
     events = await db.calendar_events.find(query, {"_id": 0}).to_list(500)
     
-    # Öğretmen bilgilerini ekle
+    # Öğretmen ve branş bilgilerini ekle
     teacher_cache = {}
+    branch_cache = {}
+    
     for event in events:
         teacher_names = []
         teacher_colors = []
@@ -9553,6 +9555,32 @@ async def get_calendar_events(
                 teacher_colors.append(t.get("color", "#6366f1"))
         event["teacher_names"] = teacher_names
         event["teacher_colors"] = teacher_colors
+        
+        # Branş bilgilerini ekle
+        branch_names = []
+        branch_abbrevs = []
+        for bid in event.get("branch_ids", []):
+            if bid not in branch_cache:
+                branch = await db.branches.find_one({"id": bid}, {"_id": 0, "name": 1})
+                branch_cache[bid] = branch
+            b = branch_cache.get(bid)
+            if b:
+                name = b.get("name", "")
+                branch_names.append(name)
+                # Kısaltmalar
+                abbrev_map = {
+                    "Matematik": "Mat",
+                    "Türkçe": "TR",
+                    "Fen Bilimleri": "Fen",
+                    "Fen": "Fen",
+                    "İngilizce": "İng",
+                    "Sosyal Bilgiler": "Sos",
+                    "Din Kültürü": "Din",
+                }
+                abbrev = abbrev_map.get(name, name[:3])
+                branch_abbrevs.append(abbrev)
+        event["branch_names"] = branch_names
+        event["branch_abbrevs"] = branch_abbrevs
     
     return events
 

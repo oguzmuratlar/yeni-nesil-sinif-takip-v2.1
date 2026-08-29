@@ -256,7 +256,7 @@ const AdminCalendar = () => {
         teacher_ids: eventForm.teacher_ids,
         branch_ids: eventForm.branch_ids,
         event_time: (eventForm.event_type === 'kamp' || eventForm.event_type === 'canli_yayin') ? eventForm.event_time : null,
-        video_name: eventForm.event_type === 'video_paylasimi' ? eventForm.video_name : null,
+        video_name: (eventForm.event_type === 'video_paylasimi' || eventForm.event_type === 'canli_yayin') ? eventForm.video_name : null,
         title: eventForm.title || null,
         status: eventForm.event_type === 'video_paylasimi' ? eventForm.status : null,
         notes: eventForm.notes || null
@@ -435,7 +435,16 @@ const AdminCalendar = () => {
                         <span className="relative z-10 flex items-center gap-1">
                           <span>{getEventIcon(event.event_type)}</span>
                           {event.event_time && <span className="font-medium">{event.event_time}</span>}
-                          {event.event_type === 'video_paylasimi' && event.video_name ? (
+                          {event.event_type === 'video_paylasimi' ? (
+                            <span className="truncate">
+                              {event.branch_abbrevs?.length > 0 && (
+                                <span className="font-semibold">{event.branch_abbrevs.join('/')}</span>
+                              )}
+                              {event.video_name && (
+                                <span> - {event.video_name}</span>
+                              )}
+                            </span>
+                          ) : event.event_type === 'canli_yayin' && event.video_name ? (
                             <span className="truncate">{event.video_name}</span>
                           ) : (
                             <>
@@ -504,6 +513,18 @@ const AdminCalendar = () => {
                     type="time"
                     value={eventForm.event_time}
                     onChange={(e) => setEventForm(prev => ({ ...prev, event_time: e.target.value }))}
+                  />
+                </div>
+              )}
+
+              {/* Name for Canlı Yayın */}
+              {eventForm.event_type === 'canli_yayin' && (
+                <div>
+                  <Label>Yayın Adı</Label>
+                  <Input
+                    value={eventForm.video_name}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, video_name: e.target.value }))}
+                    placeholder="Örn: Canlı Soru Çözümü"
                   />
                 </div>
               )}
