@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import apiClient from '../api/axios';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { Calendar, ChevronLeft, ChevronRight, Video, Radio, Users, Coffee, X } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const EVENT_TYPE_LABELS = {
-  video_cekimi: { label: 'Video Çekimi', icon: Video, color: 'bg-yellow-400' },
-  kamp: { label: 'Kamp', icon: Users, color: 'bg-purple-500 text-white' },
-  canli_yayin: { label: 'Canlı Yayın', icon: Radio, color: 'bg-purple-500 text-white' },
-  bulusma: { label: 'Buluşma', icon: Coffee, color: 'bg-yellow-400' },
+  video_cekimi: { label: 'Video Çekimi', icon: '🎬', color: 'bg-yellow-400' },
+  kamp: { label: 'Kamp', icon: '🏕️', color: 'bg-purple-500 text-white' },
+  canli_yayin: { label: 'Canlı Yayın', icon: '📡', color: 'bg-purple-500 text-white' },
+  bulusma: { label: 'Buluşma', icon: '☕', color: 'bg-pink-400 text-white' },
 };
 
 const TeacherCalendarBar = ({ onOpenCalendar }) => {
@@ -130,7 +130,11 @@ const TeacherCalendarDialog = ({ open, onClose }) => {
   };
 
   const getEventsForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    // Yerel tarih formatı kullan
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     return events.filter(e => e.event_date === dateStr);
   };
 
@@ -217,6 +221,7 @@ const TeacherCalendarDialog = ({ open, onClose }) => {
                             key={event.id}
                             className={`text-[10px] p-0.5 px-1 rounded truncate ${typeInfo.color || 'bg-slate-200'}`}
                           >
+                            <span>{typeInfo.icon} </span>
                             {event.event_time && <span className="font-medium">{event.event_time} </span>}
                             {typeInfo.label}
                           </div>

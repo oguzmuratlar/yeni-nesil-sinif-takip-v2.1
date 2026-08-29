@@ -7,6 +7,33 @@
 
 ## Son Güncelleme: 29 Ağustos 2026
 
+### GÜNCELLEME: Takvim İyileştirmeleri ✅ (29 Ağustos 2026)
+
+**Video Adı Alanı:**
+- Video Paylaşımı etkinliğinde "Video Adı" alanı eklendi
+- Takvimde video adı görünüyor (öğretmen adı yerine)
+
+**Yeni Renk Şeması:**
+- Kamp: Mor 🏕️
+- Canlı Yayın: Mor 📡
+- Video Çekimi: Sarı 🎬
+- Buluşma: Pembe ☕ (eskiden sarıydı, artık farklı)
+- Video Paylaşımı 📺:
+  - Çekilecek: Beyaz border
+  - Çekildi: Turuncu (eskiden sarıydı)
+  - Düzenlendi: Mavi (eskiden açık yeşildi)
+  - Planlandı: Yeşil
+
+**İkonlar:**
+- Her etkinlik tipine emoji ikonu eklendi
+- Takvimde ve legend'da görünüyor
+
+**Bug Fix:**
+- 1 Eylül gibi ay başı etkinlikleri artık doğru ayda görünüyor
+- UTC timezone sorunu düzeltildi (yerel tarih formatı kullanılıyor)
+
+---
+
 ### YENİ ÖZELLİK: Takvim Sistemi ✅ (29 Ağustos 2026)
 
 Kapsamlı takvim özelliği eklendi - Admin etkinlik yönetimi ve öğretmen takvim görünümü.

@@ -22,10 +22,10 @@ const EVENT_TYPES = [
 ];
 
 const STATUS_OPTIONS = [
-  { value: 'cekilecek', label: 'Çekilecek', color: 'bg-white border-2 border-slate-300' },
-  { value: 'cekildi', label: 'Çekildi', color: 'bg-yellow-200' },
-  { value: 'duzenlendi', label: 'Düzenlendi', color: 'bg-green-200' },
-  { value: 'planlandi', label: 'Planlandı', color: 'bg-green-500 text-white' },
+  { value: 'cekilecek', label: 'Çekilecek', color: 'bg-white border-2 border-slate-300', textColor: 'text-slate-600' },
+  { value: 'cekildi', label: 'Çekildi', color: 'bg-orange-200', textColor: 'text-orange-800' },
+  { value: 'duzenlendi', label: 'Düzenlendi', color: 'bg-blue-200', textColor: 'text-blue-800' },
+  { value: 'planlandi', label: 'Planlandı', color: 'bg-green-500 text-white', textColor: 'text-white' },
 ];
 
 const AdminCalendar = () => {
@@ -46,6 +46,7 @@ const AdminCalendar = () => {
     teacher_ids: [],
     branch_ids: [],
     event_time: '',
+    video_name: '',
     title: '',
     status: 'cekilecek',
     notes: ''
@@ -142,33 +143,52 @@ const AdminCalendar = () => {
   };
 
   const getEventsForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    // Yerel tarih formatı kullan (UTC sorununu önlemek için)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     return events.filter(e => e.event_date === dateStr);
   };
 
   const getEventColor = (event) => {
-    const { event_type, status, teacher_colors } = event;
+    const { event_type, status } = event;
     
     if (event_type === 'canli_yayin' || event_type === 'kamp') {
       return 'bg-purple-500 text-white';
     }
     
-    if (event_type === 'video_cekimi' || event_type === 'bulusma') {
+    if (event_type === 'video_cekimi') {
       return 'bg-yellow-400 text-slate-800';
     }
     
+    if (event_type === 'bulusma') {
+      return 'bg-pink-400 text-white';
+    }
+    
     if (event_type === 'video_paylasimi') {
-      // Status-based background
+      // Status-based background - farklı renkler
       const statusColors = {
-        'cekilecek': 'bg-white border border-slate-300',
-        'cekildi': 'bg-yellow-200',
-        'duzenlendi': 'bg-green-200',
+        'cekilecek': 'bg-white border border-slate-300 text-slate-600',
+        'cekildi': 'bg-orange-200 text-orange-800',
+        'duzenlendi': 'bg-blue-200 text-blue-800',
         'planlandi': 'bg-green-500 text-white'
       };
       return statusColors[status] || 'bg-slate-100';
     }
     
     return 'bg-slate-200';
+  };
+
+  const getEventIcon = (eventType) => {
+    const icons = {
+      video_cekimi: '🎬',
+      video_paylasimi: '📺',
+      kamp: '🏕️',
+      canli_yayin: '📡',
+      bulusma: '☕'
+    };
+    return icons[eventType] || '📅';
   };
 
   const handlePrevMonth = () => {
@@ -188,6 +208,7 @@ const AdminCalendar = () => {
       teacher_ids: [],
       branch_ids: [],
       event_time: '',
+      video_name: '',
       title: '',
       status: 'cekilecek',
       notes: ''
@@ -204,6 +225,7 @@ const AdminCalendar = () => {
       teacher_ids: event.teacher_ids || [],
       branch_ids: event.branch_ids || [],
       event_time: event.event_time || '',
+      video_name: event.video_name || '',
       title: event.title || '',
       status: event.status || 'cekilecek',
       notes: event.notes || ''
@@ -222,12 +244,19 @@ const AdminCalendar = () => {
     }
 
     try {
+      // Yerel tarih formatı kullan
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
       const payload = {
-        event_date: selectedDate.toISOString().split('T')[0],
+        event_date: dateStr,
         event_type: eventForm.event_type,
         teacher_ids: eventForm.teacher_ids,
         branch_ids: eventForm.branch_ids,
         event_time: (eventForm.event_type === 'kamp' || eventForm.event_type === 'canli_yayin') ? eventForm.event_time : null,
+        video_name: eventForm.event_type === 'video_paylasimi' ? eventForm.video_name : null,
         title: eventForm.title || null,
         status: eventForm.event_type === 'video_paylasimi' ? eventForm.status : null,
         notes: eventForm.notes || null
@@ -323,23 +352,38 @@ const AdminCalendar = () => {
         {/* Legend */}
         <div className="flex flex-wrap gap-4 mb-4 bg-white rounded-lg p-3 shadow-sm text-sm">
           <div className="flex items-center gap-2">
+            <span>🏕️</span>
             <div className="w-4 h-4 rounded bg-purple-500" />
-            <span>Kamp / Canlı Yayın</span>
+            <span>Kamp</span>
           </div>
           <div className="flex items-center gap-2">
+            <span>📡</span>
+            <div className="w-4 h-4 rounded bg-purple-500" />
+            <span>Canlı Yayın</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span>🎬</span>
             <div className="w-4 h-4 rounded bg-yellow-400" />
-            <span>Video Çekimi / Buluşma</span>
+            <span>Video Çekimi</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span>☕</span>
+            <div className="w-4 h-4 rounded bg-pink-400" />
+            <span>Buluşma</span>
+          </div>
+          <div className="border-l pl-4 flex items-center gap-2">
+            <span>📺 Video Paylaşımı:</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded bg-white border-2 border-slate-300" />
             <span>Çekilecek</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-yellow-200" />
+            <div className="w-4 h-4 rounded bg-orange-200" />
             <span>Çekildi</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-green-200" />
+            <div className="w-4 h-4 rounded bg-blue-200" />
             <span>Düzenlendi</span>
           </div>
           <div className="flex items-center gap-2">
@@ -388,10 +432,17 @@ const AdminCalendar = () => {
                         {event.event_type === 'video_paylasimi' && event.teacher_colors?.length > 0 && (
                           renderMultiColorStripe(event.teacher_colors)
                         )}
-                        <span className="relative z-10">
-                          {event.event_time && <span className="font-medium">{event.event_time} </span>}
-                          {event.teacher_names?.[0]?.split(' ')[0] || ''}
-                          {event.teacher_names?.length > 1 && ` +${event.teacher_names.length - 1}`}
+                        <span className="relative z-10 flex items-center gap-1">
+                          <span>{getEventIcon(event.event_type)}</span>
+                          {event.event_time && <span className="font-medium">{event.event_time}</span>}
+                          {event.event_type === 'video_paylasimi' && event.video_name ? (
+                            <span className="truncate">{event.video_name}</span>
+                          ) : (
+                            <>
+                              {event.teacher_names?.[0]?.split(' ')[0] || ''}
+                              {event.teacher_names?.length > 1 && ` +${event.teacher_names.length - 1}`}
+                            </>
+                          )}
                         </span>
                       </div>
                     ))}
@@ -453,6 +504,18 @@ const AdminCalendar = () => {
                     type="time"
                     value={eventForm.event_time}
                     onChange={(e) => setEventForm(prev => ({ ...prev, event_time: e.target.value }))}
+                  />
+                </div>
+              )}
+
+              {/* Video Name for Video Paylaşımı */}
+              {eventForm.event_type === 'video_paylasimi' && (
+                <div>
+                  <Label>Video Adı</Label>
+                  <Input
+                    value={eventForm.video_name}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, video_name: e.target.value }))}
+                    placeholder="Örn: Denklemler Konu Anlatımı"
                   />
                 </div>
               )}

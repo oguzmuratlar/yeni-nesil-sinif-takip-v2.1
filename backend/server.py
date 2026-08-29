@@ -816,6 +816,7 @@ class CalendarEvent(BaseModel):
     event_type: str  # video_cekimi, video_paylasimi, kamp, canli_yayin, bulusma
     teacher_ids: List[str] = []  # Hoca ID'leri (video_paylasimi için birden fazla olabilir)
     branch_ids: List[str] = []  # Branş ID'leri (video_paylasimi için)
+    video_name: Optional[str] = None  # Video Paylaşımı için video adı
     title: Optional[str] = None  # Özel başlık
     status: str = "cekilecek"  # video_paylasimi için: cekilecek, cekildi, duzenlendi, planlandi
     notes: Optional[str] = None
@@ -829,6 +830,7 @@ class CalendarEventCreate(BaseModel):
     event_type: str
     teacher_ids: List[str] = []
     branch_ids: List[str] = []
+    video_name: Optional[str] = None
     title: Optional[str] = None
     status: Optional[str] = "cekilecek"
     notes: Optional[str] = None
@@ -839,6 +841,7 @@ class CalendarEventUpdate(BaseModel):
     event_type: Optional[str] = None
     teacher_ids: Optional[List[str]] = None
     branch_ids: Optional[List[str]] = None
+    video_name: Optional[str] = None
     title: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
@@ -9603,6 +9606,7 @@ async def create_calendar_event(
         event_type=event_data.event_type,
         teacher_ids=event_data.teacher_ids,
         branch_ids=event_data.branch_ids,
+        video_name=event_data.video_name,
         title=event_data.title,
         status=event_data.status or "cekilecek",
         notes=event_data.notes,
