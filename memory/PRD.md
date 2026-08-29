@@ -7,6 +7,47 @@
 
 ## Son Güncelleme: 29 Ağustos 2026
 
+### YENİ ÖZELLİK: Takvim Sistemi ✅ (29 Ağustos 2026)
+
+Kapsamlı takvim özelliği eklendi - Admin etkinlik yönetimi ve öğretmen takvim görünümü.
+
+#### Admin Takvim (Tam Yetki)
+- Sol menüde "Takvim" bağlantısı
+- Ay görünümü, aylar arası geçiş
+- Güne tıklayarak etkinlik ekleme
+- Etkinlik tipleri:
+  - **Kamp** / **Canlı Yayın**: Mor renk, saat girişi gerekli
+  - **Video Çekimi** / **Buluşma**: Sarı renk
+  - **Video Paylaşımı**: Öğretmen rengi, statü renkleri (çekilecek/çekildi/düzenlendi/planlandı)
+- Öğretmen seçimi (renkli gösterim)
+- Video paylaşımında birden fazla öğretmen seçilebilir (ortak paylaşım)
+- Etkinlik düzenleme ve silme
+- Tarih değiştirme
+
+#### Öğretmen Takvim (Salt Okunur)
+- Dashboard'da "Takvim" barı (Planlama Ustası altında)
+- Sıradaki etkinlik gösterimi: "5 Eylül - Kamp"
+- Bara tıklayınca takvim dialog'u açılır
+- Sadece kendi etkinliklerini görür (Kamp, Canlı Yayın, Video Çekimi, Buluşma)
+- Video Paylaşımı görünmez
+- Ekleme/düzenleme/silme yapamaz
+
+#### Renk Kuralları
+- Kamp/Canlı Yayın: Mor (#8b5cf6)
+- Video Çekimi/Buluşma: Sarı (#facc15)
+- Video Paylaşımı statü renkleri:
+  - Çekilecek: Beyaz border
+  - Çekildi: Sarı arka plan
+  - Düzenlendi: Açık yeşil
+  - Planlandı: Yeşil
+- Öğretmen renkleri: Sistem tarafından otomatik atanır
+
+#### Veritabanı
+- `calendar_events` koleksiyonu
+- `teachers.color` field'ı (otomatik atanan)
+
+---
+
 ### YENİ ÖZELLİK: Kitap Sıralama ve Admin Grup Arama ✅ (29 Ağustos 2026)
 
 **1. Öğrenci Kitap Sıralama**

@@ -43,6 +43,7 @@ import AdminHomeworkContent from "./pages/admin/AdminHomeworkContent";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminYearEndPreview from "./pages/admin/AdminYearEndPreview";
 import AdminLessonLinks from "./pages/admin/AdminLessonLinks";
+import AdminCalendar from "./pages/admin/AdminCalendar";
 
 // Teacher Pages
 import TeacherStudents from "./pages/teacher/TeacherStudents";
@@ -291,6 +292,11 @@ function App() {
             <Route path="/admin/lesson-links" element={
               <ProtectedRoute requiredRole="admin">
                 <AdminLessonLinks />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/calendar" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminCalendar />
               </ProtectedRoute>
             } />
 

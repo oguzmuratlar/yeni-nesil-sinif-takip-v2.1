@@ -6,12 +6,14 @@ import apiClient from '../../api/axios';
 import { Users, Wallet, ArrowRight, Calendar, Tent, Youtube, AlertTriangle, X, BookOpen } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import PlanningMasterCard from './PlanningMasterCard';
+import { TeacherCalendarBar, TeacherCalendarDialog } from '../../components/TeacherCalendar';
 
 const TeacherDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [planningWarning, setPlanningWarning] = useState(null);
   const [showWarning, setShowWarning] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   useEffect(() => {
     if (user?.teacher_id) {
@@ -168,9 +170,17 @@ const TeacherDashboard = () => {
         </div>
 
         {/* Planning Master Card - Minimal */}
-        <div className="mb-6 lg:mb-8">
+        <div className="mb-4 lg:mb-6">
           <PlanningMasterCard />
         </div>
+
+        {/* Calendar Bar */}
+        <div className="mb-6 lg:mb-8">
+          <TeacherCalendarBar onOpenCalendar={() => setShowCalendar(true)} />
+        </div>
+
+        {/* Calendar Dialog */}
+        <TeacherCalendarDialog open={showCalendar} onClose={() => setShowCalendar(false)} />
 
         {/* Cards Grid - Mobile optimized */}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-6 mb-6 lg:mb-8">

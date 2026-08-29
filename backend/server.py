@@ -805,6 +805,52 @@ class DailyNoteCreate(BaseModel):
     note_date: str
     note: str
 
+# ============= CALENDAR EVENT MODELS =============
+
+class CalendarEvent(BaseModel):
+    """Takvim etkinliği"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    event_date: str  # YYYY-MM-DD
+    event_time: Optional[str] = None  # HH:MM (Kamp/Canlı yayın için)
+    event_type: str  # video_cekimi, video_paylasimi, kamp, canli_yayin, bulusma
+    teacher_ids: List[str] = []  # Hoca ID'leri (video_paylasimi için birden fazla olabilir)
+    branch_ids: List[str] = []  # Branş ID'leri (video_paylasimi için)
+    title: Optional[str] = None  # Özel başlık
+    status: str = "cekilecek"  # video_paylasimi için: cekilecek, cekildi, duzenlendi, planlandi
+    notes: Optional[str] = None
+    created_by: str  # Admin user ID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CalendarEventCreate(BaseModel):
+    event_date: str
+    event_time: Optional[str] = None
+    event_type: str
+    teacher_ids: List[str] = []
+    branch_ids: List[str] = []
+    title: Optional[str] = None
+    status: Optional[str] = "cekilecek"
+    notes: Optional[str] = None
+
+class CalendarEventUpdate(BaseModel):
+    event_date: Optional[str] = None
+    event_time: Optional[str] = None
+    event_type: Optional[str] = None
+    teacher_ids: Optional[List[str]] = None
+    branch_ids: Optional[List[str]] = None
+    title: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+# Öğretmen renkleri - sistem tarafından atanacak
+TEACHER_COLORS = [
+    "#E91E63", "#9C27B0", "#673AB7", "#3F51B5", "#2196F3",
+    "#00BCD4", "#009688", "#4CAF50", "#8BC34A", "#CDDC39",
+    "#FFC107", "#FF9800", "#FF5722", "#795548", "#607D8B",
+    "#F44336", "#E040FB", "#7C4DFF", "#448AFF", "#18FFFF"
+]
+
 # ============= AUTH HELPERS =============
 
 def verify_password(plain_password, hashed_password):
@@ -9459,6 +9505,195 @@ async def start_lesson(data: StartLessonRequest, current_user: User = Depends(ge
                 }
     
     raise HTTPException(status_code=400, detail="Geçersiz mod veya seçim tipi")
+
+# ============= CALENDAR ENDPOINTS =============
+
+@api_router.get("/calendar/events")
+async def get_calendar_events(
+    year: int,
+    month: int,
+    current_user: User = Depends(get_current_user)
+):
+    """Takvim etkinliklerini getir"""
+    # Ay başı ve sonu
+    start_date = f"{year}-{month:02d}-01"
+    if month == 12:
+        end_date = f"{year + 1}-01-01"
+    else:
+        end_date = f"{year}-{month + 1:02d}-01"
+    
+    query = {
+        "event_date": {"$gte": start_date, "$lt": end_date}
+    }
+    
+    # Öğretmen ise sadece kendi etkinliklerini görsün (video_paylasimi hariç)
+    if current_user.user_type == "teacher":
+        query["$and"] = [
+            {"teacher_ids": current_user.teacher_id},
+            {"event_type": {"$ne": "video_paylasimi"}}
+        ]
+    
+    events = await db.calendar_events.find(query, {"_id": 0}).to_list(500)
+    
+    # Öğretmen bilgilerini ekle
+    teacher_cache = {}
+    for event in events:
+        teacher_names = []
+        teacher_colors = []
+        for tid in event.get("teacher_ids", []):
+            if tid not in teacher_cache:
+                teacher = await db.teachers.find_one({"id": tid}, {"_id": 0, "name": 1, "color": 1})
+                teacher_cache[tid] = teacher
+            t = teacher_cache.get(tid)
+            if t:
+                teacher_names.append(t.get("name", "Bilinmiyor"))
+                teacher_colors.append(t.get("color", "#6366f1"))
+        event["teacher_names"] = teacher_names
+        event["teacher_colors"] = teacher_colors
+    
+    return events
+
+@api_router.get("/calendar/events/upcoming")
+async def get_upcoming_event(current_user: User = Depends(get_current_user)):
+    """Öğretmenin sıradaki etkinliğini getir"""
+    if current_user.user_type != "teacher":
+        return None
+    
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    event = await db.calendar_events.find_one(
+        {
+            "teacher_ids": current_user.teacher_id,
+            "event_type": {"$ne": "video_paylasimi"},
+            "event_date": {"$gte": today}
+        },
+        {"_id": 0},
+        sort=[("event_date", 1), ("event_time", 1)]
+    )
+    
+    if event:
+        # Tarih formatla
+        date_obj = datetime.strptime(event["event_date"], "%Y-%m-%d")
+        months_tr = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+                     "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+        event["formatted_date"] = f"{date_obj.day} {months_tr[date_obj.month - 1]}"
+        
+        event_names = {
+            "video_cekimi": "Video Çekimi",
+            "kamp": "Kamp",
+            "canli_yayin": "Canlı Yayın",
+            "bulusma": "Buluşma"
+        }
+        event["display_name"] = event_names.get(event["event_type"], event["event_type"])
+    
+    return event
+
+@api_router.post("/calendar/events")
+async def create_calendar_event(
+    event_data: CalendarEventCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Yeni takvim etkinliği oluştur (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin etkinlik oluşturabilir")
+    
+    event = CalendarEvent(
+        event_date=event_data.event_date,
+        event_time=event_data.event_time,
+        event_type=event_data.event_type,
+        teacher_ids=event_data.teacher_ids,
+        branch_ids=event_data.branch_ids,
+        title=event_data.title,
+        status=event_data.status or "cekilecek",
+        notes=event_data.notes,
+        created_by=current_user.id
+    )
+    
+    await db.calendar_events.insert_one(event.model_dump())
+    
+    return {"message": "Etkinlik oluşturuldu", "event_id": event.id}
+
+@api_router.put("/calendar/events/{event_id}")
+async def update_calendar_event(
+    event_id: str,
+    event_data: CalendarEventUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Takvim etkinliğini güncelle (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin etkinlik güncelleyebilir")
+    
+    update_dict = {k: v for k, v in event_data.model_dump().items() if v is not None}
+    update_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    result = await db.calendar_events.update_one(
+        {"id": event_id},
+        {"$set": update_dict}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Etkinlik bulunamadı")
+    
+    return {"message": "Etkinlik güncellendi"}
+
+@api_router.delete("/calendar/events/{event_id}")
+async def delete_calendar_event(
+    event_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Takvim etkinliğini sil (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin etkinlik silebilir")
+    
+    result = await db.calendar_events.delete_one({"id": event_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Etkinlik bulunamadı")
+    
+    return {"message": "Etkinlik silindi"}
+
+@api_router.put("/teachers/{teacher_id}/color")
+async def update_teacher_color(
+    teacher_id: str,
+    color_data: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Öğretmen rengini güncelle"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin öğretmen rengini güncelleyebilir")
+    
+    color = color_data.get("color")
+    if not color:
+        raise HTTPException(status_code=400, detail="Renk belirtilmedi")
+    
+    await db.teachers.update_one(
+        {"id": teacher_id},
+        {"$set": {"color": color}}
+    )
+    
+    return {"message": "Öğretmen rengi güncellendi"}
+
+@api_router.get("/calendar/teachers-colors")
+async def get_teachers_with_colors(current_user: User = Depends(get_current_user)):
+    """Tüm öğretmenleri renkleriyle birlikte getir"""
+    teachers = await db.teachers.find(
+        {"status": {"$ne": "inactive"}},
+        {"_id": 0, "id": 1, "name": 1, "color": 1}
+    ).to_list(100)
+    
+    # Rengi olmayan öğretmenlere otomatik renk ata
+    color_index = 0
+    for teacher in teachers:
+        if not teacher.get("color"):
+            teacher["color"] = TEACHER_COLORS[color_index % len(TEACHER_COLORS)]
+            # Veritabanına kaydet
+            await db.teachers.update_one(
+                {"id": teacher["id"]},
+                {"$set": {"color": teacher["color"]}}
+            )
+            color_index += 1
+    
+    return teachers
 
 # ============= INCLUDE ROUTER =============
 

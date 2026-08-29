@@ -84,6 +84,7 @@ const AdminLayout = ({ children }) => {
           { path: '/admin/students', label: 'Öğrenciler', icon: Users },
           { path: '/admin/teachers', label: 'Öğretmenler', icon: GraduationCap },
           { path: '/admin/lesson-links', label: 'Ders Linkleri', icon: Link2 },
+          { path: '/admin/calendar', label: 'Takvim', icon: Calendar },
           { path: '/admin/groups', label: 'Gruplar', icon: UsersRound },
           { path: '/admin/camps', label: 'Kamplar', icon: Tent },
           { path: '/admin/youtube', label: 'YouTube', icon: Youtube },
