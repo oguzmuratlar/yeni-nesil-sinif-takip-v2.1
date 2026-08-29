@@ -7,6 +7,24 @@
 
 ## Son Güncelleme: 19 Ağustos 2026
 
+### BUG FIX: İçerik Yönetimi Sıralama Sorunu ✅ (19 Ağustos 2026)
+
+Öğretmen ve Admin panellerindeki İçerik Yönetimi ekranında ünite, konu veya test adı güncellendiğinde öğenin listenin en başına atması sorunu düzeltildi.
+
+#### Sorun
+- Ünite/konu/test adı değiştirildiğinde `order` değeri 0 olarak güncelleniyordu
+- Backend sıralamayı `order` field'ına göre yaptığı için öğe listenin en üstüne çıkıyordu
+
+#### Çözüm
+Backend endpoint'lerinde (`PUT /api/homework/units/{id}`, `PUT /api/homework/topics/{id}`, `PUT /api/homework/tests/{id}`) `order` değeri gönderilmediğinde veya 0 olduğunda mevcut değerin korunması sağlandı.
+
+#### Test Sonuçları
+- Ünite güncelleme: Sıralama korunuyor ✅
+- Konu güncelleme: Sıralama korunuyor ✅
+- Test güncelleme: Sıralama korunuyor ✅
+
+---
+
 ### BUG FIX: Manuel Ders Ekleme Double-Click Koruması ✅ (19 Ağustos 2026)
 
 Öğretmen panelinden manuel ders ekleme formlarında çift tıklama sorunu düzeltildi.

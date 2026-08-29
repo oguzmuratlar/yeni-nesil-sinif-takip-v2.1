@@ -6117,9 +6117,12 @@ async def update_unit(unit_id: str, unit_data: BookUnitCreate, current_user: Use
     if not existing:
         raise HTTPException(status_code=404, detail="Ünite bulunamadı")
     
+    # Order değeri gönderilmemişse (0 veya None) mevcut değeri koru
+    new_order = unit_data.order if unit_data.order and unit_data.order > 0 else existing.get("order", 1)
+    
     await db.book_units.update_one({"id": unit_id}, {"$set": {
         "name": unit_data.name,
-        "order": unit_data.order,
+        "order": new_order,
         "color": unit_data.color
     }})
     return {"message": "Ünite güncellendi"}
@@ -6194,9 +6197,16 @@ async def create_topic(topic_data: BookTopicCreate, current_user: User = Depends
 @api_router.put("/homework/topics/{topic_id}")
 async def update_topic(topic_id: str, topic_data: BookTopicCreate, current_user: User = Depends(get_current_user)):
     """Konu güncelle"""
+    existing = await db.book_topics.find_one({"id": topic_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Konu bulunamadı")
+    
+    # Order değeri gönderilmemişse (0 veya None) mevcut değeri koru
+    new_order = topic_data.order if topic_data.order and topic_data.order > 0 else existing.get("order", 1)
+    
     await db.book_topics.update_one({"id": topic_id}, {"$set": {
         "name": topic_data.name,
-        "order": topic_data.order,
+        "order": new_order,
         "total_questions": topic_data.total_questions
     }})
     return {"message": "Konu güncellendi"}
@@ -6246,12 +6256,19 @@ async def create_test(test_data: BookTestCreate, current_user: User = Depends(ge
 @api_router.put("/homework/tests/{test_id}")
 async def update_test(test_id: str, test_data: BookTestCreate, current_user: User = Depends(get_current_user)):
     """Test güncelle"""
+    existing = await db.book_tests.find_one({"id": test_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Test bulunamadı")
+    
+    # Order değeri gönderilmemişse (0 veya None) mevcut değeri koru
+    new_order = test_data.order if test_data.order and test_data.order > 0 else existing.get("order", 1)
+    
     await db.book_tests.update_one({"id": test_id}, {"$set": {
         "name": test_data.name,
         "question_count": test_data.question_count,
         "difficulty": test_data.difficulty,
         "test_type": test_data.test_type,
-        "order": test_data.order
+        "order": new_order
     }})
     return {"message": "Test güncellendi"}
 
