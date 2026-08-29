@@ -2,7 +2,7 @@
 
 ## Admin Account
 - **Username**: `admin`
-- **Password**: `test123`
+- **Password**: `admin123`
 - **User Type**: admin
 
 ## Teacher Accounts
@@ -24,7 +24,11 @@
 - **Teacher ID**: a9199ba8-ac4a-45d9-b766-8268c530507c
 - **Branch**: Matematik
 
-**Not**: buse.ozakdas için kullanıcı hesabı oluşturulmamış durumda.
+- **Username**: `buse.ozakdas`
+- **Password**: `bozakdas.1`
+- **User Type**: teacher
+- **Teacher ID**: 2c2ca5bd-05c2-411a-ae5a-9db4713d8e4c
+- **Branch**: Fen Bilimleri
 
 ---
 
@@ -48,4 +52,4 @@
 - `ab12a2cc-91ba-4d8b-96e9-846bbb3252a8` (Grup)
 
 ---
-Last Updated: 7 Ağustos 2026
+Last Updated: 29 Ağustos 2026
