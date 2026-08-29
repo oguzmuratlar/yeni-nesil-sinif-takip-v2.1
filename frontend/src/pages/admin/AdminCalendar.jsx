@@ -40,6 +40,11 @@ const AdminCalendar = () => {
   const [selectedDate, setSelectedDate] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
   
+  // Filter states
+  const [filterTeacher, setFilterTeacher] = useState('all');
+  const [filterEventType, setFilterEventType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  
   // Color picker state
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [colorPickerTarget, setColorPickerTarget] = useState(null); // {type: 'event_type', key: 'kamp'} or {type: 'teacher', id: '...'}
@@ -170,14 +175,57 @@ const AdminCalendar = () => {
     return days;
   };
 
+  // Filtreleme fonksiyonu
+  const filterEvents = (eventList) => {
+    return eventList.filter(event => {
+      // Hoca filtresi
+      if (filterTeacher !== 'all') {
+        if (!event.teacher_ids?.includes(filterTeacher)) {
+          return false;
+        }
+      }
+      
+      // Etkinlik tipi filtresi
+      if (filterEventType !== 'all') {
+        if (event.event_type !== filterEventType) {
+          return false;
+        }
+      }
+      
+      // Video statüsü filtresi (sadece video_paylasimi için geçerli)
+      if (filterStatus !== 'all') {
+        // Video paylaşımı değilse ve statü filtresi seçiliyse, gösterme
+        if (event.event_type !== 'video_paylasimi') {
+          return false;
+        }
+        if (event.status !== filterStatus) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  };
+
   const getEventsForDate = (date) => {
     // Yerel tarih formatı kullan (UTC sorununu önlemek için)
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     const dateStr = `${year}-${month}-${day}`;
-    return events.filter(e => e.event_date === dateStr);
+    const dateEvents = events.filter(e => e.event_date === dateStr);
+    return filterEvents(dateEvents);
   };
+
+  // Filtreleri temizle
+  const clearFilters = () => {
+    setFilterTeacher('all');
+    setFilterEventType('all');
+    setFilterStatus('all');
+  };
+
+  // Aktif filtre sayısı
+  const activeFilterCount = [filterTeacher, filterEventType, filterStatus].filter(f => f !== 'all').length;
 
   // Dinamik etkinlik rengi (eventTypeColors state'inden)
   const getEventTypeColor = (eventType) => {
@@ -406,7 +454,7 @@ const AdminCalendar = () => {
         </div>
 
         {/* Month Navigation */}
-        <div className="flex items-center justify-between mb-6 bg-white rounded-lg p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-4 bg-white rounded-lg p-4 shadow-sm">
           <Button variant="outline" onClick={handlePrevMonth}>
             <ChevronLeft className="w-5 h-5" />
           </Button>
@@ -416,6 +464,95 @@ const AdminCalendar = () => {
           <Button variant="outline" onClick={handleNextMonth}>
             <ChevronRight className="w-5 h-5" />
           </Button>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white rounded-lg p-4 shadow-sm mb-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium text-slate-700 whitespace-nowrap">Filtreler:</Label>
+            </div>
+            
+            {/* Teacher Filter */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-slate-500">Hoca:</Label>
+              <Select value={filterTeacher} onValueChange={setFilterTeacher}>
+                <SelectTrigger className="w-[150px] h-8 text-sm">
+                  <SelectValue placeholder="Tümü" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tümü</SelectItem>
+                  {teachers.map(teacher => (
+                    <SelectItem key={teacher.id} value={teacher.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: teacher.color }} />
+                        {teacher.name.split(' ')[0]}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Event Type Filter */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-slate-500">Etkinlik:</Label>
+              <Select value={filterEventType} onValueChange={setFilterEventType}>
+                <SelectTrigger className="w-[150px] h-8 text-sm">
+                  <SelectValue placeholder="Tümü" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tümü</SelectItem>
+                  {EVENT_TYPES.map(type => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Status Filter */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs text-slate-500">V. Statüsü:</Label>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[130px] h-8 text-sm">
+                  <SelectValue placeholder="Tümü" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tümü</SelectItem>
+                  {STATUS_OPTIONS.map(status => (
+                    <SelectItem key={status.value} value={status.value}>
+                      <div className="flex items-center gap-1">
+                        <span>{status.shortLabel}</span>
+                        {status.label}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Clear Filters */}
+            {activeFilterCount > 0 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={clearFilters}
+                className="h-8 text-xs text-slate-500 hover:text-slate-700"
+              >
+                <X className="w-3 h-3 mr-1" />
+                Temizle ({activeFilterCount})
+              </Button>
+            )}
+          </div>
+          
+          {/* Active filter indicator */}
+          {activeFilterCount > 0 && (
+            <div className="mt-2 text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded inline-block">
+              {activeFilterCount} filtre aktif - Sonuçlar "VE" mantığıyla filtreleniyor
+            </div>
+          )}
         </div>
 
         {/* Legend - Kompakt Versiyon + Renk Seçici */}

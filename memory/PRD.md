@@ -7,6 +7,21 @@
 
 ## Son Güncelleme: 29 Ağustos 2026
 
+### GÜNCELLEME: Admin Takvim Filtreleme ✅ (29 Ağustos 2026)
+
+**Filtre Özellikleri:**
+- Hoca adına göre filtreleme (dropdown ile seçim)
+- Etkinlik tipine göre filtreleme (Video Çekimi, Kamp, Canlı Yayın, Buluşma, Video Paylaşımı)
+- Video statüsüne göre filtreleme (Çekilecek, Çekildi, Düzenlendi, Planlandı)
+- Filtreler "VE" mantığıyla çalışır (tüm koşullar sağlanmalı)
+- Aktif filtre sayısı gösterimi
+- "Temizle" butonu ile tüm filtreleri sıfırlama
+- Filtre seçildiğinde bilgi mesajı: "X filtre aktif - Sonuçlar "VE" mantığıyla filtreleniyor"
+
+**Not:** Video statüsü filtresi seçildiğinde sadece Video Paylaşımı etkinlikleri gösterilir (diğer etkinlik tiplerinde statü olmadığı için).
+
+---
+
 ### GÜNCELLEME: Etkinlik Renk Özelleştirme ✅ (29 Ağustos 2026)
 
 **Renk Seçici Özelliği:**
