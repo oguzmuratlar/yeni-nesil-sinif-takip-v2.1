@@ -9628,14 +9628,24 @@ async def create_calendar_event(
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Sadece admin etkinlik oluşturabilir")
     
+    # Buluşma etkinliği için özel mantık: tüm aktif hocaları otomatik ata, başlık "Buluşma" olsun
+    teacher_ids = event_data.teacher_ids
+    title = event_data.title
+    
+    if event_data.event_type == "bulusma":
+        # Tüm aktif öğretmenleri al
+        all_teachers = await db.users.find({"user_type": "teacher", "is_active": True}, {"_id": 0, "id": 1}).to_list(None)
+        teacher_ids = [t["id"] for t in all_teachers]
+        title = "Buluşma"  # Sabit başlık
+    
     event = CalendarEvent(
         event_date=event_data.event_date,
         event_time=event_data.event_time,
         event_type=event_data.event_type,
-        teacher_ids=event_data.teacher_ids,
+        teacher_ids=teacher_ids,
         branch_ids=event_data.branch_ids,
         video_name=event_data.video_name,
-        title=event_data.title,
+        title=title,
         status=event_data.status or "cekilecek",
         notes=event_data.notes,
         created_by=current_user.id
@@ -9656,6 +9666,13 @@ async def update_calendar_event(
         raise HTTPException(status_code=403, detail="Sadece admin etkinlik güncelleyebilir")
     
     update_dict = {k: v for k, v in event_data.model_dump().items() if v is not None}
+    
+    # Buluşma etkinliği için özel mantık: tüm aktif hocaları otomatik ata, başlık "Buluşma" olsun
+    if event_data.event_type == "bulusma":
+        all_teachers = await db.users.find({"user_type": "teacher", "is_active": True}, {"_id": 0, "id": 1}).to_list(None)
+        update_dict["teacher_ids"] = [t["id"] for t in all_teachers]
+        update_dict["title"] = "Buluşma"
+    
     update_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     result = await db.calendar_events.update_one(

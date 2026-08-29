@@ -22,10 +22,10 @@ const EVENT_TYPES = [
 ];
 
 const STATUS_OPTIONS = [
-  { value: 'cekilecek', label: 'Çekilecek', color: 'bg-white border-2 border-slate-300', textColor: 'text-slate-600' },
-  { value: 'cekildi', label: 'Çekildi', color: 'bg-orange-200', textColor: 'text-orange-800' },
-  { value: 'duzenlendi', label: 'Düzenlendi', color: 'bg-blue-200', textColor: 'text-blue-800' },
-  { value: 'planlandi', label: 'Planlandı', color: 'bg-green-500 text-white', textColor: 'text-white' },
+  { value: 'cekilecek', label: 'Çekilecek', color: 'bg-white border-2 border-slate-300', textColor: 'text-slate-600', shortLabel: '⏳', bgColor: '#e2e8f0' },
+  { value: 'cekildi', label: 'Çekildi', color: 'bg-orange-200', textColor: 'text-orange-800', shortLabel: '🎬', bgColor: '#fed7aa' },
+  { value: 'duzenlendi', label: 'Düzenlendi', color: 'bg-blue-200', textColor: 'text-blue-800', shortLabel: '✂️', bgColor: '#93c5fd' },
+  { value: 'planlandi', label: 'Planlandı', color: 'bg-green-500 text-white', textColor: 'text-white', shortLabel: '✓', bgColor: '#22c55e' },
 ];
 
 const AdminCalendar = () => {
@@ -174,6 +174,16 @@ const AdminCalendar = () => {
     return 'bg-slate-200';
   };
 
+  const getStatusInfo = (status) => {
+    const statusMap = {
+      'cekilecek': { label: '⏳', title: 'Çekilecek', color: '#e2e8f0' },
+      'cekildi': { label: '🎬', title: 'Çekildi', color: '#fed7aa' },
+      'duzenlendi': { label: '✂️', title: 'Düzenlendi', color: '#93c5fd' },
+      'planlandi': { label: '✓', title: 'Planlandı', color: '#22c55e' }
+    };
+    return statusMap[status] || statusMap['cekilecek'];
+  };
+
   const getStatusColor = (status) => {
     const statusColors = {
       'cekilecek': '#e2e8f0', // slate-200
@@ -242,7 +252,8 @@ const AdminCalendar = () => {
       toast.error('Etkinlik tipi seçiniz');
       return;
     }
-    if (eventForm.teacher_ids.length === 0) {
+    // Buluşma için hoca seçimi gerekmez (backend otomatik atayacak)
+    if (eventForm.event_type !== 'bulusma' && eventForm.teacher_ids.length === 0) {
       toast.error('En az bir öğretmen seçiniz');
       return;
     }
@@ -353,59 +364,62 @@ const AdminCalendar = () => {
           </Button>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-4 mb-4 bg-white rounded-lg p-3 shadow-sm text-sm">
-          <div className="flex items-center gap-2">
-            <span>🏕️</span>
-            <div className="w-4 h-4 rounded bg-purple-500" />
-            <span>Kamp</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span>📡</span>
-            <div className="w-4 h-4 rounded bg-purple-500" />
-            <span>Canlı Yayın</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span>🎬</span>
-            <div className="w-4 h-4 rounded bg-yellow-400" />
-            <span>Video Çekimi</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span>☕</span>
-            <div className="w-4 h-4 rounded bg-pink-400" />
-            <span>Buluşma</span>
-          </div>
-          <div className="border-l pl-4 flex items-center gap-2">
-            <span>📺 Video Paylaşımı (Hoca %80 + Statü %20):</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-4 rounded overflow-hidden flex">
-              <div className="w-4/5 bg-purple-500" />
-              <div className="w-1/5 bg-slate-200" />
+        {/* Legend - Kompakt Versiyon */}
+        <div className="bg-white rounded-lg p-3 shadow-sm mb-4">
+          {/* Etkinlik Tipleri - İlk Satır */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mb-2">
+            <span className="font-semibold text-slate-700">Etkinlikler:</span>
+            <div className="flex items-center gap-1">
+              <span>🎬</span>
+              <div className="w-3 h-3 rounded bg-yellow-400" />
+              <span>Video Çekimi</span>
             </div>
-            <span>Çekilecek</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-4 rounded overflow-hidden flex">
-              <div className="w-4/5 bg-purple-500" />
-              <div className="w-1/5 bg-orange-200" />
+            <div className="flex items-center gap-1">
+              <span>📺</span>
+              <span className="text-slate-500">(Hoca Rengi)</span>
+              <span>V. Paylaşımı</span>
             </div>
-            <span>Çekildi</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-4 rounded overflow-hidden flex">
-              <div className="w-4/5 bg-purple-500" />
-              <div className="w-1/5 bg-blue-300" />
+            <div className="flex items-center gap-1">
+              <span>🏕️</span>
+              <div className="w-3 h-3 rounded bg-purple-500" />
+              <span>Kamp</span>
             </div>
-            <span>Düzenlendi</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-4 rounded overflow-hidden flex">
-              <div className="w-4/5 bg-purple-500" />
-              <div className="w-1/5 bg-green-500" />
+            <div className="flex items-center gap-1">
+              <span>📡</span>
+              <div className="w-3 h-3 rounded bg-purple-500" />
+              <span>Canlı Yayın</span>
             </div>
-            <span>Planlandı</span>
+            <div className="flex items-center gap-1">
+              <span>☕</span>
+              <div className="w-3 h-3 rounded bg-pink-400" />
+              <span>Buluşma</span>
+            </div>
           </div>
+          
+          {/* Statüler - İkinci Satır */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mb-2 border-t pt-2">
+            <span className="font-semibold text-slate-700">Video Statüleri:</span>
+            {STATUS_OPTIONS.map(s => (
+              <div key={s.value} className="flex items-center gap-1">
+                <span>{s.shortLabel}</span>
+                <div className="w-3 h-3 rounded" style={{ backgroundColor: s.bgColor }} />
+                <span>{s.label}</span>
+              </div>
+            ))}
+          </div>
+          
+          {/* Hoca Renkleri - Üçüncü Satır */}
+          {teachers.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs border-t pt-2">
+              <span className="font-semibold text-slate-700">Hocalar:</span>
+              {teachers.map(teacher => (
+                <div key={teacher.id} className="flex items-center gap-1">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: teacher.color }} />
+                  <span>{teacher.name.split(' ')[0]}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Calendar Grid */}
@@ -444,6 +458,7 @@ const AdminCalendar = () => {
                       const isVideoPaylasimi = event.event_type === 'video_paylasimi';
                       const teacherColor = event.teacher_colors?.[0] || '#6366f1';
                       const statusColor = getStatusColor(event.status);
+                      const statusInfo = getStatusInfo(event.status);
                       
                       // Birden fazla hoca varsa, hoca renklerini eşit böl (%80 içinde)
                       let gradientStyle = {};
@@ -464,32 +479,56 @@ const AdminCalendar = () => {
                         };
                       }
                       
+                      // Canlı Yayın ve Kamp için görüntüleme formatı: {Hoca Adı} - {Etkinlik Adı}
+                      const getDisplayText = () => {
+                        if (event.event_type === 'canli_yayin') {
+                          const teacherName = event.teacher_names?.[0]?.split(' ')[0] || '';
+                          const eventName = event.video_name || 'Canlı Yayın';
+                          return `${teacherName} - ${eventName}`;
+                        }
+                        if (event.event_type === 'kamp') {
+                          const teacherName = event.teacher_names?.[0]?.split(' ')[0] || '';
+                          const eventName = event.title || 'Kamp';
+                          return `${teacherName} - ${eventName}`;
+                        }
+                        if (event.event_type === 'bulusma') {
+                          return 'Buluşma';
+                        }
+                        if (event.event_type === 'video_paylasimi') {
+                          let parts = [];
+                          if (event.branch_abbrevs?.length > 0) {
+                            parts.push(event.branch_abbrevs.join('/'));
+                          }
+                          if (event.video_name) {
+                            parts.push(event.video_name);
+                          }
+                          return parts.join(' - ') || 'Video';
+                        }
+                        // Video Çekimi
+                        const teacherName = event.teacher_names?.[0]?.split(' ')[0] || '';
+                        return teacherName + (event.teacher_names?.length > 1 ? ` +${event.teacher_names.length - 1}` : '');
+                      };
+                      
                       return (
                         <div
                           key={event.id}
                           onClick={(e) => handleEventClick(event, e)}
                           className={`relative text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 ${getEventColor(event)}`}
                           style={isVideoPaylasimi ? gradientStyle : {}}
+                          title={`${EVENT_TYPES.find(t => t.value === event.event_type)?.label || ''} - ${event.teacher_names?.join(', ') || ''}`}
                         >
                           <span className="relative z-10 flex items-center gap-1">
                             <span>{getEventIcon(event.event_type)}</span>
                             {event.event_time && <span className="font-medium">{event.event_time}</span>}
-                            {event.event_type === 'video_paylasimi' ? (
-                              <span className="truncate">
-                                {event.branch_abbrevs?.length > 0 && (
-                                  <span className="font-semibold">{event.branch_abbrevs.join('/')}</span>
-                                )}
-                                {event.video_name && (
-                                  <span> - {event.video_name}</span>
-                                )}
+                            <span className="truncate">{getDisplayText()}</span>
+                            {/* Video paylaşımı için statü ikonu */}
+                            {isVideoPaylasimi && (
+                              <span 
+                                className="ml-auto shrink-0 text-[10px]" 
+                                title={statusInfo.title}
+                              >
+                                {statusInfo.label}
                               </span>
-                            ) : event.event_type === 'canli_yayin' && event.video_name ? (
-                              <span className="truncate">{event.video_name}</span>
-                            ) : (
-                              <>
-                                {event.teacher_names?.[0]?.split(' ')[0] || ''}
-                                {event.teacher_names?.length > 1 && ` +${event.teacher_names.length - 1}`}
-                              </>
                             )}
                           </span>
                         </div>
@@ -569,6 +608,18 @@ const AdminCalendar = () => {
                 </div>
               )}
 
+              {/* Name for Kamp */}
+              {eventForm.event_type === 'kamp' && (
+                <div>
+                  <Label>Kamp Adı</Label>
+                  <Input
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Örn: Soru Çözüm Kampı"
+                  />
+                </div>
+              )}
+
               {/* Video Name for Video Paylaşımı */}
               {eventForm.event_type === 'video_paylasimi' && (
                 <div>
@@ -581,29 +632,38 @@ const AdminCalendar = () => {
                 </div>
               )}
 
-              {/* Teachers */}
-              <div>
-                <Label>Öğretmen(ler)</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2 max-h-40 overflow-y-auto border rounded-lg p-2">
-                  {teachers.map(teacher => (
-                    <div
-                      key={teacher.id}
-                      onClick={() => toggleTeacher(teacher.id)}
-                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
-                        eventForm.teacher_ids.includes(teacher.id) 
-                          ? 'bg-purple-100 border-purple-300 border' 
-                          : 'bg-slate-50 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div 
-                        className="w-3 h-3 rounded-full shrink-0"
-                        style={{ backgroundColor: teacher.color }}
-                      />
-                      <span className="text-sm truncate">{teacher.name}</span>
-                    </div>
-                  ))}
+              {/* Buluşma için bilgi mesajı */}
+              {eventForm.event_type === 'bulusma' && (
+                <div className="bg-pink-50 border border-pink-200 rounded-lg p-3 text-sm text-pink-700">
+                  <span className="font-medium">☕ Buluşma</span> etkinliği tüm hocalara otomatik olarak atanacaktır.
                 </div>
-              </div>
+              )}
+
+              {/* Teachers - Buluşma hariç */}
+              {eventForm.event_type !== 'bulusma' && (
+                <div>
+                  <Label>Öğretmen(ler)</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-2 max-h-40 overflow-y-auto border rounded-lg p-2">
+                    {teachers.map(teacher => (
+                      <div
+                        key={teacher.id}
+                        onClick={() => toggleTeacher(teacher.id)}
+                        className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                          eventForm.teacher_ids.includes(teacher.id) 
+                            ? 'bg-purple-100 border-purple-300 border' 
+                            : 'bg-slate-50 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full shrink-0"
+                          style={{ backgroundColor: teacher.color }}
+                        />
+                        <span className="text-sm truncate">{teacher.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Branches for Video Paylaşımı */}
               {eventForm.event_type === 'video_paylasimi' && (

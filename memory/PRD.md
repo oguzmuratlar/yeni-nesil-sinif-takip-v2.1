@@ -7,6 +7,32 @@
 
 ## Son Güncelleme: 29 Ağustos 2026
 
+### GÜNCELLEME: Takvim UI ve Mantık İyileştirmeleri ✅ (29 Ağustos 2026)
+
+**1. Lejant Kompakt Hale Getirildi:**
+- Üç satırlı kompakt düzen
+- Satır 1: Etkinlik tipleri (Video Çekimi, V. Paylaşımı, Kamp, Canlı Yayın, Buluşma)
+- Satır 2: Video statüleri (⏳ Çekilecek, 🎬 Çekildi, ✂️ Düzenlendi, ✓ Planlandı)
+- Satır 3: Hoca renkleri (her hocanın renkli noktası ve adı)
+
+**2. Statü Görselleştirmesi İyileştirildi:**
+- Video paylaşımı kartlarına statü ikonu eklendi
+- ⏳ Çekilecek, 🎬 Çekildi, ✂️ Düzenlendi, ✓ Planlandı
+- Hover'da tam statü adı görünür
+
+**3. Buluşma Etkinliği Özel Mantığı:**
+- İsim otomatik "Buluşma" (değiştirilemez)
+- Hoca seçimi gizlendi
+- Backend'de tüm aktif hocalar otomatik atanır
+- Dialog'da bilgi mesajı: "Buluşma etkinliği tüm hocalara otomatik olarak atanacaktır"
+
+**4. Canlı Yayın ve Kamp Görüntüleme Formatı:**
+- Takvimde: `{Saat} {Hoca Adı} - {Etkinlik Adı}` formatında
+- Örnek: "20:00 Buse - Soru Çözümü" veya "14:00 İlknur - TYT Matematik"
+- Kamp için "Kamp Adı" input alanı eklendi
+
+---
+
 ### GÜNCELLEME: Takvim İyileştirmeleri ✅ (29 Ağustos 2026)
 
 **Video Adı Alanı:**

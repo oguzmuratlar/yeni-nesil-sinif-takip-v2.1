@@ -216,14 +216,34 @@ const TeacherCalendarDialog = ({ open, onClose }) => {
                     <div className="space-y-0.5">
                       {dayEvents.slice(0, 2).map(event => {
                         const typeInfo = EVENT_TYPE_LABELS[event.event_type] || {};
+                        
+                        // Canlı Yayın ve Kamp için {Hoca Adı} - {Etkinlik Adı} formatı
+                        const getDisplayText = () => {
+                          if (event.event_type === 'canli_yayin') {
+                            const teacherName = event.teacher_names?.[0]?.split(' ')[0] || '';
+                            const eventName = event.video_name || 'Canlı Yayın';
+                            return `${teacherName} - ${eventName}`;
+                          }
+                          if (event.event_type === 'kamp') {
+                            const teacherName = event.teacher_names?.[0]?.split(' ')[0] || '';
+                            const eventName = event.title || 'Kamp';
+                            return `${teacherName} - ${eventName}`;
+                          }
+                          if (event.event_type === 'bulusma') {
+                            return 'Buluşma';
+                          }
+                          return typeInfo.label || '';
+                        };
+                        
                         return (
                           <div
                             key={event.id}
                             className={`text-[10px] p-0.5 px-1 rounded truncate ${typeInfo.color || 'bg-slate-200'}`}
+                            title={`${typeInfo.label} - ${event.teacher_names?.join(', ') || ''}`}
                           >
                             <span>{typeInfo.icon} </span>
                             {event.event_time && <span className="font-medium">{event.event_time} </span>}
-                            {typeInfo.label}
+                            {getDisplayText()}
                           </div>
                         );
                       })}
