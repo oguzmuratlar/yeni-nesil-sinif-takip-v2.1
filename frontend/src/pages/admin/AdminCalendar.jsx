@@ -10,7 +10,7 @@ import { Checkbox } from '../../components/ui/checkbox';
 import { toast } from 'sonner';
 import { 
   ChevronLeft, ChevronRight, Plus, Calendar, Video, Radio, Users, 
-  Coffee, Pencil, Trash2, Clock, X
+  Coffee, Pencil, Trash2, Clock, X, Copy, GripVertical
 } from 'lucide-react';
 
 const EVENT_TYPES = [
@@ -39,6 +39,15 @@ const AdminCalendar = () => {
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
+  
+  // Copy dialog state
+  const [showCopyDialog, setShowCopyDialog] = useState(false);
+  const [copyTargetDate, setCopyTargetDate] = useState('');
+  const [eventToCopy, setEventToCopy] = useState(null);
+  
+  // Drag and drop state
+  const [draggedEvent, setDraggedEvent] = useState(null);
+  const [dragOverDate, setDragOverDate] = useState(null);
   
   // Filter states
   const [filterTeacher, setFilterTeacher] = useState('all');
@@ -408,6 +417,102 @@ const AdminCalendar = () => {
     }
   };
 
+  // Etkinlik kopyalama - dialog aç
+  const handleOpenCopyDialog = (event, e) => {
+    e.stopPropagation();
+    setEventToCopy(event);
+    setCopyTargetDate('');
+    setShowCopyDialog(true);
+    setShowEventDialog(false);
+  };
+
+  // Etkinlik kopyalama - kaydet
+  const handleCopyEvent = async () => {
+    if (!eventToCopy || !copyTargetDate) {
+      toast.error('Lütfen hedef tarih seçin');
+      return;
+    }
+
+    try {
+      const payload = {
+        event_date: copyTargetDate,
+        event_type: eventToCopy.event_type,
+        teacher_ids: eventToCopy.teacher_ids || [],
+        branch_ids: eventToCopy.branch_ids || [],
+        event_time: eventToCopy.event_time || null,
+        video_name: eventToCopy.video_name || null,
+        title: eventToCopy.title || null,
+        status: eventToCopy.status || 'cekilecek',
+        notes: eventToCopy.notes || null
+      };
+
+      await apiClient.post('/calendar/events', payload);
+      toast.success('Etkinlik kopyalandı');
+      setShowCopyDialog(false);
+      setEventToCopy(null);
+      fetchEvents();
+    } catch (error) {
+      toast.error('Kopyalama başarısız');
+    }
+  };
+
+  // Drag başlangıcı
+  const handleDragStart = (event, e) => {
+    e.stopPropagation();
+    setDraggedEvent(event);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', event.id);
+  };
+
+  // Drag sürükleme üzerinde
+  const handleDragOver = (dayInfo, e) => {
+    e.preventDefault();
+    if (!dayInfo.isCurrentMonth) return;
+    e.dataTransfer.dropEffect = 'move';
+    
+    const year = dayInfo.date.getFullYear();
+    const month = String(dayInfo.date.getMonth() + 1).padStart(2, '0');
+    const day = String(dayInfo.date.getDate()).padStart(2, '0');
+    setDragOverDate(`${year}-${month}-${day}`);
+  };
+
+  // Drag bırakma
+  const handleDrop = async (dayInfo, e) => {
+    e.preventDefault();
+    if (!draggedEvent || !dayInfo.isCurrentMonth) return;
+
+    const year = dayInfo.date.getFullYear();
+    const month = String(dayInfo.date.getMonth() + 1).padStart(2, '0');
+    const day = String(dayInfo.date.getDate()).padStart(2, '0');
+    const newDateStr = `${year}-${month}-${day}`;
+
+    // Aynı güne bırakıldıysa bir şey yapma
+    if (draggedEvent.event_date === newDateStr) {
+      setDraggedEvent(null);
+      setDragOverDate(null);
+      return;
+    }
+
+    try {
+      await apiClient.put(`/calendar/events/${draggedEvent.id}`, {
+        event_date: newDateStr
+      });
+      toast.success('Etkinlik taşındı');
+      fetchEvents();
+    } catch (error) {
+      toast.error('Taşıma başarısız');
+    }
+
+    setDraggedEvent(null);
+    setDragOverDate(null);
+  };
+
+  // Drag bitişi
+  const handleDragEnd = () => {
+    setDraggedEvent(null);
+    setDragOverDate(null);
+  };
+
   const toggleTeacher = (teacherId) => {
     setEventForm(prev => ({
       ...prev,
@@ -683,15 +788,27 @@ const AdminCalendar = () => {
               const dayEvents = getEventsForDate(dayInfo.date);
               const isToday = dayInfo.date.toDateString() === new Date().toDateString();
               
+              // Drag over kontrolü
+              const year = dayInfo.date.getFullYear();
+              const month = String(dayInfo.date.getMonth() + 1).padStart(2, '0');
+              const day = String(dayInfo.date.getDate()).padStart(2, '0');
+              const dateStr = `${year}-${month}-${day}`;
+              const isDragOver = dragOverDate === dateStr;
+              
               return (
                 <div
                   key={idx}
                   onClick={() => handleDayClick(dayInfo)}
+                  onDragOver={(e) => handleDragOver(dayInfo, e)}
+                  onDrop={(e) => handleDrop(dayInfo, e)}
+                  onDragLeave={() => setDragOverDate(null)}
                   className={`min-h-[120px] p-2 border-b border-r cursor-pointer transition-colors ${
                     dayInfo.isCurrentMonth 
                       ? 'bg-white hover:bg-slate-50' 
                       : 'bg-slate-50 text-slate-400'
-                  } ${isToday ? 'ring-2 ring-inset ring-purple-500' : ''}`}
+                  } ${isToday ? 'ring-2 ring-inset ring-purple-500' : ''} ${
+                    isDragOver ? 'bg-purple-100 ring-2 ring-purple-400' : ''
+                  }`}
                 >
                   <div className={`text-sm font-medium mb-1 ${isToday ? 'text-purple-600' : ''}`}>
                     {dayInfo.day}
@@ -755,16 +872,23 @@ const AdminCalendar = () => {
                       
                       // Dinamik etkinlik rengi
                       const eventBgColor = isVideoPaylasimi ? {} : { backgroundColor: getEventTypeColor(event.event_type) };
+                      const isDragging = draggedEvent?.id === event.id;
                       
                       return (
                         <div
                           key={event.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(event, e)}
+                          onDragEnd={handleDragEnd}
                           onClick={(e) => handleEventClick(event, e)}
-                          className={`relative text-xs p-1 rounded truncate cursor-pointer hover:opacity-80 ${getEventColor(event)}`}
+                          className={`group relative text-xs p-1 rounded truncate cursor-grab hover:opacity-90 ${getEventColor(event)} ${
+                            isDragging ? 'opacity-50 ring-2 ring-purple-500' : ''
+                          }`}
                           style={isVideoPaylasimi ? gradientStyle : eventBgColor}
-                          title={`${EVENT_TYPES.find(t => t.value === event.event_type)?.label || ''} - ${event.teacher_names?.join(', ') || ''}`}
+                          title={`${EVENT_TYPES.find(t => t.value === event.event_type)?.label || ''} - ${event.teacher_names?.join(', ') || ''} (Sürükle taşı)`}
                         >
                           <span className="relative z-10 flex items-center gap-1">
+                            <GripVertical className="w-3 h-3 opacity-50 shrink-0" />
                             <span>{getEventIcon(event.event_type)}</span>
                             {event.event_time && <span className="font-medium">{event.event_time}</span>}
                             <span className="truncate">{getDisplayText()}</span>
@@ -777,6 +901,14 @@ const AdminCalendar = () => {
                                 {statusInfo.label}
                               </span>
                             )}
+                            {/* Kopyala butonu - hover'da görünür */}
+                            <button
+                              onClick={(e) => handleOpenCopyDialog(event, e)}
+                              className="ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white/20 rounded p-0.5 hover:bg-white/40"
+                              title="Kopyala"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
                           </span>
                         </div>
                       );
@@ -979,16 +1111,72 @@ const AdminCalendar = () => {
 
             <DialogFooter className="gap-2">
               {editingEvent && (
-                <Button variant="destructive" onClick={handleDeleteEvent}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Sil
-                </Button>
+                <>
+                  <Button variant="destructive" onClick={handleDeleteEvent}>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Sil
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={(e) => handleOpenCopyDialog(editingEvent, e)}
+                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Kopyala
+                  </Button>
+                </>
               )}
               <Button variant="outline" onClick={() => setShowEventDialog(false)}>
                 İptal
               </Button>
               <Button onClick={handleSaveEvent} className="bg-purple-600 hover:bg-purple-700">
                 {editingEvent ? 'Güncelle' : 'Oluştur'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Copy Event Dialog */}
+        <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Copy className="w-5 h-5 text-blue-600" />
+                Etkinliği Kopyala
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="py-4 space-y-4">
+              {eventToCopy && (
+                <div className="bg-slate-50 p-3 rounded-lg text-sm">
+                  <p className="font-medium">{EVENT_TYPES.find(t => t.value === eventToCopy.event_type)?.label}</p>
+                  <p className="text-slate-600">
+                    {eventToCopy.teacher_names?.join(', ')}
+                    {eventToCopy.video_name && ` - ${eventToCopy.video_name}`}
+                    {eventToCopy.title && ` - ${eventToCopy.title}`}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">Kaynak: {eventToCopy.event_date}</p>
+                </div>
+              )}
+              
+              <div>
+                <Label>Hedef Tarih</Label>
+                <Input
+                  type="date"
+                  value={copyTargetDate}
+                  onChange={(e) => setCopyTargetDate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCopyDialog(false)}>
+                İptal
+              </Button>
+              <Button onClick={handleCopyEvent} className="bg-blue-600 hover:bg-blue-700">
+                <Copy className="w-4 h-4 mr-2" />
+                Kopyala
               </Button>
             </DialogFooter>
           </DialogContent>

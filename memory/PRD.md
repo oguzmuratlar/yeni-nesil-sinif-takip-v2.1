@@ -5,7 +5,23 @@
 
 ---
 
-## Son Güncelleme: 29 Ağustos 2026
+## Son Güncelleme: 30 Ağustos 2026
+
+### GÜNCELLEME: Etkinlik Sürükleme ve Kopyalama ✅ (30 Ağustos 2026)
+
+**Sürükle-Bırak Taşıma:**
+- Etkinlik kartlarında sol tarafta sürükleme ikonu (grip handle)
+- Etkinliği sürükleyip başka güne bırakarak taşıyabilirsiniz
+- Hedef gün üzerine gelince mor vurgu
+- Taşıma sonrası "Etkinlik taşındı" bildirimi
+
+**Etkinlik Kopyalama:**
+- Etkinlik kartlarına hover edince sağda kopyalama butonu
+- Edit dialog'unda da "Kopyala" butonu (mavi)
+- Kopyalama dialog'u: Etkinlik bilgileri + Hedef tarih seçici
+- Kopyalama sonrası "Etkinlik kopyalandı" bildirimi
+
+---
 
 ### GÜNCELLEME: Admin Takvim Filtreleme ✅ (29 Ağustos 2026)
 
