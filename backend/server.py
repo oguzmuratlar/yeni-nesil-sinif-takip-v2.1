@@ -10010,6 +10010,70 @@ class RestoreExecuteRequest(BaseModel):
     confirmation_text: str
 
 
+@api_router.post("/admin/database/restore/pre-backup")
+async def create_pre_restore_backup(current_user: User = Depends(get_current_user)):
+    """Restore öncesi mevcut veri tabanının yedeğini al ve indir (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem sadece admin tarafından yapılabilir")
+    
+    try:
+        logger.info("Pre-restore yedek oluşturuluyor...")
+        
+        pre_restore_buffer = io.BytesIO()
+        now = datetime.now(timezone.utc)
+        timestamp_str = now.strftime("%Y-%m-%d-%H-%M")
+        
+        with zipfile.ZipFile(pre_restore_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            all_collections = await db.list_collection_names()
+            pre_restore_counts = {}
+            
+            for coll_name in all_collections:
+                if coll_name.startswith('system.'):
+                    continue
+                try:
+                    cursor = db[coll_name].find({}, {"_id": 0})
+                    documents = await cursor.to_list(None)
+                    json_content = json.dumps(documents, ensure_ascii=False, default=str, indent=2)
+                    zf.writestr(f"{coll_name}.json", json_content.encode('utf-8'))
+                    pre_restore_counts[coll_name] = len(documents)
+                except Exception as e:
+                    logger.error(f"Pre-restore backup hatası ({coll_name}): {e}")
+            
+            # Pre-restore metadata
+            pre_metadata = {
+                "app_name": APP_NAME,
+                "backup_version": BACKUP_VERSION,
+                "created_at": now.isoformat(),
+                "created_by": current_user.id,
+                "created_by_username": current_user.username,
+                "backup_type": "pre-restore-auto-backup",
+                "environment": os.environ.get('ENVIRONMENT', 'production'),
+                "database_name": os.environ.get('DB_NAME', 'unknown'),
+                "collections": list(pre_restore_counts.keys()),
+                "record_counts": pre_restore_counts,
+                "total_records": sum(pre_restore_counts.values())
+            }
+            zf.writestr("backup_metadata.json", json.dumps(pre_metadata, ensure_ascii=False, indent=2).encode('utf-8'))
+        
+        pre_restore_buffer.seek(0)
+        filename = f"pre-restore-auto-backup-{timestamp_str}.zip"
+        
+        logger.info(f"Pre-restore yedek oluşturuldu: {filename}")
+        
+        return StreamingResponse(
+            pre_restore_buffer,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "X-Backup-Filename": filename
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Pre-restore backup hatası: {e}")
+        raise HTTPException(status_code=500, detail=f"Pre-restore yedek oluşturulamadı: {str(e)}")
+
+
 @api_router.post("/admin/database/restore/execute")
 async def execute_database_restore(
     file: UploadFile = File(...),
@@ -10061,57 +10125,7 @@ async def execute_database_restore(
                             detail=f"{filename} dosyası bozuk"
                         )
         
-        # ===== RESTORE ÖNCESİ OTOMATİK YEDEK AL =====
-        logger.info("Restore öncesi otomatik yedek alınıyor...")
-        
-        pre_restore_buffer = io.BytesIO()
-        now = datetime.now(timezone.utc)
-        
-        with zipfile.ZipFile(pre_restore_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-            all_collections = await db.list_collection_names()
-            pre_restore_counts = {}
-            
-            for coll_name in all_collections:
-                if coll_name.startswith('system.'):
-                    continue
-                try:
-                    cursor = db[coll_name].find({}, {"_id": 0})
-                    documents = await cursor.to_list(None)
-                    json_content = json.dumps(documents, ensure_ascii=False, default=str, indent=2)
-                    zf.writestr(f"{coll_name}.json", json_content.encode('utf-8'))
-                    pre_restore_counts[coll_name] = len(documents)
-                except Exception as e:
-                    logger.error(f"Pre-restore backup hatası ({coll_name}): {e}")
-            
-            # Pre-restore metadata
-            pre_metadata = {
-                "app_name": APP_NAME,
-                "backup_version": BACKUP_VERSION,
-                "created_at": now.isoformat(),
-                "created_by": current_user.id,
-                "backup_type": "pre-restore-auto-backup",
-                "restore_source_date": backup_metadata.get('created_at'),
-                "collections": list(pre_restore_counts.keys()),
-                "record_counts": pre_restore_counts
-            }
-            zf.writestr("backup_metadata.json", json.dumps(pre_metadata, ensure_ascii=False, indent=2).encode('utf-8'))
-        
-        # Pre-restore yedeğini kaydet (veritabanına veya dosya sistemine)
-        pre_restore_buffer.seek(0)
-        pre_restore_content = pre_restore_buffer.read()
-        
-        # Yedekleri database'e kaydet (backups collection'ına)
-        await db.database_backups.insert_one({
-            "id": str(uuid.uuid4()),
-            "type": "pre-restore-auto-backup",
-            "created_at": now.isoformat(),
-            "created_by": current_user.id,
-            "filename": f"pre-restore-auto-backup-{now.strftime('%Y-%m-%d-%H-%M')}.zip",
-            "size_bytes": len(pre_restore_content),
-            "metadata": pre_metadata
-        })
-        
-        logger.info("Pre-restore yedek alındı. Restore başlıyor...")
+        logger.info("Restore başlıyor... (Pre-restore yedek frontend tarafından indirildi)")
         
         # ===== RESTORE İŞLEMİ =====
         restored_collections = []

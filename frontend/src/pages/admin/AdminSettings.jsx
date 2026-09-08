@@ -156,6 +156,36 @@ const AdminSettings = () => {
     
     setRestoreExecuting(true);
     try {
+      // ===== ADIM 1: Pre-restore yedeği indir =====
+      toast.info('Pre-restore yedeği indiriliyor...');
+      
+      const preBackupResponse = await apiClient.post('/admin/database/restore/pre-backup', {}, {
+        responseType: 'blob'
+      });
+      
+      // Pre-restore dosyasını indir
+      const contentDisposition = preBackupResponse.headers['content-disposition'];
+      let preBackupFilename = 'pre-restore-auto-backup.zip';
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename=(.+)/);
+        if (match) preBackupFilename = match[1];
+      }
+      
+      const preBackupUrl = window.URL.createObjectURL(new Blob([preBackupResponse.data]));
+      const preBackupLink = document.createElement('a');
+      preBackupLink.href = preBackupUrl;
+      preBackupLink.setAttribute('download', preBackupFilename);
+      document.body.appendChild(preBackupLink);
+      preBackupLink.click();
+      preBackupLink.remove();
+      window.URL.revokeObjectURL(preBackupUrl);
+      
+      toast.success('Pre-restore yedeği indirildi. Restore başlıyor...');
+      
+      // Kısa bir bekleme - indirme tamamlansın
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // ===== ADIM 2: Restore işlemini başlat =====
       const formData = new FormData();
       formData.append('file', restoreFile);
       
@@ -587,7 +617,9 @@ const AdminSettings = () => {
                               <p className="font-bold text-red-800">DİKKAT - GERİ ALINAMAZ İŞLEM</p>
                               <p className="text-sm text-red-700 mt-1">
                                 Bu işlem mevcut veri tabanını yüklediğiniz yedek dosyasındaki verilerle değiştirecektir.
-                                İşlem öncesi mevcut veri tabanının otomatik yedeği alınacaktır.
+                              </p>
+                              <p className="text-sm text-green-700 mt-2 font-medium">
+                                ✓ İşlem öncesi mevcut veri tabanının yedeği otomatik olarak bilgisayarınıza indirilecektir.
                               </p>
                             </div>
                           </div>

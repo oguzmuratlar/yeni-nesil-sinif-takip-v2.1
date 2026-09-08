@@ -25,7 +25,7 @@
 
 2. **Geri Yükleme Aşaması:**
    - Admin "VERİ TABANINI GERİ YÜKLE" metnini yazmalı
-   - Restore öncesi otomatik mevcut yedek alınır (pre-restore-auto-backup)
+   - **Pre-restore yedeği otomatik olarak bilgisayara indirilir** (restore başlamadan hemen önce)
    - Collection'lar yedekten geri yüklenir
    - Tamamlanınca sayfa yenileme uyarısı
 
