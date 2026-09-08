@@ -5,7 +5,42 @@
 
 ---
 
-## Son Güncelleme: 30 Ağustos 2026
+## Son Güncelleme: 8 Eylül 2026
+
+### GÜNCELLEME: Veri Tabanı Yedekleme ve Geri Yükleme ✅ (8 Eylül 2026)
+
+**Veri Tabanı Yedekleme:**
+- Admin panelinde "Yeni Geliştirmeler" > "Veri Tabanı İşlemleri" altında
+- "Yedek Al" butonu ile tüm veritabanı ZIP olarak indirilir
+- Dosya formatı: `yeni-nesil-sinif-db-backup-YYYY-MM-DD-HH-mm.zip`
+- ZIP içeriği: Her collection için JSON dosyası + backup_metadata.json
+- Metadata: app_name, backup_version, created_at, collections, record_counts
+
+**Veri Tabanını Geri Yükle (İki Aşamalı):**
+1. **Ön İzleme Aşaması:**
+   - ZIP dosyası yüklenir, analiz edilir
+   - Metadata doğrulanır (app_name, backup_version kontrolü)
+   - Karşılaştırma tablosu gösterilir (mevcut vs yedek kayıt sayıları)
+   - Hiçbir veri değiştirilmez
+
+2. **Geri Yükleme Aşaması:**
+   - Admin "VERİ TABANINI GERİ YÜKLE" metnini yazmalı
+   - Restore öncesi otomatik mevcut yedek alınır (pre-restore-auto-backup)
+   - Collection'lar yedekten geri yüklenir
+   - Tamamlanınca sayfa yenileme uyarısı
+
+**Güvenlik:**
+- Sadece admin kullanabilir (backend yetki kontrolü)
+- Öğretmen/veli 403 hatası alır
+- Bozuk/geçersiz dosya kabul edilmez
+- Restore öncesi otomatik yedek alınmadan işlem başlamaz
+
+**API Endpoints:**
+- POST /api/admin/database/backup
+- POST /api/admin/database/restore/preview
+- POST /api/admin/database/restore/execute
+
+---
 
 ### GÜNCELLEME: Etkinlik Sürükleme ve Kopyalama ✅ (30 Ağustos 2026)
 

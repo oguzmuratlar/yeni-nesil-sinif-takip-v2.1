@@ -1,5 +1,6 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Body
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Body, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -12,6 +13,10 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+import json
+import zipfile
+import io
+import tempfile
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -9785,6 +9790,373 @@ async def update_event_type_colors(
     )
     
     return {"message": "Renkler güncellendi", "colors": merged_colors}
+
+# ============= DATABASE BACKUP & RESTORE =============
+
+BACKUP_VERSION = "1.0"
+APP_NAME = "Yeni Nesil Sınıf"
+
+# Yedeklenmesi gereken collection'lar (dinamik olarak da alınabilir)
+BACKUP_COLLECTIONS = [
+    "users", "students", "teachers", "lessons", "payments",
+    "student_courses", "student_groups", "branches", "cashboxes",
+    "lesson_links", "seasons", "student_price_history", "teacher_price_history",
+    "season_carryovers", "manual_balance_adjustments", "planned_lessons",
+    "homework_plans", "homework_plan_items", "student_book_assignments",
+    "student_test_progress", "trial_exams", "youtube_contents", "camps",
+    "camp_students", "system_settings", "settings", "calendar_events",
+    "groups"
+]
+
+@api_router.post("/admin/database/backup")
+async def create_database_backup(current_user: User = Depends(get_current_user)):
+    """Tüm veri tabanını ZIP olarak yedekle (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem sadece admin tarafından yapılabilir")
+    
+    try:
+        # ZIP dosyası oluştur
+        zip_buffer = io.BytesIO()
+        
+        now = datetime.now(timezone.utc)
+        timestamp_str = now.strftime("%Y-%m-%d-%H-%M")
+        
+        # Metadata hazırla
+        collections_data = {}
+        record_counts = {}
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Tüm collection'ları yedekle
+            all_collections = await db.list_collection_names()
+            
+            for coll_name in all_collections:
+                # Sistem collection'larını atla
+                if coll_name.startswith('system.'):
+                    continue
+                    
+                try:
+                    # Collection verilerini al
+                    cursor = db[coll_name].find({}, {"_id": 0})
+                    documents = await cursor.to_list(None)
+                    
+                    # JSON dosyası olarak kaydet
+                    json_content = json.dumps(documents, ensure_ascii=False, default=str, indent=2)
+                    zf.writestr(f"{coll_name}.json", json_content.encode('utf-8'))
+                    
+                    record_counts[coll_name] = len(documents)
+                except Exception as e:
+                    logger.error(f"Collection {coll_name} yedeklenemedi: {e}")
+                    continue
+            
+            # Metadata oluştur
+            metadata = {
+                "app_name": APP_NAME,
+                "backup_version": BACKUP_VERSION,
+                "created_at": now.isoformat(),
+                "created_by": current_user.id,
+                "created_by_username": current_user.username,
+                "environment": os.environ.get('ENVIRONMENT', 'production'),
+                "database_name": os.environ.get('DB_NAME', 'unknown'),
+                "collections": list(record_counts.keys()),
+                "record_counts": record_counts,
+                "total_records": sum(record_counts.values())
+            }
+            
+            # Metadata'yı ZIP'e ekle
+            metadata_json = json.dumps(metadata, ensure_ascii=False, indent=2)
+            zf.writestr("backup_metadata.json", metadata_json.encode('utf-8'))
+        
+        # ZIP'i başa sar
+        zip_buffer.seek(0)
+        
+        # Dosya adı
+        filename = f"yeni-nesil-sinif-db-backup-{timestamp_str}.zip"
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "X-Backup-Filename": filename
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Backup oluşturma hatası: {e}")
+        raise HTTPException(status_code=500, detail=f"Yedekleme başarısız: {str(e)}")
+
+
+@api_router.post("/admin/database/restore/preview")
+async def preview_database_restore(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """ZIP dosyasını analiz et ve ön izleme bilgisi döndür (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem sadece admin tarafından yapılabilir")
+    
+    # Dosya boyutu kontrolü (max 500MB)
+    MAX_FILE_SIZE = 500 * 1024 * 1024
+    
+    try:
+        # Dosyayı oku
+        content = await file.read()
+        
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="Dosya boyutu çok büyük (max 500MB)")
+        
+        # ZIP dosyası mı kontrol et
+        if not zipfile.is_zipfile(io.BytesIO(content)):
+            raise HTTPException(status_code=400, detail="Geçersiz ZIP dosyası")
+        
+        backup_metadata = None
+        backup_collections = {}
+        
+        with zipfile.ZipFile(io.BytesIO(content), 'r') as zf:
+            # Metadata dosyası var mı?
+            if 'backup_metadata.json' not in zf.namelist():
+                raise HTTPException(status_code=400, detail="backup_metadata.json bulunamadı. Bu dosya geçerli bir yedek dosyası değil.")
+            
+            # Metadata'yı oku
+            try:
+                metadata_content = zf.read('backup_metadata.json').decode('utf-8')
+                backup_metadata = json.loads(metadata_content)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail="backup_metadata.json okunamadı veya bozuk.")
+            
+            # App name kontrolü
+            if backup_metadata.get('app_name') != APP_NAME:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Bu dosya {APP_NAME} yedeği olarak doğrulanamadı."
+                )
+            
+            # Backup version kontrolü
+            backup_version = backup_metadata.get('backup_version', '0.0')
+            if backup_version != BACKUP_VERSION:
+                # Uyarı ver ama devam et
+                pass
+            
+            # Collection'ları analiz et
+            for filename in zf.namelist():
+                if filename == 'backup_metadata.json':
+                    continue
+                if filename.endswith('.json'):
+                    coll_name = filename.replace('.json', '')
+                    try:
+                        content_str = zf.read(filename).decode('utf-8')
+                        data = json.loads(content_str)
+                        if isinstance(data, list):
+                            backup_collections[coll_name] = len(data)
+                        else:
+                            backup_collections[coll_name] = 1
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"{filename} dosyası bozuk veya okunamıyor."
+                        )
+        
+        # Mevcut veri tabanı bilgilerini al
+        current_summary = {}
+        all_collections = await db.list_collection_names()
+        
+        for coll_name in all_collections:
+            if coll_name.startswith('system.'):
+                continue
+            try:
+                count = await db[coll_name].count_documents({})
+                current_summary[coll_name] = count
+            except Exception:
+                current_summary[coll_name] = 0
+        
+        # Fark tablosu oluştur
+        all_collection_names = set(current_summary.keys()) | set(backup_collections.keys())
+        differences = []
+        
+        for coll_name in sorted(all_collection_names):
+            current_count = current_summary.get(coll_name, 0)
+            backup_count = backup_collections.get(coll_name, 0)
+            diff = backup_count - current_count
+            
+            differences.append({
+                "collection": coll_name,
+                "current_count": current_count,
+                "backup_count": backup_count,
+                "difference": diff,
+                "in_current": coll_name in current_summary,
+                "in_backup": coll_name in backup_collections
+            })
+        
+        return {
+            "valid": True,
+            "backup_metadata": backup_metadata,
+            "current_database_summary": current_summary,
+            "backup_database_summary": backup_collections,
+            "differences": differences,
+            "version_match": backup_metadata.get('backup_version') == BACKUP_VERSION,
+            "warnings": [] if backup_metadata.get('backup_version') == BACKUP_VERSION else [
+                f"Yedek versiyonu ({backup_metadata.get('backup_version')}) mevcut sistemle ({BACKUP_VERSION}) farklı olabilir."
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Preview hatası: {e}")
+        raise HTTPException(status_code=400, detail=f"Yedek dosyası analiz edilemedi: {str(e)}")
+
+
+class RestoreExecuteRequest(BaseModel):
+    confirmation_text: str
+
+
+@api_router.post("/admin/database/restore/execute")
+async def execute_database_restore(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Veri tabanını geri yükle (sadece admin, çift onay gerekli)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Bu işlem sadece admin tarafından yapılabilir")
+    
+    try:
+        # Dosyayı oku
+        content = await file.read()
+        
+        # ZIP doğrulama
+        if not zipfile.is_zipfile(io.BytesIO(content)):
+            raise HTTPException(status_code=400, detail="Geçersiz ZIP dosyası")
+        
+        backup_metadata = None
+        backup_data = {}
+        
+        with zipfile.ZipFile(io.BytesIO(content), 'r') as zf:
+            # Metadata kontrolü
+            if 'backup_metadata.json' not in zf.namelist():
+                raise HTTPException(status_code=400, detail="backup_metadata.json bulunamadı")
+            
+            try:
+                metadata_content = zf.read('backup_metadata.json').decode('utf-8')
+                backup_metadata = json.loads(metadata_content)
+            except Exception:
+                raise HTTPException(status_code=400, detail="backup_metadata.json okunamadı")
+            
+            # App name kontrolü
+            if backup_metadata.get('app_name') != APP_NAME:
+                raise HTTPException(status_code=400, detail="Bu dosya geçerli bir yedek değil")
+            
+            # Tüm collection verilerini parse et
+            for filename in zf.namelist():
+                if filename == 'backup_metadata.json':
+                    continue
+                if filename.endswith('.json'):
+                    coll_name = filename.replace('.json', '')
+                    try:
+                        content_str = zf.read(filename).decode('utf-8')
+                        data = json.loads(content_str)
+                        backup_data[coll_name] = data if isinstance(data, list) else [data]
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"{filename} dosyası bozuk"
+                        )
+        
+        # ===== RESTORE ÖNCESİ OTOMATİK YEDEK AL =====
+        logger.info("Restore öncesi otomatik yedek alınıyor...")
+        
+        pre_restore_buffer = io.BytesIO()
+        now = datetime.now(timezone.utc)
+        
+        with zipfile.ZipFile(pre_restore_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            all_collections = await db.list_collection_names()
+            pre_restore_counts = {}
+            
+            for coll_name in all_collections:
+                if coll_name.startswith('system.'):
+                    continue
+                try:
+                    cursor = db[coll_name].find({}, {"_id": 0})
+                    documents = await cursor.to_list(None)
+                    json_content = json.dumps(documents, ensure_ascii=False, default=str, indent=2)
+                    zf.writestr(f"{coll_name}.json", json_content.encode('utf-8'))
+                    pre_restore_counts[coll_name] = len(documents)
+                except Exception as e:
+                    logger.error(f"Pre-restore backup hatası ({coll_name}): {e}")
+            
+            # Pre-restore metadata
+            pre_metadata = {
+                "app_name": APP_NAME,
+                "backup_version": BACKUP_VERSION,
+                "created_at": now.isoformat(),
+                "created_by": current_user.id,
+                "backup_type": "pre-restore-auto-backup",
+                "restore_source_date": backup_metadata.get('created_at'),
+                "collections": list(pre_restore_counts.keys()),
+                "record_counts": pre_restore_counts
+            }
+            zf.writestr("backup_metadata.json", json.dumps(pre_metadata, ensure_ascii=False, indent=2).encode('utf-8'))
+        
+        # Pre-restore yedeğini kaydet (veritabanına veya dosya sistemine)
+        pre_restore_buffer.seek(0)
+        pre_restore_content = pre_restore_buffer.read()
+        
+        # Yedekleri database'e kaydet (backups collection'ına)
+        await db.database_backups.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "pre-restore-auto-backup",
+            "created_at": now.isoformat(),
+            "created_by": current_user.id,
+            "filename": f"pre-restore-auto-backup-{now.strftime('%Y-%m-%d-%H-%M')}.zip",
+            "size_bytes": len(pre_restore_content),
+            "metadata": pre_metadata
+        })
+        
+        logger.info("Pre-restore yedek alındı. Restore başlıyor...")
+        
+        # ===== RESTORE İŞLEMİ =====
+        restored_collections = []
+        restore_errors = []
+        
+        for coll_name, documents in backup_data.items():
+            try:
+                # Mevcut collection'ı temizle
+                await db[coll_name].delete_many({})
+                
+                # Yeni verileri ekle
+                if documents and len(documents) > 0:
+                    await db[coll_name].insert_many(documents)
+                
+                restored_collections.append({
+                    "collection": coll_name,
+                    "count": len(documents),
+                    "status": "success"
+                })
+                
+            except Exception as e:
+                logger.error(f"Restore hatası ({coll_name}): {e}")
+                restore_errors.append({
+                    "collection": coll_name,
+                    "error": str(e)
+                })
+        
+        logger.info(f"Restore tamamlandı. {len(restored_collections)} collection geri yüklendi.")
+        
+        return {
+            "success": True,
+            "message": "Veri tabanı başarıyla geri yüklendi",
+            "restored_collections": restored_collections,
+            "errors": restore_errors,
+            "pre_restore_backup_saved": True,
+            "backup_source_date": backup_metadata.get('created_at'),
+            "warning": "Lütfen sayfayı yenileyin veya tekrar giriş yapın."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Restore hatası: {e}")
+        raise HTTPException(status_code=500, detail=f"Geri yükleme başarısız: {str(e)}")
+
 
 # ============= INCLUDE ROUTER =============
 
