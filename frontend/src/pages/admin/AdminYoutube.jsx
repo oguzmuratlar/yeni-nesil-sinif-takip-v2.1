@@ -15,6 +15,8 @@ const AdminYoutube = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
+  const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [filterTeacher, setFilterTeacher] = useState('all');
   const [formData, setFormData] = useState({
     teacher_id: '',
     title: '',
@@ -106,8 +108,15 @@ const AdminYoutube = () => {
     }
   };
 
-  // Toplam kazanç hesapla
-  const totalEarnings = records.reduce((sum, r) => sum + r.amount, 0);
+  // Filtreleme: ay ve öğretmen
+  const filteredRecords = records.filter((r) => {
+    if (filterMonth && !(r.date || '').startsWith(filterMonth)) return false;
+    if (filterTeacher !== 'all' && r.teacher_id !== filterTeacher) return false;
+    return true;
+  });
+
+  // Toplam kazanç hesapla (filtrelenmiş)
+  const totalEarnings = filteredRecords.reduce((sum, r) => sum + r.amount, 0);
 
   return (
     <AdminLayout>
@@ -195,8 +204,48 @@ const AdminYoutube = () => {
               <Youtube size={24} className="text-red-600" />
             </div>
             <div>
-              <p className="text-sm text-slate-500">Toplam YouTube Kazancı</p>
+              <p className="text-sm text-slate-500">Toplam YouTube Kazancı {filterMonth ? `(${filterMonth})` : ''}</p>
               <p className="text-2xl font-bold text-red-600">{totalEarnings.toFixed(2)} ₺</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="admin-card p-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs text-slate-500">Ay</Label>
+              <Input
+                type="month"
+                value={filterMonth}
+                onChange={(e) => setFilterMonth(e.target.value)}
+                data-testid="youtube-filter-month"
+                className="h-10"
+              />
+            </div>
+            <div className="flex-1 space-y-1">
+              <Label className="text-xs text-slate-500">Öğretmen</Label>
+              <Select value={filterTeacher} onValueChange={setFilterTeacher}>
+                <SelectTrigger data-testid="youtube-filter-teacher" className="h-10">
+                  <SelectValue placeholder="Tümü" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tümü</SelectItem>
+                  {teachers.map((teacher) => (
+                    <SelectItem key={teacher.id} value={teacher.id}>{teacher.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                onClick={() => { setFilterMonth(''); setFilterTeacher('all'); }}
+                data-testid="youtube-filter-clear"
+                className="h-10"
+              >
+                Temizle
+              </Button>
             </div>
           </div>
         </div>
@@ -205,11 +254,11 @@ const AdminYoutube = () => {
           <div className="text-center py-12">
             <p className="text-slate-600">Yükleniyor...</p>
           </div>
-        ) : records.length === 0 ? (
+        ) : filteredRecords.length === 0 ? (
           <div className="admin-card p-12 text-center">
             <Youtube size={48} className="mx-auto mb-4 text-slate-400" />
-            <p className="text-slate-600 text-lg">Henüz YouTube kaydı oluşturulmamış</p>
-            <p className="text-slate-500 text-sm mt-2">Yeni kayıt oluşturmak için yukarıdaki butonu kullanın</p>
+            <p className="text-slate-600 text-lg">Bu filtreye uygun YouTube kaydı yok</p>
+            <p className="text-slate-500 text-sm mt-2">Filtreleri değiştirin veya yeni kayıt oluşturun</p>
           </div>
         ) : (
           <div className="admin-card overflow-hidden">
@@ -224,7 +273,7 @@ const AdminYoutube = () => {
                 </tr>
               </thead>
               <tbody>
-                {records.map((record) => (
+                {filteredRecords.map((record) => (
                   <tr key={record.id} className="border-t hover:bg-slate-50" data-testid={`youtube-row-${record.id}`}>
                     <td className="py-4 px-4 font-medium text-slate-800">{record.teacher_name}</td>
                     <td className="py-4 px-4 text-slate-600">{record.title}</td>

@@ -1,0 +1,34 @@
+{
+  "summary": "E2E tested all 6 iteration-20 features. Backend: 9/9 pytest passing (teacher-balances-summary admin+403, teacher address PUT/GET, custom event types CRUD, delete-blocked-when-events-exist=400, teacher_visible filter, calendar POST, youtube-contents, bank-accounts). Frontend: all data-testid selectors present and functional (toggle-balances-btn masks/unmasks ₺ with green/red, toggle-bank-balances-btn, youtube-filter-month defaults to 2026-09 and Temizle clears, teacher-address-input in form, teacher-profile-address in profile, define-event-type-btn dialog with all sub-selectors, copy dialog with copy-target-date/copy-mode-once/copy-mode-recurring + recurrence-type-select + recur-weeks-input + recur-weekday-0..6 + recur-interval-input + recur-end-date). All test-created data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AdminCalendar event cards", "issues": ["Per-event 'Kopyala' icon button on the event card has no data-testid (only title='Kopyala'), and is opacity-0 until hover. Adding data-testid='copy-event-btn' would improve testability."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration20_features.py",
+    "/app/test_reports/pytest/iter20_results.xml"
+  ],
+  "action_items": [
+    "Optional: add data-testid='copy-event-btn' on the per-event copy icon button in AdminCalendar.jsx (~line 1205) to make it easier to test / discover."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 10,359 lines - monolithic. Should be split into routers per domain (calendar, teachers, youtube, etc.).",
+    "AdminCalendar.jsx is 1,594 lines - split copy dialog & event-type-definition dialog into sub-components.",
+    "Custom event type deletion cascade: delete blocks if events exist (good), but there's no PUT/PATCH tested from UI side for teacher_visible toggling — endpoint exists though.",
+    "get_calendar_events requires year & month query params — good, but teachers hitting /api/calendar/events without params get 422. Documented, not a bug."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration20_features.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin/admin123, buse.ozakdas/bozakdas.1",
+  "seed_data_creation": "All TEST_ prefixed custom event types and calendar events created during testing were deleted at the end of each test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration-20 features fully validated. Backend pytest file at /app/backend/tests/test_iteration20_features.py can be reused for regression. Key backend routes: GET /api/teacher-balances-summary (admin only, 403 for teacher), POST/GET/PUT/DELETE /api/calendar/custom-event-types (POST returns {message, event_type:{id,key,...}}; delete returns 400 if events with that key exist), POST /api/calendar/events expects field 'event_date' (not 'date'), and stores event_type as the custom type's 'key', not 'id'. GET /api/calendar/events requires year+month query params.",
+  "rca of the issue": "N/A - no bugs found."
+}

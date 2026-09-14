@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layouts/AdminLayout';
-import { Users, GraduationCap, CreditCard, TrendingUp, ArrowRight, Calendar, Landmark, BookOpen, Lock } from 'lucide-react';
+import { Users, GraduationCap, CreditCard, TrendingUp, ArrowRight, Calendar, Landmark, BookOpen, Lock, Eye, EyeOff } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import {
@@ -24,6 +24,7 @@ const AdminDashboard = () => {
   const [yearEndDialogOpen, setYearEndDialogOpen] = useState(false);
   const [yearEndLoading, setYearEndLoading] = useState(false);
   const [bankAccounts, setBankAccounts] = useState([]);
+  const [showBankBalances, setShowBankBalances] = useState(false);
   const [auditLogPopupOpen, setAuditLogPopupOpen] = useState(false);
   const [seasonStats, setSeasonStats] = useState(null);
   const [currentSeason, setCurrentSeason] = useState(null);
@@ -211,9 +212,20 @@ const AdminDashboard = () => {
           </div>
 
           <div className="admin-card p-8">
-            <div className="flex items-center gap-3 mb-4">
-              <Landmark size={24} className="text-blue-600" />
-              <h3 className="text-2xl font-bold text-slate-800">Banka Hesapları</h3>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Landmark size={24} className="text-blue-600" />
+                <h3 className="text-2xl font-bold text-slate-800">Banka Hesapları</h3>
+              </div>
+              <Button
+                onClick={() => setShowBankBalances(!showBankBalances)}
+                variant="outline"
+                size="sm"
+                data-testid="toggle-bank-balances-btn"
+              >
+                {showBankBalances ? <EyeOff size={16} className="mr-1" /> : <Eye size={16} className="mr-1" />}
+                {showBankBalances ? 'Gizle' : 'Göster'}
+              </Button>
             </div>
             {bankAccounts.length === 0 ? (
               <p className="text-slate-500 text-center py-4">Henüz banka hesabı eklenmemiş</p>
@@ -228,7 +240,9 @@ const AdminDashboard = () => {
                       <p className="font-semibold text-slate-800">{account.bank_name}</p>
                       <p className="text-sm text-slate-500">{account.holder_name}</p>
                     </div>
-                    <p className="font-bold text-blue-600 text-lg">{formatMoney(account.balance || 0)} ₺</p>
+                    <p className="font-bold text-blue-600 text-lg" data-testid={`bank-balance-${account.id}`}>
+                      {showBankBalances ? `${formatMoney(account.balance || 0)} ₺` : <span className="tracking-widest text-slate-400">••••••</span>}
+                    </p>
                   </div>
                 ))}
               </div>

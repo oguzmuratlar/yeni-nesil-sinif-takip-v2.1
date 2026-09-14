@@ -5,11 +5,14 @@ import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
-import { Plus, Search, Wallet, ChevronRight } from 'lucide-react';
+import { Plus, Search, Wallet, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatMoney } from '../../lib/utils';
 
 const AdminTeachers = () => {
   const [teachers, setTeachers] = useState([]);
+  const [balances, setBalances] = useState({});
+  const [showBalances, setShowBalances] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showInactive, setShowInactive] = useState(false);
@@ -17,7 +20,30 @@ const AdminTeachers = () => {
 
   useEffect(() => {
     fetchTeachers();
+    fetchBalances();
   }, [showInactive]);
+
+  const fetchBalances = async () => {
+    try {
+      const response = await apiClient.get('/teacher-balances-summary');
+      setBalances(response.data);
+    } catch (error) {
+      console.error('Bakiyeler yüklenemedi');
+    }
+  };
+
+  const renderBalance = (teacherId) => {
+    const bal = balances[teacherId] ?? 0;
+    if (!showBalances) {
+      return <span className="text-slate-400 tracking-widest">••••••</span>;
+    }
+    const isPositive = bal >= 0;
+    return (
+      <span className={isPositive ? 'text-green-600' : 'text-red-600'}>
+        {formatMoney(bal)} ₺
+      </span>
+    );
+  };
 
   const fetchTeachers = async () => {
     try {
@@ -69,6 +95,19 @@ const AdminTeachers = () => {
           >
             <Plus size={20} className="mr-2" />
             Öğretmen Ekle
+          </Button>
+        </div>
+
+        {/* Balance mask toggle */}
+        <div className="flex justify-end mb-4">
+          <Button
+            onClick={() => setShowBalances(!showBalances)}
+            variant="outline"
+            data-testid="toggle-balances-btn"
+            className="h-10"
+          >
+            {showBalances ? <EyeOff size={18} className="mr-2" /> : <Eye size={18} className="mr-2" />}
+            {showBalances ? 'Bakiyeleri Gizle' : 'Bakiyeleri Göster'}
           </Button>
         </div>
 
@@ -126,6 +165,9 @@ const AdminTeachers = () => {
                         </Badge>
                       </div>
                       <p className="text-sm text-slate-600">{teacher.phone}</p>
+                      <p className="text-sm font-semibold mt-1" data-testid={`teacher-balance-value-${teacher.id}`}>
+                        Bakiye: {renderBalance(teacher.id)}
+                      </p>
                     </div>
                     <ChevronRight size={20} className="text-slate-400 shrink-0 mt-1" />
                   </div>
@@ -170,6 +212,9 @@ const AdminTeachers = () => {
                       </Badge>
                     </div>
                     <p className="text-sm text-slate-600">Telefon: {teacher.phone}</p>
+                    <p className="text-sm font-semibold mt-1" data-testid={`teacher-balance-value-desktop-${teacher.id}`}>
+                      Bakiye: {renderBalance(teacher.id)}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

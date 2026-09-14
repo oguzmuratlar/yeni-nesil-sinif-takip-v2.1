@@ -107,6 +107,7 @@ class Teacher(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     phone: str
+    address: Optional[str] = None  # Öğretmen adresi
     status: str = "active"
     season_id: Optional[str] = None
     branches: Optional[List[dict]] = None  # [{branch_id, branch_name}]
@@ -115,6 +116,7 @@ class Teacher(BaseModel):
 class TeacherCreate(BaseModel):
     name: str
     phone: str
+    address: Optional[str] = None  # Öğretmen adresi
     season_id: Optional[str] = None
     status: Optional[str] = None  # Pasifleştirme için
 
@@ -850,6 +852,30 @@ class CalendarEventUpdate(BaseModel):
     title: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+
+class CustomEventType(BaseModel):
+    """Admin tarafından tanımlanan özel etkinlik tipi"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    key: str  # Benzersiz slug (custom_<uuid kısaltması>)
+    label: str  # Etkinlik adı (free-text)
+    icon: str = "📌"  # Emoji ikon
+    color: str = "#0ea5e9"  # Takvim rengi
+    teacher_visible: bool = True  # Öğretmen takviminde görünsün mü
+    created_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CustomEventTypeCreate(BaseModel):
+    label: str
+    icon: Optional[str] = "📌"
+    color: Optional[str] = "#0ea5e9"
+    teacher_visible: bool = True
+
+class CustomEventTypeUpdate(BaseModel):
+    label: Optional[str] = None
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    teacher_visible: Optional[bool] = None
 
 # Öğretmen renkleri - sistem tarafından atanacak
 TEACHER_COLORS = [
@@ -2627,6 +2653,23 @@ async def get_teacher_balance(
             "toplam_net_kazanc": toplam_net_kazanc
         }
     }
+
+@api_router.get("/teacher-balances-summary")
+async def get_teachers_balances_summary(current_user: User = Depends(get_current_user)):
+    """Tüm öğretmenlerin net bakiyelerini özet olarak getir (sadece admin)."""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin bakiye özetini görebilir")
+
+    teachers = await db.teachers.find({}, {"_id": 0, "id": 1}).to_list(1000)
+    result = {}
+    for t in teachers:
+        try:
+            balance_info = await get_teacher_balance(t["id"], None, current_user)
+            result[t["id"]] = balance_info.get("balance", 0)
+        except Exception:
+            result[t["id"]] = 0
+    return result
+
 
 # ============= STUDENT GROUP ROUTES =============
 
@@ -9545,9 +9588,14 @@ async def get_calendar_events(
     
     # Öğretmen ise sadece kendi etkinliklerini görsün (video_paylasimi hariç)
     if current_user.user_type == "teacher":
+        # Öğretmene kapalı özel etkinlik tiplerini bul
+        hidden_types = await db.calendar_event_types.find(
+            {"teacher_visible": False}, {"_id": 0, "key": 1}
+        ).to_list(500)
+        excluded_event_types = ["video_paylasimi"] + [t["key"] for t in hidden_types]
         query["$and"] = [
             {"teacher_ids": current_user.teacher_id},
-            {"event_type": {"$ne": "video_paylasimi"}}
+            {"event_type": {"$nin": excluded_event_types}}
         ]
     
     events = await db.calendar_events.find(query, {"_id": 0}).to_list(500)
@@ -9606,10 +9654,16 @@ async def get_upcoming_event(current_user: User = Depends(get_current_user)):
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
+    # Öğretmene kapalı özel etkinlik tiplerini bul
+    hidden_types = await db.calendar_event_types.find(
+        {"teacher_visible": False}, {"_id": 0, "key": 1}
+    ).to_list(500)
+    excluded_event_types = ["video_paylasimi"] + [t["key"] for t in hidden_types]
+    
     event = await db.calendar_events.find_one(
         {
             "teacher_ids": current_user.teacher_id,
-            "event_type": {"$ne": "video_paylasimi"},
+            "event_type": {"$nin": excluded_event_types},
             "event_date": {"$gte": today}
         },
         {"_id": 0},
@@ -9629,7 +9683,12 @@ async def get_upcoming_event(current_user: User = Depends(get_current_user)):
             "canli_yayin": "Canlı Yayın",
             "bulusma": "Buluşma"
         }
-        event["display_name"] = event_names.get(event["event_type"], event["event_type"])
+        display_name = event_names.get(event["event_type"])
+        if not display_name:
+            # Özel etkinlik tipi ise label'ını al
+            ctype = await db.calendar_event_types.find_one({"key": event["event_type"]}, {"_id": 0, "label": 1})
+            display_name = ctype["label"] if ctype else (event.get("title") or "Etkinlik")
+        event["display_name"] = display_name
     
     return event
 
@@ -9790,6 +9849,110 @@ async def update_event_type_colors(
     )
     
     return {"message": "Renkler güncellendi", "colors": merged_colors}
+
+# ============= CUSTOM EVENT TYPES =============
+
+@api_router.get("/calendar/custom-event-types")
+async def get_custom_event_types(current_user: User = Depends(get_current_user)):
+    """Admin tarafından tanımlanan özel etkinlik tiplerini getir"""
+    types = await db.calendar_event_types.find({}, {"_id": 0}).to_list(500)
+    for t in types:
+        if isinstance(t.get("created_at"), str):
+            pass
+    return types
+
+@api_router.post("/calendar/custom-event-types")
+async def create_custom_event_type(
+    data: CustomEventTypeCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Yeni özel etkinlik tipi oluştur (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin etkinlik tipi tanımlayabilir")
+
+    if not data.label or not data.label.strip():
+        raise HTTPException(status_code=400, detail="Etkinlik adı gerekli")
+
+    key = f"custom_{uuid.uuid4().hex[:8]}"
+    event_type = CustomEventType(
+        key=key,
+        label=data.label.strip(),
+        icon=data.icon or "📌",
+        color=data.color or "#0ea5e9",
+        teacher_visible=data.teacher_visible,
+        created_by=current_user.id
+    )
+    doc = event_type.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    response_doc = dict(doc)
+    await db.calendar_event_types.insert_one(doc)
+
+    # Rengi event_type_colors ayarına da ekle
+    current_colors = await db.settings.find_one({"key": "event_type_colors"}, {"_id": 0})
+    base_colors = current_colors.get("value", DEFAULT_EVENT_TYPE_COLORS) if current_colors else dict(DEFAULT_EVENT_TYPE_COLORS)
+    base_colors[key] = event_type.color
+    await db.settings.update_one(
+        {"key": "event_type_colors"},
+        {"$set": {"key": "event_type_colors", "value": base_colors}},
+        upsert=True
+    )
+
+    return {"message": "Etkinlik tipi oluşturuldu", "event_type": response_doc}
+
+@api_router.put("/calendar/custom-event-types/{type_id}")
+async def update_custom_event_type(
+    type_id: str,
+    data: CustomEventTypeUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Özel etkinlik tipini güncelle (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin güncelleyebilir")
+
+    existing = await db.calendar_event_types.find_one({"id": type_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Etkinlik tipi bulunamadı")
+
+    update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
+    if update_dict:
+        await db.calendar_event_types.update_one({"id": type_id}, {"$set": update_dict})
+
+    # Renk güncellendiyse ayarlara da yansıt
+    if "color" in update_dict:
+        current_colors = await db.settings.find_one({"key": "event_type_colors"}, {"_id": 0})
+        base_colors = current_colors.get("value", DEFAULT_EVENT_TYPE_COLORS) if current_colors else dict(DEFAULT_EVENT_TYPE_COLORS)
+        base_colors[existing["key"]] = update_dict["color"]
+        await db.settings.update_one(
+            {"key": "event_type_colors"},
+            {"$set": {"key": "event_type_colors", "value": base_colors}},
+            upsert=True
+        )
+
+    return {"message": "Etkinlik tipi güncellendi"}
+
+@api_router.delete("/calendar/custom-event-types/{type_id}")
+async def delete_custom_event_type(
+    type_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Özel etkinlik tipini sil (sadece admin)"""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin silebilir")
+
+    existing = await db.calendar_event_types.find_one({"id": type_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Etkinlik tipi bulunamadı")
+
+    # Bu tipte etkinlik var mı kontrol et
+    event_count = await db.calendar_events.count_documents({"event_type": existing["key"]})
+    if event_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bu etkinlik tipine ait {event_count} etkinlik var. Önce onları silin."
+        )
+
+    await db.calendar_event_types.delete_one({"id": type_id})
+    return {"message": "Etkinlik tipi silindi"}
 
 # ============= DATABASE BACKUP & RESTORE =============
 

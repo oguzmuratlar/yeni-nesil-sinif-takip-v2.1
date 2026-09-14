@@ -18,6 +18,7 @@ const AdminTeacherForm = () => {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    address: '',
     season_id: '',
     username: '',
     password: '',
@@ -133,6 +134,7 @@ const AdminTeacherForm = () => {
         await apiClient.put(`/teachers/${id}`, {
           name: formData.name,
           phone: formData.phone,
+          address: formData.address,
           season_id: formData.season_id
         });
         
@@ -196,6 +198,7 @@ const AdminTeacherForm = () => {
         const teacherResponse = await apiClient.post('/teachers', {
           name: formData.name,
           phone: formData.phone,
+          address: formData.address,
           season_id: formData.season_id
         });
         const teacherId = teacherResponse.data.id;
@@ -386,6 +389,17 @@ const AdminTeacherForm = () => {
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 required
                 data-testid="teacher-phone-input"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="address">Adres</Label>
+              <Input
+                id="address"
+                value={formData.address || ''}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Öğretmenin adresi"
+                data-testid="teacher-address-input"
               />
             </div>
           </div>

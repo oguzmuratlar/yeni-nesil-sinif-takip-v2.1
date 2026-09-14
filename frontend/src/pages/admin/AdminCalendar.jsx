@@ -28,6 +28,19 @@ const STATUS_OPTIONS = [
   { value: 'planlandi', label: 'Planlandı', color: 'bg-green-500 text-white', textColor: 'text-white', shortLabel: '✓', bgColor: '#22c55e' },
 ];
 
+const BUILTIN_EVENT_ICONS = {
+  video_cekimi: '🎬',
+  video_paylasimi: '📺',
+  kamp: '🏕️',
+  canli_yayin: '📡',
+  bulusma: '☕'
+};
+
+const getEventIconStatic = (eventType) => BUILTIN_EVENT_ICONS[eventType] || '📅';
+
+// Emoji seçenekleri (özel etkinlik tipi tanımlama için)
+const EMOJI_OPTIONS = ['📌', '👥', '📝', '🎓', '📚', '🏆', '🎯', '💡', '🔔', '⭐', '🎉', '📢', '🗓️', '✏️', '🧪', '🎤', '🏫', '📊', '🤝', '🎨'];
+
 const AdminCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState([]);
@@ -73,6 +86,25 @@ const AdminCalendar = () => {
     '#ec4899', '#f472b6', '#fb7185', '#64748b', '#1e293b'
   ];
   
+  // Custom event types
+  const [customEventTypes, setCustomEventTypes] = useState([]);
+  const [showEventTypeDialog, setShowEventTypeDialog] = useState(false);
+  const [eventTypeForm, setEventTypeForm] = useState({
+    label: '',
+    icon: '📌',
+    color: '#0ea5e9',
+    teacher_visible: true
+  });
+  const [savingEventType, setSavingEventType] = useState(false);
+
+  // Recurring copy state
+  const [copyMode, setCopyMode] = useState('once'); // 'once' | 'recurring'
+  const [recurrenceType, setRecurrenceType] = useState('weekly'); // 'weekly' | 'interval'
+  const [recurWeeks, setRecurWeeks] = useState('4');
+  const [recurWeekdays, setRecurWeekdays] = useState([]); // 0=Pzt..6=Paz
+  const [recurIntervalDays, setRecurIntervalDays] = useState('7');
+  const [recurEndDate, setRecurEndDate] = useState('');
+
   // Form state
   const [eventForm, setEventForm] = useState({
     event_type: '',
@@ -130,10 +162,27 @@ const AdminCalendar = () => {
     }
   };
 
+  const fetchCustomEventTypes = async () => {
+    try {
+      const response = await apiClient.get('/calendar/custom-event-types');
+      setCustomEventTypes(response.data);
+    } catch (error) {
+      console.error('Custom event types fetch error:', error);
+    }
+  };
+
+  // Built-in + custom event types combined (for dropdowns)
+  const allEventTypes = [
+    ...EVENT_TYPES.map(t => ({ value: t.value, label: t.label, emoji: getEventIconStatic(t.value), custom: false })),
+    ...customEventTypes.map(c => ({ value: c.key, label: c.label, emoji: c.icon || '📌', custom: true }))
+  ];
+
+  const getCustomType = (key) => customEventTypes.find(c => c.key === key);
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchEvents(), fetchTeachers(), fetchBranches(), fetchEventTypeColors()]);
+      await Promise.all([fetchEvents(), fetchTeachers(), fetchBranches(), fetchEventTypeColors(), fetchCustomEventTypes()]);
       setLoading(false);
     };
     loadData();
@@ -306,14 +355,9 @@ const AdminCalendar = () => {
   };
 
   const getEventIcon = (eventType) => {
-    const icons = {
-      video_cekimi: '🎬',
-      video_paylasimi: '📺',
-      kamp: '🏕️',
-      canli_yayin: '📡',
-      bulusma: '☕'
-    };
-    return icons[eventType] || '📅';
+    if (BUILTIN_EVENT_ICONS[eventType]) return BUILTIN_EVENT_ICONS[eventType];
+    const custom = customEventTypes.find(c => c.key === eventType);
+    return custom ? (custom.icon || '📌') : '📅';
   };
 
   const handlePrevMonth = () => {
@@ -422,8 +466,63 @@ const AdminCalendar = () => {
     e.stopPropagation();
     setEventToCopy(event);
     setCopyTargetDate('');
+    setCopyMode('once');
+    setRecurrenceType('weekly');
+    setRecurWeeks('4');
+    setRecurWeekdays([]);
+    setRecurIntervalDays('7');
+    setRecurEndDate('');
     setShowCopyDialog(true);
     setShowEventDialog(false);
+  };
+
+  const formatLocalDate = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  // Kopyalanacak tarihleri hesapla
+  const generateCopyDates = () => {
+    if (!copyTargetDate) return [];
+    const target = new Date(copyTargetDate + 'T00:00:00');
+
+    if (copyMode === 'once') {
+      return [copyTargetDate];
+    }
+
+    const dates = [];
+    if (recurrenceType === 'weekly') {
+      const weeks = parseInt(recurWeeks, 10) || 0;
+      if (weeks <= 0 || recurWeekdays.length === 0) return [];
+      // Hedef tarihin haftasının Pazartesi'si
+      const monday = new Date(target);
+      const mondayIndex = (target.getDay() + 6) % 7; // 0=Pzt
+      monday.setDate(target.getDate() - mondayIndex);
+      const totalDays = weeks * 7;
+      for (let i = 0; i < totalDays; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const dIndex = (d.getDay() + 6) % 7;
+        if (recurWeekdays.includes(dIndex) && d >= target) {
+          dates.push(formatLocalDate(d));
+        }
+      }
+    } else if (recurrenceType === 'interval') {
+      const step = parseInt(recurIntervalDays, 10) || 0;
+      if (step <= 0 || !recurEndDate) return [];
+      const end = new Date(recurEndDate + 'T00:00:00');
+      let d = new Date(target);
+      let guard = 0;
+      while (d <= end && guard < 500) {
+        dates.push(formatLocalDate(d));
+        d = new Date(d);
+        d.setDate(d.getDate() + step);
+        guard++;
+      }
+    }
+    return dates;
   };
 
   // Etkinlik kopyalama - kaydet
@@ -433,9 +532,14 @@ const AdminCalendar = () => {
       return;
     }
 
+    const dates = generateCopyDates();
+    if (dates.length === 0) {
+      toast.error('Kopyalanacak tarih bulunamadı. Periyot ayarlarını kontrol edin.');
+      return;
+    }
+
     try {
-      const payload = {
-        event_date: copyTargetDate,
+      const basePayload = {
         event_type: eventToCopy.event_type,
         teacher_ids: eventToCopy.teacher_ids || [],
         branch_ids: eventToCopy.branch_ids || [],
@@ -446,14 +550,59 @@ const AdminCalendar = () => {
         notes: eventToCopy.notes || null
       };
 
-      await apiClient.post('/calendar/events', payload);
-      toast.success('Etkinlik kopyalandı');
+      for (const dateStr of dates) {
+        await apiClient.post('/calendar/events', { ...basePayload, event_date: dateStr });
+      }
+
+      toast.success(dates.length > 1 ? `${dates.length} etkinlik kopyalandı` : 'Etkinlik kopyalandı');
       setShowCopyDialog(false);
       setEventToCopy(null);
       fetchEvents();
     } catch (error) {
       toast.error('Kopyalama başarısız');
     }
+  };
+
+  // Özel etkinlik tipi oluştur
+  const handleCreateEventType = async () => {
+    if (!eventTypeForm.label.trim()) {
+      toast.error('Etkinlik adı giriniz');
+      return;
+    }
+    setSavingEventType(true);
+    try {
+      await apiClient.post('/calendar/custom-event-types', {
+        label: eventTypeForm.label.trim(),
+        icon: eventTypeForm.icon || '📌',
+        color: eventTypeForm.color || '#0ea5e9',
+        teacher_visible: eventTypeForm.teacher_visible
+      });
+      toast.success('Etkinlik tipi oluşturuldu');
+      setEventTypeForm({ label: '', icon: '📌', color: '#0ea5e9', teacher_visible: true });
+      await Promise.all([fetchCustomEventTypes(), fetchEventTypeColors()]);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Oluşturma başarısız');
+    } finally {
+      setSavingEventType(false);
+    }
+  };
+
+  // Özel etkinlik tipi sil
+  const handleDeleteEventType = async (typeId) => {
+    if (!confirm('Bu etkinlik tipini silmek istediğinize emin misiniz?')) return;
+    try {
+      await apiClient.delete(`/calendar/custom-event-types/${typeId}`);
+      toast.success('Etkinlik tipi silindi');
+      fetchCustomEventTypes();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Silme başarısız');
+    }
+  };
+
+  const toggleRecurWeekday = (dayIndex) => {
+    setRecurWeekdays(prev =>
+      prev.includes(dayIndex) ? prev.filter(d => d !== dayIndex) : [...prev, dayIndex]
+    );
   };
 
   // Drag başlangıcı
@@ -556,6 +705,14 @@ const AdminCalendar = () => {
             </h1>
             <p className="text-slate-600 mt-1">Etkinlik ve içerik planlaması</p>
           </div>
+          <Button
+            onClick={() => setShowEventTypeDialog(true)}
+            data-testid="define-event-type-btn"
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Etkinlik Tanımla
+          </Button>
         </div>
 
         {/* Month Navigation */}
@@ -608,9 +765,12 @@ const AdminCalendar = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tümü</SelectItem>
-                  {EVENT_TYPES.map(type => (
+                  {allEventTypes.map(type => (
                     <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                      <div className="flex items-center gap-2">
+                        <span>{type.emoji}</span>
+                        {type.label}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -771,6 +931,140 @@ const AdminCalendar = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Event Type Definition Dialog */}
+        <Dialog open={showEventTypeDialog} onOpenChange={setShowEventTypeDialog}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Etkinlik Tipi Tanımla</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              {/* Etkinlik Adı */}
+              <div>
+                <Label>Etkinlik Adı</Label>
+                <Input
+                  value={eventTypeForm.label}
+                  onChange={(e) => setEventTypeForm(prev => ({ ...prev, label: e.target.value }))}
+                  placeholder="Örn: Veli Toplantısı"
+                  data-testid="event-type-label-input"
+                />
+              </div>
+
+              {/* İkon Seçimi */}
+              <div>
+                <Label>İkon</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <div
+                    className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl border-2"
+                    style={{ borderColor: eventTypeForm.color }}
+                    data-testid="event-type-icon-preview"
+                  >
+                    {eventTypeForm.icon || '📌'}
+                  </div>
+                  <Input
+                    value={eventTypeForm.icon}
+                    onChange={(e) => setEventTypeForm(prev => ({ ...prev, icon: e.target.value }))}
+                    placeholder="Emoji yaz veya seç"
+                    className="flex-1"
+                    data-testid="event-type-icon-input"
+                    maxLength={4}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {EMOJI_OPTIONS.map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setEventTypeForm(prev => ({ ...prev, icon: emoji }))}
+                      className={`w-8 h-8 rounded flex items-center justify-center text-lg hover:bg-slate-100 ${eventTypeForm.icon === emoji ? 'ring-2 ring-purple-500 bg-purple-50' : ''}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Renk */}
+              <div className="flex items-center gap-2">
+                <Label>Renk</Label>
+                <Input
+                  type="color"
+                  value={eventTypeForm.color}
+                  onChange={(e) => setEventTypeForm(prev => ({ ...prev, color: e.target.value }))}
+                  className="w-12 h-10 p-1 cursor-pointer"
+                  data-testid="event-type-color-input"
+                />
+              </div>
+
+              {/* Öğretmen görecek mi? */}
+              <div>
+                <Label>Öğretmen görecek mi?</Label>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setEventTypeForm(prev => ({ ...prev, teacher_visible: true }))}
+                    className={`px-4 py-2 rounded text-sm ${eventTypeForm.teacher_visible ? 'bg-green-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+                    data-testid="event-type-visible-yes"
+                  >
+                    Evet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEventTypeForm(prev => ({ ...prev, teacher_visible: false }))}
+                    className={`px-4 py-2 rounded text-sm ${!eventTypeForm.teacher_visible ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+                    data-testid="event-type-visible-no"
+                  >
+                    Hayır
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  {eventTypeForm.teacher_visible
+                    ? 'Bu etkinlik ilgili öğretmenin takviminde listelenir.'
+                    : 'Bu etkinlik öğretmen takviminde görünmez.'}
+                </p>
+              </div>
+
+              <Button
+                onClick={handleCreateEventType}
+                disabled={savingEventType}
+                className="w-full bg-purple-600 hover:bg-purple-700"
+                data-testid="save-event-type-btn"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {savingEventType ? 'Kaydediliyor...' : 'Etkinlik Tipi Ekle'}
+              </Button>
+
+              {/* Mevcut Özel Tipler */}
+              {customEventTypes.length > 0 && (
+                <div className="border-t pt-3">
+                  <Label className="text-sm text-slate-600">Tanımlı Etkinlik Tipleri</Label>
+                  <div className="space-y-2 mt-2 max-h-40 overflow-y-auto">
+                    {customEventTypes.map(ct => (
+                      <div key={ct.id} className="flex items-center justify-between p-2 bg-slate-50 rounded" data-testid={`custom-event-type-${ct.id}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{ct.icon}</span>
+                          <div className="w-3 h-3 rounded" style={{ backgroundColor: ct.color }} />
+                          <span className="text-sm">{ct.label}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${ct.teacher_visible ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}>
+                            {ct.teacher_visible ? 'Öğretmen görür' : 'Gizli'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteEventType(ct.id)}
+                          className="text-red-500 hover:bg-red-50 rounded p-1"
+                          data-testid={`delete-event-type-${ct.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Calendar Grid */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">
           {/* Day Headers */}
@@ -865,7 +1159,13 @@ const AdminCalendar = () => {
                           }
                           return parts.join(' - ') || 'Video';
                         }
-                        // Video Çekimi
+                        // Video Çekimi (ve özel etkinlik tipleri)
+                        const customType = getCustomType(event.event_type);
+                        if (customType) {
+                          const tName = event.teacher_names?.[0]?.split(' ')[0] || '';
+                          const extra = event.teacher_names?.length > 1 ? ` +${event.teacher_names.length - 1}` : '';
+                          return tName ? `${tName}${extra}` : customType.label;
+                        }
                         const teacherName = event.teacher_names?.[0]?.split(' ')[0] || '';
                         return teacherName + (event.teacher_names?.length > 1 ? ` +${event.teacher_names.length - 1}` : '');
                       };
@@ -885,7 +1185,7 @@ const AdminCalendar = () => {
                             isDragging ? 'opacity-50 ring-2 ring-purple-500' : ''
                           }`}
                           style={isVideoPaylasimi ? gradientStyle : eventBgColor}
-                          title={`${EVENT_TYPES.find(t => t.value === event.event_type)?.label || ''} - ${event.teacher_names?.join(', ') || ''} (Sürükle taşı)`}
+                          title={`${allEventTypes.find(t => t.value === event.event_type)?.label || ''} - ${event.teacher_names?.join(', ') || ''} (Sürükle taşı)`}
                         >
                           <span className="relative z-10 flex items-center gap-1">
                             <GripVertical className="w-3 h-3 opacity-50 shrink-0" />
@@ -904,6 +1204,7 @@ const AdminCalendar = () => {
                             {/* Kopyala butonu - hover'da görünür */}
                             <button
                               onClick={(e) => handleOpenCopyDialog(event, e)}
+                              data-testid={`copy-event-btn-${event.id}`}
                               className="ml-auto shrink-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white/20 rounded p-0.5 hover:bg-white/40"
                               title="Kopyala"
                             >
@@ -951,10 +1252,10 @@ const AdminCalendar = () => {
                     <SelectValue placeholder="Etkinlik seçin..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {EVENT_TYPES.map(type => (
+                    {allEventTypes.map(type => (
                       <SelectItem key={type.value} value={type.value}>
                         <div className="flex items-center gap-2">
-                          <type.icon className="w-4 h-4" />
+                          <span>{type.emoji}</span>
                           {type.label}
                         </div>
                       </SelectItem>
@@ -1138,7 +1439,7 @@ const AdminCalendar = () => {
 
         {/* Copy Event Dialog */}
         <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
-          <DialogContent className="sm:max-w-sm">
+          <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Copy className="w-5 h-5 text-blue-600" />
@@ -1149,7 +1450,7 @@ const AdminCalendar = () => {
             <div className="py-4 space-y-4">
               {eventToCopy && (
                 <div className="bg-slate-50 p-3 rounded-lg text-sm">
-                  <p className="font-medium">{EVENT_TYPES.find(t => t.value === eventToCopy.event_type)?.label}</p>
+                  <p className="font-medium">{allEventTypes.find(t => t.value === eventToCopy.event_type)?.label || eventToCopy.event_type}</p>
                   <p className="text-slate-600">
                     {eventToCopy.teacher_names?.join(', ')}
                     {eventToCopy.video_name && ` - ${eventToCopy.video_name}`}
@@ -1166,8 +1467,112 @@ const AdminCalendar = () => {
                   value={copyTargetDate}
                   onChange={(e) => setCopyTargetDate(e.target.value)}
                   className="mt-1"
+                  data-testid="copy-target-date"
                 />
               </div>
+
+              {/* Tek seferlik / Tekrarlı seçimi */}
+              <div>
+                <Label>Kopyalama Tipi</Label>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setCopyMode('once')}
+                    className={`flex-1 px-3 py-2 rounded text-sm ${copyMode === 'once' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+                    data-testid="copy-mode-once"
+                  >
+                    Tek Seferlik
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCopyMode('recurring')}
+                    className={`flex-1 px-3 py-2 rounded text-sm ${copyMode === 'recurring' ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+                    data-testid="copy-mode-recurring"
+                  >
+                    Tekrarlı
+                  </button>
+                </div>
+              </div>
+
+              {/* Tekrarlı ayarları */}
+              {copyMode === 'recurring' && (
+                <div className="space-y-3 border-t pt-3">
+                  <div>
+                    <Label className="text-xs text-slate-500">Tekrar Şekli</Label>
+                    <Select value={recurrenceType} onValueChange={setRecurrenceType}>
+                      <SelectTrigger className="mt-1" data-testid="recurrence-type-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weekly">Haftalık (belirli günler)</SelectItem>
+                        <SelectItem value="interval">Her X günde bir</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {recurrenceType === 'weekly' && (
+                    <>
+                      <div>
+                        <Label className="text-xs text-slate-500">Kaç hafta boyunca?</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={recurWeeks}
+                          onChange={(e) => setRecurWeeks(e.target.value)}
+                          className="mt-1"
+                          data-testid="recur-weeks-input"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-slate-500">Hangi günler?</Label>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {days.map((d, idx) => (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => toggleRecurWeekday(idx)}
+                              className={`px-2.5 py-1.5 rounded text-xs ${recurWeekdays.includes(idx) ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'}`}
+                              data-testid={`recur-weekday-${idx}`}
+                            >
+                              {d}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {recurrenceType === 'interval' && (
+                    <>
+                      <div>
+                        <Label className="text-xs text-slate-500">Kaç günde bir?</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={recurIntervalDays}
+                          onChange={(e) => setRecurIntervalDays(e.target.value)}
+                          className="mt-1"
+                          data-testid="recur-interval-input"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-slate-500">Bitiş tarihi (bu tarihe kadar)</Label>
+                        <Input
+                          type="date"
+                          value={recurEndDate}
+                          onChange={(e) => setRecurEndDate(e.target.value)}
+                          className="mt-1"
+                          data-testid="recur-end-date"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  <p className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                    {generateCopyDates().length} etkinlik oluşturulacak
+                  </p>
+                </div>
+              )}
             </div>
             
             <DialogFooter>

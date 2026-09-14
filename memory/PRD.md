@@ -5,7 +5,44 @@
 
 ---
 
-## Son Güncelleme: 8 Eylül 2026
+## Son Güncelleme: 14 Eylül 2026
+
+### GÜNCELLEME: 6 Yeni Özellik ✅ (14 Eylül 2026)
+
+**1. Öğretmen Liste Bakiyeleri (Maskeli):**
+- /admin/teachers listesinde her öğretmenin net bakiyesi satırında gösterilir
+- Varsayılan maskeli (••••••), tek buton (`toggle-balances-btn`) ile tümü açılır/kapanır
+- Pozitif yeşil, negatif kırmızı
+- API: GET /api/teacher-balances-summary (sadece admin, {teacher_id: net_bakiye})
+
+**2. Öğretmen Adres Alanı:**
+- Teacher/TeacherCreate modeline `address` eklendi
+- AdminTeacherForm'da telefon altında Adres inputu
+- AdminTeacherProfile'da adres gösterimi
+
+**3. Takvim Özel Etkinlik Tipleri:**
+- "Etkinlik Tanımla" butonu → ad (free-text), emoji ikon (liste + serbest + önizleme), renk, "Öğretmen görecek mi?" (Evet/Hayır)
+- Özel tip event dialog dropdown'una eklenir; seçilince öğretmen seçimi + not alanları gelir
+- teacher_visible=false ise öğretmen takviminde gizlenir
+- API: GET/POST/PUT/DELETE /api/calendar/custom-event-types (silme: o tipte etkinlik varsa 400)
+- Koleksiyon: `calendar_event_types` {key, label, icon, color, teacher_visible}
+
+**4. Tekrarlı Etkinlik Kopyalama:**
+- Kopyalama dialog'unda Tek Seferlik / Tekrarlı seçimi
+- Tekrarlı: Haftalık (X hafta, seçili günler) veya Her X günde bir (bitiş tarihine kadar)
+- Canlı önizleme (kaç etkinlik oluşacak); her tarih için POST /api/calendar/events
+
+**5. YouTube Ay + Öğretmen Filtresi:**
+- /admin/youtube varsayılan olarak içinde bulunulan ayı listeler
+- Ay (month input) ve öğretmen filtresi + Temizle butonu; özet tutar filtreye göre güncellenir
+
+**6. Dashboard Banka Hesapları Maskesi:**
+- Banka hesabı bakiyeleri maskeli (••••••), "Göster/Gizle" butonu (`toggle-bank-balances-btn`)
+
+Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
+
+---
+## Önceki Güncelleme: 8 Eylül 2026
 
 ### GÜNCELLEME: Veri Tabanı Yedekleme ve Geri Yükleme ✅ (8 Eylül 2026)
 

@@ -91,7 +91,11 @@ const AdminTeacherProfile = () => {
           <div className="space-y-3 text-slate-700">
             <div>
               <span className="text-sm text-slate-500">Telefon:</span>
-              <p className="font-semibold">{teacher.phone}</p>
+              <p className="font-semibold" data-testid="teacher-profile-phone">{teacher.phone}</p>
+            </div>
+            <div>
+              <span className="text-sm text-slate-500">Adres:</span>
+              <p className="font-semibold" data-testid="teacher-profile-address">{teacher.address || '-'}</p>
             </div>
             <div>
               <span className="text-sm text-slate-500">Durum:</span>
