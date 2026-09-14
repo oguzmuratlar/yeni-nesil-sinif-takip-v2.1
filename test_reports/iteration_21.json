@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend verification of two follow-up fixes from iteration 20. Both PASS. (1) /admin/youtube 'Ay' filter is now a click-only Select dropdown (role=combobox, testid=youtube-filter-month) with 'Tüm Aylar' + Turkish month labels ('Eylül 2026', 'Mayıs 2026', 'Mart 2026') built from existing records + current month. Selecting a month updates the trigger label and filters data; 'Temizle' clears the filter. (2) Teacher calendar now correctly renders custom teacher-visible events with icon + custom color, includes a dynamic legend, and opens a read-only detail dialog on event click. Verified end-to-end by: admin creates a custom event type (label 'TEST Veli Toplantısı 3', icon 🤝, color #e11d48, teacher_visible=true) and a calendar event on 2026-09-15 assigned to Buse Öğretmen with note 'TEST NOTU 3'; teacher (buse.ozakdas) logs in, opens the purple Takvim bar (which correctly shows the upcoming event label), the calendar dialog opens, legend contains the new type with correct color, day 15 shows a tile with data-testid=teacher-event-<id> having background rgb(225,29,72) and text '🤝 TEST Veli Toplantısı 3'. Clicking the tile opens teacher-event-detail-dialog containing type label, date '15 Eylül 2026', teacher 'Buse Öğretmen', note 'TEST NOTU 3', a Kapat button, and NO Sil/Düzenle buttons. Full cleanup performed: DELETE /api/calendar/events/{id} => 200, DELETE /api/calendar/custom-event-types/{id} => 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Teacher dashboard on login", "issues": ["A 'Planlama Hatırlatması' modal auto-opens on teacher login and can intercept the teacher-calendar-bar click. Not a regression from this iteration, but worth noting for UX/testing (users must dismiss it before opening the calendar)."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "TeacherCalendar.jsx: fetches /calendar/event-type-colors and /calendar/custom-event-types in parallel and correctly resolves colors with precedence eventTypeColors[key] > custom.color > default — good.",
+    "AdminYoutube.jsx: monthOptions correctly derived from records + current month, sorted desc; 'Tüm Aylar' handled via value='all' sentinel because Radix SelectItem does not allow empty string values — good pattern.",
+    "Minor a11y: multiple Radix DialogContent warnings 'Missing Description or aria-describedby' in admin calendar dialogs; consider adding <DialogDescription> for accessibility."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only test)", "frontend": "100%"},
+  "test_credentials": "admin/admin123, buse.ozakdas/bozakdas.1 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and then deleted: 1 custom event type + 1 calendar event on 2026-09-15. Real calendar left clean.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both iteration-21 follow-up fixes are verified working. Teacher calendar renders custom teacher-visible event types with color, has a dynamic legend, and a read-only detail dialog with note/teacher/Kapat and no edit/delete. YouTube 'Ay' is a Select dropdown. If retesting, dismiss the 'Planlama Hatırlatması' reminder modal (button 'Tamam') after teacher login before clicking [data-testid=teacher-calendar-bar]."
+}

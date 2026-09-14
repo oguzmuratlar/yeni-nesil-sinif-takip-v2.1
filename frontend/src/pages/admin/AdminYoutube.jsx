@@ -115,6 +115,16 @@ const AdminYoutube = () => {
     return true;
   });
 
+  // Ay seçenekleri (kayıtlardaki aylar + içinde bulunulan ay)
+  const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const formatMonthLabel = (ym) => {
+    const [y, m] = ym.split('-');
+    return `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y}`;
+  };
+  const monthSet = new Set(records.map(r => (r.date || '').slice(0, 7)).filter(Boolean));
+  monthSet.add(new Date().toISOString().slice(0, 7));
+  const monthOptions = Array.from(monthSet).sort().reverse();
+
   // Toplam kazanç hesapla (filtrelenmiş)
   const totalEarnings = filteredRecords.reduce((sum, r) => sum + r.amount, 0);
 
@@ -215,13 +225,17 @@ const AdminYoutube = () => {
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1 space-y-1">
               <Label className="text-xs text-slate-500">Ay</Label>
-              <Input
-                type="month"
-                value={filterMonth}
-                onChange={(e) => setFilterMonth(e.target.value)}
-                data-testid="youtube-filter-month"
-                className="h-10"
-              />
+              <Select value={filterMonth || 'all'} onValueChange={(v) => setFilterMonth(v === 'all' ? '' : v)}>
+                <SelectTrigger data-testid="youtube-filter-month" className="h-10">
+                  <SelectValue placeholder="Ay seçin" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tüm Aylar</SelectItem>
+                  {monthOptions.map((ym) => (
+                    <SelectItem key={ym} value={ym}>{formatMonthLabel(ym)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex-1 space-y-1">
               <Label className="text-xs text-slate-500">Öğretmen</Label>
