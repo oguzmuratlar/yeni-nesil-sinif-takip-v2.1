@@ -1,0 +1,30 @@
+{
+  "summary": "Frontend-only verification of two iteration-22 features. BOTH PASS. (1) Admin Calendar '+N daha' → Day Events Dialog: seeded 5 events (2 video_cekimi, 2 kamp, 1 bulusma) on 2026-09-18 via POST /api/calendar/events; on /admin/calendar the 18 Eylül cell shows 3 tiles + a '+2 daha' button (data-testid='more-events-btn-2026-09-18'). Clicking it opens a dialog titled '18 Eylül 2026' containing all 5 rows (data-testid='day-event-item-<id>') each colored by type with icon/label (🎬 for video_cekimi yellow, 🏕️ orange 'TEST Kamp'/'TEST Kamp 2', ☕ pink 'Buluşma'). Clicking a row closes the day dialog and opens 'Etkinlik Düzenle - 18 Eylül' with correct Etkinlik Tipi selected. Cleanup: all 5 events DELETEd (HTTP 200). (2) Teacher Homework 'Kitaplar' → All-Books Dialog: logged in as ilknur.uzunal, dismissed 'Planlama Hatırlatması' modal, navigated to /teacher/students/aaf2775f-.../homework/2014af77-... (Ali Yılmaz Türkçe). 'Kitaplar' heading is now a button (data-testid='open-all-books-btn'); clicking opens dialog (data-testid='all-books-dialog') with header 'Ali Yılmaz - Kütüphane', 'Toplam 1 kitap', 'Ortalama: 0%', a single row (data-testid='all-books-item-2a63f17c-...') showing name 'Yeni kitap Türkçe', publisher 'TR evi', progress bar and '0%' (matches left-panel 0%). Clicking the row closes the dialog. 'Kapat' button present (close-all-books-btn). Only 1 book was available for the ilknur teacher branch, so the multi-book average path was not exercised, but list rendering + click-to-select + close all work.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Calendar Day Events Dialog", "issues": ["Rows for events created without a title show only the icon (empty label area). Consider a fallback like the event type name (e.g. 'Video Çekimi') when title is empty, mirroring the small tiles behavior."]},
+      {"screen": "Teacher Homework page (route load)", "issues": ["React hydration warning: '<span> cannot be a child of <option>' in TeacherHomeworkEntry.jsx around line 1946 (day-count <select>). Wrap the count text directly instead of inside a <span>."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: sanitize the Day Events Dialog rows so events without title still show a readable label.",
+    "Fix hydration warning in TeacherHomeworkEntry.jsx line ~1946 (span child of option)."
+  ],
+  "critical_code_review_comments": [
+    "AdminCalendar.jsx already 1600+ lines; the day-events dialog was correctly added but the file should still be split into sub-components (event dialog, copy dialog, event-type-definition dialog, day-events dialog).",
+    "AdminCalendar Day Events Dialog reuses handleEventClick → good UX: single source of truth for the edit dialog.",
+    "TeacherHomeworkEntry.jsx all-books dialog computes average client-side (books.reduce/books.length). Guarded against divide-by-zero via books.length>0 check — good.",
+    "Both new dialogs use Radix Dialog without <DialogDescription> — same accessibility warning as previous iterations."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100%"},
+  "test_credentials": "admin/admin123, ilknur.uzunal/test123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created 5 calendar events on 2026-09-18 via POST /api/calendar/events, all deleted via DELETE /api/calendar/events/{id} after test (200 OK for all). No cleanup needed for feature 2 (read-only).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both iteration-22 UI features verified working. If retesting feature 2 with buse.ozakdas, note that Buse's assigned students may not have books in her branch (Fen Bilimleri) in this seed; ilknur.uzunal + student aaf2775f-... + branch 2014af77-... (Türkçe) has 1 assigned book. To test the multi-book path, POST additional /api/homework/books and assign them to Ali Yılmaz first."
+}

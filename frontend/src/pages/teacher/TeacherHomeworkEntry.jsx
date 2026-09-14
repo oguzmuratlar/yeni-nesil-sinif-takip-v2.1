@@ -58,6 +58,7 @@ const TeacherHomeworkEntry = () => {
   const [statusPopup, setStatusPopup] = useState({ open: false, testId: null, x: 0, y: 0 });
   const [homeworkCheckDialog, setHomeworkCheckDialog] = useState(false);
   const [createBookDialog, setCreateBookDialog] = useState(false);
+  const [showAllBooksDialog, setShowAllBooksDialog] = useState(false);
   
   // Ünite ve Test ekleme dialogs
   const [addUnitDialog, setAddUnitDialog] = useState(false);
@@ -1590,7 +1591,16 @@ const TeacherHomeworkEntry = () => {
               {/* Sol Panel - Kitaplar */}
               <div className="teacher-card p-3">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-semibold text-slate-700 text-sm">Kitaplar</h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllBooksDialog(true)}
+                    className="flex items-center gap-1.5 font-semibold text-slate-700 text-sm hover:text-purple-600 transition-colors"
+                    data-testid="open-all-books-btn"
+                    title="Tüm kitapları ve yüzdelerini gör"
+                  >
+                    <Book className="w-4 h-4" />
+                    Kitaplar
+                  </button>
                   <div className="flex gap-1">
                     <Button 
                       variant="ghost" 
@@ -2330,6 +2340,69 @@ const TeacherHomeworkEntry = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Tüm Kitaplar ve Yüzdeleri Dialog */}
+      <Dialog open={showAllBooksDialog} onOpenChange={setShowAllBooksDialog}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" data-testid="all-books-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Book className="w-5 h-5 text-purple-600" />
+              {student?.name ? `${student.name} - Kütüphane` : 'Öğrenci Kütüphanesi'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            {books.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">
+                <Book className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Bu öğrenciye ait kitap yok</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-3 text-sm">
+                  <span className="text-slate-500">Toplam {books.length} kitap</span>
+                  <span className="text-slate-500">
+                    Ortalama: <span className="font-semibold text-purple-600">
+                      {Math.round(books.reduce((s, b) => s + (b.progress_percent || 0), 0) / books.length)}%
+                    </span>
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {books.map((book) => (
+                    <div
+                      key={book.id}
+                      onClick={() => { setSelectedBook(book); setShowAllBooksDialog(false); }}
+                      data-testid={`all-books-item-${book.id}`}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                        selectedBook?.id === book.id ? 'border-purple-500 bg-purple-50' : 'border-slate-200 hover:border-purple-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-1.5">
+                        <h3 className="font-medium text-slate-800 text-sm">{book.name}</h3>
+                        <span className="text-sm text-purple-600 font-bold shrink-0">{book.progress_percent}%</span>
+                      </div>
+                      {book.publisher && (
+                        <p className="text-xs text-slate-400 mb-1.5">{book.publisher}</p>
+                      )}
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${book.progress_percent === 100 ? 'bg-green-500' : 'bg-purple-500'}`}
+                          style={{ width: `${book.progress_percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAllBooksDialog(false)} data-testid="close-all-books-btn">
+              Kapat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Kitap Ekleme Dialog */}
       <Dialog open={addBookDialog} onOpenChange={(open) => {

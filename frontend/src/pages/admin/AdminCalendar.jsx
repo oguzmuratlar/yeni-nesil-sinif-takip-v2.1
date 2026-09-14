@@ -57,6 +57,10 @@ const AdminCalendar = () => {
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [copyTargetDate, setCopyTargetDate] = useState('');
   const [eventToCopy, setEventToCopy] = useState(null);
+
+  // Day events dialog (tüm etkinlikleri gör)
+  const [showDayEventsDialog, setShowDayEventsDialog] = useState(false);
+  const [dayEventsDate, setDayEventsDate] = useState(null);
   
   // Drag and drop state
   const [draggedEvent, setDraggedEvent] = useState(null);
@@ -358,6 +362,31 @@ const AdminCalendar = () => {
     if (BUILTIN_EVENT_ICONS[eventType]) return BUILTIN_EVENT_ICONS[eventType];
     const custom = customEventTypes.find(c => c.key === eventType);
     return custom ? (custom.icon || '📌') : '📅';
+  };
+
+  // Etkinlik kısa etiketi (gün detay dialogu için)
+  const getEventLabel = (event) => {
+    if (event.event_type === 'canli_yayin') {
+      const tName = event.teacher_names?.[0]?.split(' ')[0] || '';
+      return `${tName} - ${event.video_name || 'Canlı Yayın'}`;
+    }
+    if (event.event_type === 'kamp') {
+      const tName = event.teacher_names?.[0]?.split(' ')[0] || '';
+      return `${tName} - ${event.title || 'Kamp'}`;
+    }
+    if (event.event_type === 'bulusma') return 'Buluşma';
+    if (event.event_type === 'video_paylasimi') {
+      const parts = [];
+      if (event.branch_abbrevs?.length > 0) parts.push(event.branch_abbrevs.join('/'));
+      if (event.video_name) parts.push(event.video_name);
+      return parts.join(' - ') || 'Video';
+    }
+    const custom = getCustomType(event.event_type);
+    const tName = event.teacher_names?.[0]?.split(' ')[0] || '';
+    if (custom) return tName ? `${custom.label} - ${tName}` : custom.label;
+    const fallbackName = allEventTypes.find(t => t.value === event.event_type)?.label || 'Etkinlik';
+    const res = tName + (event.teacher_names?.length > 1 ? ` +${event.teacher_names.length - 1}` : '');
+    return res || fallbackName;
   };
 
   const handlePrevMonth = () => {
@@ -1215,9 +1244,17 @@ const AdminCalendar = () => {
                       );
                     })}
                     {dayEvents.length > 3 && (
-                      <div className="text-xs text-slate-500 text-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDayEventsDate(dayInfo.date);
+                          setShowDayEventsDialog(true);
+                        }}
+                        data-testid={`more-events-btn-${dateStr}`}
+                        className="w-full text-xs text-purple-600 font-medium text-center hover:bg-purple-50 rounded py-0.5 transition-colors"
+                      >
                         +{dayEvents.length - 3} daha
-                      </div>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1433,6 +1470,51 @@ const AdminCalendar = () => {
               <Button onClick={handleSaveEvent} className="bg-purple-600 hover:bg-purple-700">
                 {editingEvent ? 'Güncelle' : 'Oluştur'}
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Day Events Dialog - o güne ait tüm etkinlikler */}
+        <Dialog open={showDayEventsDialog} onOpenChange={setShowDayEventsDialog}>
+          <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-purple-600" />
+                {dayEventsDate && `${dayEventsDate.getDate()} ${months[dayEventsDate.getMonth()]} ${dayEventsDate.getFullYear()}`}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-2 space-y-2">
+              {dayEventsDate && getEventsForDate(dayEventsDate).map(event => {
+                const isVideoPaylasimi = event.event_type === 'video_paylasimi';
+                const bgColor = isVideoPaylasimi
+                  ? (event.teacher_colors?.[0] || '#6366f1')
+                  : getEventTypeColor(event.event_type);
+                return (
+                  <div
+                    key={event.id}
+                    onClick={() => {
+                      setShowDayEventsDialog(false);
+                      handleEventClick(event, { stopPropagation: () => {} });
+                    }}
+                    data-testid={`day-event-item-${event.id}`}
+                    className="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer hover:opacity-90 text-white"
+                    style={{ backgroundColor: bgColor }}
+                  >
+                    <span className="text-lg shrink-0">{getEventIcon(event.event_type)}</span>
+                    {event.event_time && <span className="font-medium shrink-0">{event.event_time}</span>}
+                    <span className="flex-1 truncate">{getEventLabel(event)}</span>
+                    {isVideoPaylasimi && (
+                      <span className="shrink-0 text-sm" title={getStatusInfo(event.status).title}>
+                        {getStatusInfo(event.status).label}
+                      </span>
+                    )}
+                    <Pencil className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                  </div>
+                );
+              })}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowDayEventsDialog(false)}>Kapat</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

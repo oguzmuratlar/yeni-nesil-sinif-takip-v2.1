@@ -45,6 +45,10 @@ Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
 - YouTube "Ay" filtresi artık tıklamalı bir dropdown (yazmaya gerek yok; "Tüm Aylar" + "Eylül 2026" gibi Türkçe etiketler)
 - Öğretmen takvimi: özel (öğretmene açık) etkinlik tipleri artık ikon+renk+etiketle görünüyor (önceden boş gri kutu çıkıyordu), dinamik lejant eklendi, etkinliğe tıklayınca salt-okunur detay (tarih, saat, öğretmen, not) açılıyor
 
+**Takip Düzeltmeleri (iteration_22):**
+- Admin takvim: bir günde 3'ten fazla etkinlik olduğunda "+N daha" artık tıklanabilir; o güne ait TÜM etkinlikleri listeleyen dialog açılıyor, satıra tıklayınca ilgili etkinliğin düzenleme ekranı geliyor
+- Öğretmen ödev ekranı: sol paneldeki "Kitaplar" başlığı tıklanabilir; öğrencinin kütüphanesindeki tüm kitapları yüzdeleriyle (ve ortalama %) tek ekranda gösteren dialog açılıyor
+
 ---
 ## Önceki Güncelleme: 8 Eylül 2026
 
