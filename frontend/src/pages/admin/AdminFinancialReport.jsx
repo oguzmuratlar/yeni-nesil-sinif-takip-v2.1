@@ -18,20 +18,11 @@ const BASE_LINES = [
   { key: 'net_balance', label: 'Net Bilanço', color: '#2563eb' },
 ];
 
-const OPTIONAL_LINES = [
-  { key: 'teacher_payment', label: 'Öğretmen Ödemesi', color: '#8b5cf6' },
-  { key: 'reklam', label: 'Reklam', color: '#f97316' },
-  { key: 'ofis', label: 'Ofis', color: '#14b8a6' },
-  { key: 'vergi', label: 'Vergi', color: '#eab308' },
-  { key: 'sermaye', label: 'Sermaye Çıkışı', color: '#64748b' },
-  { key: 'diger', label: 'Diğer Giderler', color: '#ec4899' },
-];
-
 const CATEGORY_OPTIONS = ['Maaş', 'Kira', 'Reklam', 'Ofis', 'Vergi', 'Sermaye', 'Diğer'];
 
-const FinChart = ({ title, data, activeOptional }) => {
+const FinChart = ({ title, data, activeOptional, expenseCategories }) => {
   const hasAny = data && data.some(d => d.total_income || d.total_expense || d.net_balance ||
-    d.teacher_payment || d.reklam || d.ofis || d.vergi || d.sermaye || d.diger);
+    expenseCategories.some(c => d[c.key]));
   return (
     <div className="admin-card p-4" data-testid={`fin-chart-${title}`}>
       <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
@@ -53,7 +44,7 @@ const FinChart = ({ title, data, activeOptional }) => {
             {BASE_LINES.map(l => (
               <Line key={l.key} type="monotone" dataKey={l.key} name={l.label} stroke={l.color} strokeWidth={2} dot={false} />
             ))}
-            {OPTIONAL_LINES.filter(l => activeOptional.includes(l.key)).map(l => (
+            {expenseCategories.filter(l => activeOptional.includes(l.key)).map(l => (
               <Line key={l.key} type="monotone" dataKey={l.key} name={l.label} stroke={l.color} strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
             ))}
           </LineChart>
@@ -63,17 +54,13 @@ const FinChart = ({ title, data, activeOptional }) => {
   );
 };
 
-const MonthlyTable = ({ title, rows }) => {
+const MonthlyTable = ({ title, rows, expenseCategories }) => {
   const totals = rows.reduce((acc, r) => {
     acc.total_income += r.total_income;
     acc.total_expense += r.total_expense;
-    acc.teacher_payment += r.teacher_payment;
-    acc.reklam += r.reklam;
-    acc.ofis += r.ofis;
-    acc.vergi += r.vergi;
-    acc.diger += r.diger;
+    expenseCategories.forEach(c => { acc[c.key] = (acc[c.key] || 0) + (r[c.key] || 0); });
     return acc;
-  }, { total_income: 0, total_expense: 0, teacher_payment: 0, reklam: 0, ofis: 0, vergi: 0, diger: 0 });
+  }, { total_income: 0, total_expense: 0 });
   totals.net_balance = totals.total_income - totals.total_expense;
 
   return (
@@ -90,11 +77,9 @@ const MonthlyTable = ({ title, rows }) => {
             <th className="text-right py-3 px-3 font-semibold text-green-700">Toplam Gelir</th>
             <th className="text-right py-3 px-3 font-semibold text-red-700">Toplam Gider</th>
             <th className="text-right py-3 px-3 font-semibold text-blue-700">Net Bilanço</th>
-            <th className="text-right py-3 px-3 font-semibold text-slate-700">Öğretmen Ödemesi</th>
-            <th className="text-right py-3 px-3 font-semibold text-slate-700">Reklam</th>
-            <th className="text-right py-3 px-3 font-semibold text-slate-700">Ofis</th>
-            <th className="text-right py-3 px-3 font-semibold text-slate-700">Vergi</th>
-            <th className="text-right py-3 px-3 font-semibold text-slate-700">Diğer Giderler</th>
+            {expenseCategories.map(c => (
+              <th key={c.key} className="text-right py-3 px-3 font-semibold text-slate-700 whitespace-nowrap">{c.label}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -104,11 +89,9 @@ const MonthlyTable = ({ title, rows }) => {
               <td className="py-2.5 px-3 text-right text-green-600">{formatMoney(row.total_income)}</td>
               <td className="py-2.5 px-3 text-right text-red-600">{formatMoney(row.total_expense)}</td>
               <td className={`py-2.5 px-3 text-right font-semibold ${row.net_balance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatMoney(row.net_balance)}</td>
-              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.teacher_payment)}</td>
-              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.reklam)}</td>
-              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.ofis)}</td>
-              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.vergi)}</td>
-              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.diger)}</td>
+              {expenseCategories.map(c => (
+                <td key={c.key} className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row[c.key] || 0)}</td>
+              ))}
             </tr>
           ))}
         </tbody>
@@ -118,11 +101,9 @@ const MonthlyTable = ({ title, rows }) => {
             <td className="py-3 px-3 text-right text-green-700">{formatMoney(totals.total_income)}</td>
             <td className="py-3 px-3 text-right text-red-700">{formatMoney(totals.total_expense)}</td>
             <td className={`py-3 px-3 text-right ${totals.net_balance >= 0 ? 'text-blue-700' : 'text-red-700'}`}>{formatMoney(totals.net_balance)}</td>
-            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.teacher_payment)}</td>
-            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.reklam)}</td>
-            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.ofis)}</td>
-            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.vergi)}</td>
-            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.diger)}</td>
+            {expenseCategories.map(c => (
+              <td key={c.key} className="py-3 px-3 text-right text-slate-800">{formatMoney(totals[c.key] || 0)}</td>
+            ))}
           </tr>
         </tfoot>
       </table>
@@ -223,6 +204,7 @@ const AdminFinancialReport = () => {
 
   const s = report?.summary_cards;
   const branchNames = report ? Object.keys(report.branch_charts || {}) : [];
+  const expenseCategories = report?.expense_categories || [];
 
   const summaryCards = [
     { label: 'Toplam Gelir', value: s?.total_income, icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-100', testId: 'card-total-income' },
@@ -339,7 +321,9 @@ const AdminFinancialReport = () => {
         <div className="admin-card p-3 mb-6">
           <p className="text-xs text-slate-500 mb-2">Gider kalemleri (grafiklerde göster/gizle):</p>
           <div className="flex flex-wrap gap-2">
-            {OPTIONAL_LINES.map(l => (
+            {expenseCategories.length === 0 ? (
+              <span className="text-xs text-slate-400">Gösterilecek gider kalemi yok</span>
+            ) : expenseCategories.map(l => (
               <button
                 key={l.key}
                 onClick={() => toggleOptional(l.key)}
@@ -366,16 +350,16 @@ const AdminFinancialReport = () => {
           <>
             {/* Charts */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
-              <FinChart title="Genel" data={report.general_chart} activeOptional={activeOptional} />
+              <FinChart title="Genel" data={report.general_chart} activeOptional={activeOptional} expenseCategories={expenseCategories} />
               {branchNames.map(name => (
-                <FinChart key={name} title={name} data={report.branch_charts[name]} activeOptional={activeOptional} />
+                <FinChart key={name} title={name} data={report.branch_charts[name]} activeOptional={activeOptional} expenseCategories={expenseCategories} />
               ))}
             </div>
 
             {/* Monthly tables - her branş (kasa) için ayrı */}
             <div>
               {branchNames.map(name => (
-                <MonthlyTable key={name} title={name} rows={report.branch_charts[name]} />
+                <MonthlyTable key={name} title={name} rows={report.branch_charts[name]} expenseCategories={expenseCategories} />
               ))}
             </div>
           </>

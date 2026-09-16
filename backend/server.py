@@ -2462,41 +2462,62 @@ def _fin_month_label(ym: str):
     m = int(ym[5:7])
     return f"{_FIN_MONTHS_TR[m - 1]} {ym[:4]}"
 
-def _fin_expense_bucket(p: dict):
-    """Bir gider ödemesini kategori kovasına ata."""
-    if p.get("payment_type") == "teacher_payment":
-        return "teacher_payment"
-    cat = p.get("expense_category")
-    if cat == "Maaş":
-        return "teacher_payment"
-    if cat == "Reklam":
-        return "reklam"
-    if cat == "Ofis":
-        return "ofis"
-    if cat == "Vergi":
-        return "vergi"
+def _fin_category_label(p: dict):
+    """Bir gider ödemesinin gösterim kategorisi (etiketi)."""
+    if p.get("payment_type") == "teacher_payment" or p.get("expense_category") == "Maaş":
+        return "Öğretmen Ödemesi"
+    cat = (p.get("expense_category") or "").strip()
     if cat == "Sermaye":
-        return "sermaye"
-    return "diger"  # Kira, Diğer, boş vb.
+        return "Sermaye Çıkışı"
+    return cat if cat else "Diğer"
 
-def _fin_empty_row(ym: str):
-    return {
+_FIN_CAT_ORDER = ["Öğretmen Ödemesi", "Kira", "Reklam", "Ofis", "Vergi", "Sermaye Çıkışı", "Diğer"]
+_FIN_CAT_COLORS = {
+    "Öğretmen Ödemesi": "#8b5cf6",
+    "Kira": "#0ea5e9",
+    "Reklam": "#f97316",
+    "Ofis": "#14b8a6",
+    "Vergi": "#eab308",
+    "Sermaye Çıkışı": "#64748b",
+    "Diğer": "#ec4899",
+}
+_FIN_PALETTE = ["#a855f7", "#06b6d4", "#84cc16", "#f43f5e", "#22c55e", "#e879f9", "#fb923c", "#38bdf8"]
+
+def _fin_build_categories(payments: list):
+    """Ödemelerdeki tüm gider kategorilerini dinamik olarak çıkar (sabit sıra + ekstralar)."""
+    present = set()
+    for p in payments:
+        if p.get("payment_type") in ("teacher_payment", "expense"):
+            present.add(_fin_category_label(p))
+    ordered = [c for c in _FIN_CAT_ORDER if c in present]
+    extras = sorted(c for c in present if c not in _FIN_CAT_ORDER)
+    ordered += extras
+    result = []
+    palette_i = 0
+    for i, label in enumerate(ordered):
+        color = _FIN_CAT_COLORS.get(label)
+        if not color:
+            color = _FIN_PALETTE[palette_i % len(_FIN_PALETTE)]
+            palette_i += 1
+        result.append({"key": f"c{i}", "label": label, "color": color})
+    return result
+
+def _fin_empty_row(ym: str, categories: list):
+    row = {
         "month": ym,
         "label": _fin_month_label(ym),
         "total_income": 0.0,
         "total_expense": 0.0,
         "net_balance": 0.0,
-        "teacher_payment": 0.0,
-        "reklam": 0.0,
-        "ofis": 0.0,
-        "vergi": 0.0,
-        "sermaye": 0.0,
-        "diger": 0.0,
     }
+    for c in categories:
+        row[c["key"]] = 0.0
+    return row
 
-def _fin_build_series(payments: list, months: list):
-    """Ödeme listesinden aylık zaman serisi üret."""
-    rows = {ym: _fin_empty_row(ym) for ym in months}
+def _fin_build_series(payments: list, months: list, categories: list):
+    """Ödeme listesinden aylık zaman serisi üret (dinamik gider kalemleri)."""
+    label_to_key = {c["label"]: c["key"] for c in categories}
+    rows = {ym: _fin_empty_row(ym, categories) for ym in months}
     for p in payments:
         ym = (p.get("date") or "")[:7]
         if ym not in rows:
@@ -2508,11 +2529,14 @@ def _fin_build_series(payments: list, months: list):
             row["total_income"] += amount
         elif ptype in ("teacher_payment", "expense"):
             row["total_expense"] += amount
-            row[_fin_expense_bucket(p)] += amount
+            key = label_to_key.get(_fin_category_label(p))
+            if key:
+                row[key] += amount
+    keys = ["total_income", "total_expense"] + [c["key"] for c in categories]
     for ym in months:
         r = rows[ym]
         r["net_balance"] = round(r["total_income"] - r["total_expense"], 2)
-        for k in ("total_income", "total_expense", "teacher_payment", "reklam", "ofis", "vergi", "sermaye", "diger"):
+        for k in keys:
             r[k] = round(r[k], 2)
     return [rows[ym] for ym in months]
 
@@ -2593,12 +2617,15 @@ async def get_financial_report(
         cb = p.get("cashbox_id")
         return cashbox_branch_map.get(cb) if cb else None
 
+    # Dinamik gider kategorileri (tüm ödemelerden - grafik/tablolarda ortak kullanılır)
+    expense_categories = _fin_build_categories(all_payments)
+
     # Genel grafik: branch_id filtresi varsa ona göre daralt (kasa eşlemesi dahil)
     general_payments = all_payments
     if branch_id:
         general_payments = [p for p in all_payments if effective_branch(p) == branch_id]
 
-    general_chart = _fin_build_series(general_payments, months)
+    general_chart = _fin_build_series(general_payments, months, expense_categories)
 
     # Branş grafikleri: mevcut tüm branşlar için (sadece o branşa ait ödemeler - kasa eşlemesiyle)
     branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
@@ -2608,12 +2635,16 @@ async def get_financial_report(
         if branch_id and b["id"] != branch_id:
             continue
         b_payments = [p for p in all_payments if effective_branch(p) == b["id"]]
-        branch_charts[b["name"]] = _fin_build_series(b_payments, months)
+        branch_charts[b["name"]] = _fin_build_series(b_payments, months, expense_categories)
 
     # Özet kartları (genel grafik üzerinden toplam)
     total_income = round(sum(r["total_income"] for r in general_chart), 2)
     total_expense = round(sum(r["total_expense"] for r in general_chart), 2)
-    teacher_payments = round(sum(r["teacher_payment"] for r in general_chart), 2)
+    # Öğretmen ödemesi toplamı - doğrudan ödemelerden hesapla
+    teacher_payments = round(sum(
+        (p.get("amount", 0) or 0) for p in general_payments
+        if p.get("payment_type") == "teacher_payment" or p.get("expense_category") == "Maaş"
+    ), 2)
     net_balance = round(total_income - total_expense, 2)
 
     if start_ym == end_ym:
@@ -2631,6 +2662,7 @@ async def get_financial_report(
             "teacher_payments": teacher_payments,
             "period_label": period_label,
         },
+        "expense_categories": expense_categories,
         "general_chart": general_chart,
         "branch_charts": branch_charts,
         "monthly_table": general_chart,
