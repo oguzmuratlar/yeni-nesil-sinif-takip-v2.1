@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
@@ -63,7 +63,20 @@ const FinChart = ({ title, data, activeOptional }) => {
   );
 };
 
-const MonthlyTable = ({ title, rows }) => (
+const MonthlyTable = ({ title, rows }) => {
+  const totals = rows.reduce((acc, r) => {
+    acc.total_income += r.total_income;
+    acc.total_expense += r.total_expense;
+    acc.teacher_payment += r.teacher_payment;
+    acc.reklam += r.reklam;
+    acc.ofis += r.ofis;
+    acc.vergi += r.vergi;
+    acc.diger += r.diger;
+    return acc;
+  }, { total_income: 0, total_expense: 0, teacher_payment: 0, reklam: 0, ofis: 0, vergi: 0, diger: 0 });
+  totals.net_balance = totals.total_income - totals.total_expense;
+
+  return (
   <div className="mb-6" data-testid={`fin-table-block-${title}`}>
     <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
       <BarChart3 size={16} className="text-purple-500" />
@@ -99,15 +112,30 @@ const MonthlyTable = ({ title, rows }) => (
             </tr>
           ))}
         </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-slate-300 bg-slate-100 font-bold" data-testid={`fin-total-row-${title}`}>
+            <td className="py-3 px-3 text-slate-800">TOPLAM</td>
+            <td className="py-3 px-3 text-right text-green-700">{formatMoney(totals.total_income)}</td>
+            <td className="py-3 px-3 text-right text-red-700">{formatMoney(totals.total_expense)}</td>
+            <td className={`py-3 px-3 text-right ${totals.net_balance >= 0 ? 'text-blue-700' : 'text-red-700'}`}>{formatMoney(totals.net_balance)}</td>
+            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.teacher_payment)}</td>
+            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.reklam)}</td>
+            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.ofis)}</td>
+            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.vergi)}</td>
+            <td className="py-3 px-3 text-right text-slate-800">{formatMoney(totals.diger)}</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
   </div>
-);
+  );
+};
 
 const AdminFinancialReport = () => {
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState(null);
   const [activeOptional, setActiveOptional] = useState([]);
+  const initedRef = useRef(false);
 
   // Reference data for filters
   const [cashboxes, setCashboxes] = useState([]);
@@ -161,6 +189,13 @@ const AdminFinancialReport = () => {
       });
       const res = await apiClient.get('/admin/financial-report', { params });
       setReport(res.data);
+      // İlk yüklemede tarih filtrelerini aktif dönem aralığıyla doldur
+      if (!initedRef.current) {
+        initedRef.current = true;
+        if (!filters.month && !filters.start_date && !filters.end_date && res.data.applied_start) {
+          setFilters(prev => ({ ...prev, start_date: res.data.applied_start, end_date: res.data.applied_end }));
+        }
+      }
     } catch (e) {
       toast.error('Finansal rapor yüklenemedi');
     } finally {
@@ -177,6 +212,7 @@ const AdminFinancialReport = () => {
   };
 
   const clearFilters = () => {
+    initedRef.current = false;
     setFilters({
       month: '', start_date: '', end_date: '',
       cashbox_id: 'all', branch_id: 'all', category: 'all', teacher_id: 'all', bank_account_id: 'all',

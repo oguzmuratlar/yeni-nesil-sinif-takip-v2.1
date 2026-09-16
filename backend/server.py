@@ -2543,17 +2543,25 @@ async def get_financial_report(
         start_ym = sd[:7]
         end_ym = ed[:7]
     else:
-        # Varsayılan: son 12 ay (bu ay dahil)
+        # Varsayılan: aktif dönemin başlangıcından bugüne
         now = datetime.now(timezone.utc)
-        end_ym = f"{now.year}-{now.month:02d}"
-        sy = now.year
-        sm = now.month - 11
-        while sm <= 0:
-            sm += 12
-            sy -= 1
-        start_ym = f"{sy}-{sm:02d}"
-        sd = f"{start_ym}-01"
-        ed = f"{end_ym}-31"
+        ed = now.strftime("%Y-%m-%d")
+        active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+        season_start = active_season.get("start_date") if active_season else None
+        if isinstance(season_start, datetime):
+            sd = season_start.strftime("%Y-%m-%d")
+        elif isinstance(season_start, str) and len(season_start) >= 7:
+            sd = season_start[:10]
+        else:
+            # Dönem yoksa son 12 aya düş
+            sy = now.year
+            sm = now.month - 11
+            while sm <= 0:
+                sm += 12
+                sy -= 1
+            sd = f"{sy}-{sm:02d}-01"
+        start_ym = sd[:7]
+        end_ym = ed[:7]
 
     months = _fin_month_range(start_ym, end_ym)
 
@@ -2627,6 +2635,8 @@ async def get_financial_report(
         "branch_charts": branch_charts,
         "monthly_table": general_chart,
         "has_data": has_data,
+        "applied_start": sd[:10],
+        "applied_end": ed[:10],
     }
 
 

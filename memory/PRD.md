@@ -69,6 +69,10 @@ Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
 - Alt tablo tek yerine her branş (kasa) için ayrı ayrı 3 tablo olarak render ediliyor
 - Test: Backend 11/11 pytest, Frontend %100
 
+**Finansal Rapor Eklemeleri (iteration_25):**
+- Varsayılan tarih aralığı artık "aktif dönem başlangıcı → bugün" (season.start_date → today); backend default böyle geliyor, frontend tarih inputları ilk yüklemede bu aralıkla doluyor (applied_start/applied_end)
+- Her branş tablosunun en altına, filtreli aylardaki her kolonun (Toplam Gelir/Gider/Net + Öğretmen Ödemesi/Reklam/Ofis/Vergi/Diğer) TOPLAM değerini gösteren "TOPLAM" satırı eklendi
+
 ---
 ## Önceki Güncelleme: 8 Eylül 2026
 
