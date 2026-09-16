@@ -73,6 +73,11 @@ Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
 - Varsayılan tarih aralığı artık "aktif dönem başlangıcı → bugün" (season.start_date → today); backend default böyle geliyor, frontend tarih inputları ilk yüklemede bu aralıkla doluyor (applied_start/applied_end)
 - Her branş tablosunun en altına, filtreli aylardaki her kolonun (Toplam Gelir/Gider/Net + Öğretmen Ödemesi/Reklam/Ofis/Vergi/Diğer) TOPLAM değerini gösteren "TOPLAM" satırı eklendi
 
+**Finansal Rapor - Dinamik Gider Kalemleri (iteration_26):**
+- "Diğer Giderler" toplu grubu kaldırıldı; her gider kategorisi (Öğretmen Ödemesi, Kira, Reklam, Ofis, Vergi, Sermaye Çıkışı, Diğer ve varsa özel kategoriler) hem grafiklerde hem tablolarda AYRI kalem olarak gösteriliyor
+- Backend `expense_categories` dizisini dinamik döndürüyor (veri içindeki gerçek kategorilerden); grafik çizgileri, tablo kolonları, toggle pill'leri ve TOPLAM satırı hep bundan besleniyor
+- Test: Backend 10/10 pytest, Frontend %100
+
 ---
 ## Önceki Güncelleme: 8 Eylül 2026
 

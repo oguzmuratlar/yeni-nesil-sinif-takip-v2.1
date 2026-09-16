@@ -1,0 +1,23 @@
+{
+  "summary": "Iteration_25: verified dynamic expense_categories (c0..cN) replace prior fixed 5-column schema in Admin Finansal Rapor. Backend 10/10 pytest pass (updated test suite for new schema). Frontend UI: 4 dynamic toggle pills (fin-toggle-c0..c3 = Öğretmen Ödemesi/Kira/Reklam/Vergi) render, NO 'Diğer Giderler' pill; each per-branch table (fin-monthly-table-{Matematik|Fen Bilimleri|Türkçe}) has dynamic columns per category; Matematik TOPLAM row correctly shows Kira=1.000, Reklam=5.000, Vergi=500; 4 charts render (Genel + 3 branches); toggling fin-toggle-c1 adds/removes exactly 3 recharts Kira lines (Genel + Matematik + Fen Bilimleri; Türkçe empty). Summary cards populate. Default range = Haziran 2026 - Eylül 2026. Teacher forbidden confirmed (backend test).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_financial_report.py",
+    "/app/test_reports/pytest/financial_report_iter25.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Category keys c0..cN are index-based; if new categories are added mid-period the same key can map to a different label between two API calls. Consider stable slug keys (e.g., 'oegretmen-oedemesi') for URL/testing robustness.",
+    "table data-testid uses branch display name with spaces (fin-monthly-table-Fen Bilimleri). Works but slug/id-based ids would be more robust.",
+    "Old iteration_24 test file relied on legacy fixed keys (reklam/ofis/vergi/sermaye/diger); overwritten with new dynamic-schema tests. Legacy keys are no longer emitted in general_chart rows (verified)."
+  ],
+  "updated_files": ["/app/backend/tests/test_financial_report.py"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100%"},
+  "test_credentials": "admin/admin123 ; buse.ozakdas/bozakdas.1",
+  "seed_data_creation": "None. Read-only; test_transfers_excluded cleans up its own transient data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend now returns expense_categories: [{key:'c0'..'cN', label, color}] and general_chart/branch_charts rows use those keys instead of fixed reklam/ofis/vergi/sermaye/diger/teacher_payment fields. Sum of category buckets equals total_expense per row. Frontend fin-toggle-{key} pills, per-branch tables (fin-monthly-table-{Branch}) with dynamic columns, and TOPLAM rows (fin-total-row-{Branch}) are all driven by expense_categories. All required test-ids present.",
+  "rca_of_the_issue": "N/A - feature verification only. Prior 'Diğer Giderler' catch-all bucket has been removed; each real expense category is now rendered as its own pill/line/column driven by the backend expense_categories array."
+}

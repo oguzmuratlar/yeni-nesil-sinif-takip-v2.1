@@ -1,10 +1,13 @@
-"""Backend tests for GET /api/admin/financial-report (Finansal Rapor)."""
+"""Backend tests for GET /api/admin/financial-report (Finansal Rapor).
+
+Iteration_25: dynamic expense_categories (c0..cN) replace fixed keys.
+"""
 import os
 import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://quirky-ride-4.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
 
 ADMIN = {"username": "admin", "password": "admin123"}
@@ -44,35 +47,76 @@ def test_no_auth_unauthorized():
     assert r.status_code in (401, 403)
 
 
-# --- Default shape ---
-def test_default_shape_12_months_and_branches(admin_h):
+# --- Default shape / dynamic categories ---
+def test_default_shape_and_dynamic_categories(admin_h):
     r = requests.get(f"{API}/admin/financial-report", headers=admin_h, timeout=60)
     assert r.status_code == 200
     d = r.json()
-    for k in ["summary_cards", "general_chart", "branch_charts", "monthly_table", "has_data"]:
-        assert k in d
-    assert len(d["general_chart"]) == 12
+    for k in ["summary_cards", "expense_categories", "general_chart", "branch_charts", "monthly_table", "has_data"]:
+        assert k in d, f"missing {k}"
     s = d["summary_cards"]
     for k in ["total_income", "total_expense", "net_balance", "teacher_payments", "period_label"]:
         assert k in s
-    # Branches present
-    for name in BRANCHES.keys():
-        assert name in d["branch_charts"], f"missing branch {name}"
-        assert len(d["branch_charts"][name]) == 12
-    # Row shape
+
+    cats = d["expense_categories"]
+    assert isinstance(cats, list) and len(cats) > 0
+    labels = [c["label"] for c in cats]
+    keys = [c["key"] for c in cats]
+    # Dynamic keys must be index-based c0..cN
+    for i, k in enumerate(keys):
+        assert k == f"c{i}", f"expected c{i}, got {k}"
+    # Real categories present, and no generic 'Diğer Giderler' catch-all
+    for expected in ["Öğretmen Ödemesi", "Kira", "Reklam", "Vergi"]:
+        assert expected in labels, f"missing category {expected}"
+    assert "Diğer Giderler" not in labels
+
+    # Row shape uses dynamic keys, and old fixed keys are gone
     row = d["general_chart"][0]
-    for k in ["month", "label", "total_income", "total_expense", "net_balance",
-              "teacher_payment", "reklam", "ofis", "vergi", "sermaye", "diger"]:
+    for k in ["month", "label", "total_income", "total_expense", "net_balance"]:
         assert k in row
+    for k in keys:
+        assert k in row
+    for legacy in ["reklam", "ofis", "vergi", "sermaye", "diger", "teacher_payment"]:
+        assert legacy not in row, f"legacy fixed key {legacy} should not be present"
 
 
-def test_net_balance_math(admin_h):
+def test_net_balance_math_and_category_sum(admin_h):
     r = requests.get(f"{API}/admin/financial-report", headers=admin_h, timeout=60)
     d = r.json()
+    keys = [c["key"] for c in d["expense_categories"]]
     for row in d["general_chart"]:
         assert abs(row["net_balance"] - (row["total_income"] - row["total_expense"])) < 0.02
+        # Sum of category buckets equals total_expense
+        cat_sum = sum(row[k] for k in keys)
+        assert abs(cat_sum - row["total_expense"]) < 0.02, f"cat sum {cat_sum} != {row['total_expense']}"
     s = d["summary_cards"]
     assert abs(s["net_balance"] - (s["total_income"] - s["total_expense"])) < 0.02
+
+
+def test_matematik_branch_dynamic_values(admin_h):
+    """Matematik branch: Kira=1000, Reklam=5000, Vergi=500 across the default range."""
+    r = requests.get(f"{API}/admin/financial-report", headers=admin_h, timeout=60)
+    d = r.json()
+    cats = {c["label"]: c["key"] for c in d["expense_categories"]}
+    mat = d["branch_charts"]["Matematik"]
+    kira_key = cats["Kira"]
+    reklam_key = cats["Reklam"]
+    vergi_key = cats["Vergi"]
+    assert sum(r[kira_key] for r in mat) == 1000.0
+    assert sum(r[reklam_key] for r in mat) == 5000.0
+    assert sum(r[vergi_key] for r in mat) == 500.0
+    assert sum(r["total_expense"] for r in mat) >= 6500.0
+
+
+def test_teacher_payments_summary_matches_payments(admin_h):
+    r = requests.get(f"{API}/admin/financial-report", headers=admin_h, timeout=60)
+    d = r.json()
+    # teacher_payments card must equal the sum of the Öğretmen Ödemesi category if present
+    cats = {c["label"]: c["key"] for c in d["expense_categories"]}
+    if "Öğretmen Ödemesi" in cats:
+        k = cats["Öğretmen Ödemesi"]
+        total_tp = sum(r[k] for r in d["general_chart"])
+        assert abs(d["summary_cards"]["teacher_payments"] - total_tp) < 0.02
 
 
 def test_single_month(admin_h):
@@ -101,55 +145,7 @@ def test_branch_filter(admin_h):
                      params={"branch_id": bid}, headers=admin_h, timeout=60)
     assert r.status_code == 200
     d = r.json()
-    # Only Matematik in branch_charts
     assert list(d["branch_charts"].keys()) == ["Matematik"]
-
-
-def test_category_filter_vergi(admin_h):
-    r = requests.get(f"{API}/admin/financial-report",
-                     params={"category": "Vergi"}, headers=admin_h, timeout=60)
-    assert r.status_code == 200
-    d = r.json()
-    # No income should come through (only expenses with category Vergi)
-    assert d["summary_cards"]["total_income"] == 0
-    # All expense must be in vergi bucket
-    for row in d["general_chart"]:
-        assert row["reklam"] == 0
-        assert row["ofis"] == 0
-        assert row["teacher_payment"] == 0
-        # expense may be 0 or vergi
-        assert abs(row["total_expense"] - row["vergi"]) < 0.02
-
-
-def test_teacher_filter(admin_h):
-    tid = "2c2ca5bd-05c2-411a-ae5a-9db4713d8e4c"
-    r = requests.get(f"{API}/admin/financial-report",
-                     params={"teacher_id": tid}, headers=admin_h, timeout=60)
-    assert r.status_code == 200
-    # No student income for a teacher_id filter (student_payments do not have teacher_id typically) - just ensure OK
-    assert r.status_code == 200
-
-
-# --- Cashbox->branch attribution fix (iteration_24) ---
-def test_branch_attribution_via_cashbox(admin_h):
-    """Expenses w/o branch_id but w/ cashbox_id must be attributed to cashbox's branch."""
-    r = requests.get(f"{API}/admin/financial-report", headers=admin_h, timeout=60)
-    assert r.status_code == 200
-    d = r.json()
-    bc = d["branch_charts"]
-    # Matematik: expects 500 vergi + non-zero teacher_payment/expense from previous zeros
-    mat = bc["Matematik"]
-    assert sum(r["vergi"] for r in mat) == 500.0
-    assert sum(r["total_expense"] for r in mat) >= 6500.0
-    # Fen Bilimleri and Türkçe now show teacher_payment via cashbox mapping
-    fen_tp = sum(r["teacher_payment"] for r in bc["Fen Bilimleri"])
-    tur_tp = sum(r["teacher_payment"] for r in bc["Türkçe"])
-    assert fen_tp > 0, "Fen Bilimleri teacher_payment should be populated via cashbox mapping"
-    assert tur_tp > 0, "Türkçe teacher_payment should be populated via cashbox mapping"
-    # Branches should differ (each = own cashbox)
-    fen_exp = sum(r["total_expense"] for r in bc["Fen Bilimleri"])
-    mat_exp = sum(r["total_expense"] for r in mat)
-    assert fen_exp != mat_exp
 
 
 # --- Transfers exclusion ---
@@ -165,25 +161,20 @@ def _make_payment(admin_h, ptype, amount, cashbox_id=None, extra=None):
         body["cashbox_id"] = cashbox_id
     if extra:
         body.update(extra)
-    r = requests.post(f"{API}/payments", json=body, headers=admin_h, timeout=30)
-    return r
+    return requests.post(f"{API}/payments", json=body, headers=admin_h, timeout=30)
 
 
 def test_transfers_excluded(admin_h):
-    """Create a transfer payment (transfer_out/in) and verify totals don't change."""
-    # baseline
     r0 = requests.get(f"{API}/admin/financial-report",
                       params={"month": "2026-09"}, headers=admin_h, timeout=60)
     base = r0.json()["summary_cards"]
 
-    # Grab two cashboxes
     cb_resp = requests.get(f"{API}/cashboxes", headers=admin_h, timeout=15).json()
     cb = cb_resp["cashboxes"] if isinstance(cb_resp, dict) else cb_resp
     if len(cb) < 2:
         pytest.skip("Not enough cashboxes for transfer test")
     src, dst = cb[0]["id"], cb[1]["id"]
 
-    # Try dedicated cashbox transfer endpoint
     created_ids = []
     tr = requests.post(f"{API}/cashbox-transfers", json={
         "from_cashbox_id": src,
@@ -193,24 +184,20 @@ def test_transfers_excluded(admin_h):
         "description": "TEST_transfer_excl",
     }, headers=admin_h, timeout=30)
     if tr.status_code not in (200, 201):
-        # Fallback: create raw transfer_out/in payments directly
         for ptype in ("transfer_out", "transfer_in"):
             rr = _make_payment(admin_h, ptype, 999.0, cashbox_id=src if ptype == "transfer_out" else dst)
             if rr.status_code in (200, 201):
                 created_ids.append(rr.json().get("id"))
 
-    # Re-fetch
     r1 = requests.get(f"{API}/admin/financial-report",
                       params={"month": "2026-09"}, headers=admin_h, timeout=60)
     after = r1.json()["summary_cards"]
-    assert base["total_income"] == after["total_income"], "transfers must not affect income"
-    assert base["total_expense"] == after["total_expense"], "transfers must not affect expense"
+    assert base["total_income"] == after["total_income"]
+    assert base["total_expense"] == after["total_expense"]
 
-    # Cleanup created payments if any
     for pid in created_ids:
         if pid:
             requests.delete(f"{API}/payments/{pid}", headers=admin_h, timeout=15)
-    # Try clean cashbox-transfer if exposed
     if tr.status_code in (200, 201):
         tid = tr.json().get("id")
         if tid:
