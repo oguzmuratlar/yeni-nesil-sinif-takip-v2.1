@@ -94,10 +94,10 @@ const AdminFinancialReport = () => {
           apiClient.get('/teachers'),
           apiClient.get('/bank-accounts'),
         ]);
-        setCashboxes(cb.data);
-        setBranches(br.data);
-        setTeachers(tc.data);
-        setBankAccounts(ba.data);
+        setCashboxes(Array.isArray(cb.data) ? cb.data : (cb.data?.cashboxes || []));
+        setBranches(Array.isArray(br.data) ? br.data : (br.data?.branches || []));
+        setTeachers(Array.isArray(tc.data) ? tc.data : (tc.data?.teachers || []));
+        setBankAccounts(Array.isArray(ba.data) ? ba.data : (ba.data?.bank_accounts || []));
       } catch (e) {
         console.error('Referans veriler yüklenemedi');
       }

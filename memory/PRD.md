@@ -54,6 +54,16 @@ Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
 - Admin Öğretmenler ekranı üstüne maskeli "Toplam Bakiye" kartı eklendi; aynı "Bakiyeleri Göster/Gizle" butonu hem toplamı hem tekil bakiyeleri açar/gizler
 - Admin Ödemeler > para çıkışı gider kategorilerine "Vergi" eklendi (form + filtre)
 
+### YENİ ÖZELLİK: Finansal Rapor ✅ (iteration_24)
+- Muhasebe menüsü altında "Finansal Rapor" (yalnızca admin; teacher/veli 403)
+- Üst özet kartları: Toplam Gelir, Toplam Gider, Net Bilanço, Öğretmen Ödemeleri, Seçili Dönem
+- Filtreler (backend'e parametre): ay/tarih aralığı, kasa, branş, kategori, öğretmen, banka hesabı
+- 4+ çizgi grafik: Genel + her branş (Fen/Matematik/Türkçe) — Gelir/Gider/Net her zaman açık, gider kalemleri (Öğretmen Ödemesi/Reklam/Ofis/Vergi/Sermaye/Diğer) isteğe bağlı toggle
+- Aylık özet tablo; boş veri mesajı; responsive grafikler
+- Tahsilat bazlı: Gelir=student_payment, Gider=gerçekleşen teacher_payment+expense (hakediş DEĞİL), transferler hariç
+- API: GET /api/admin/financial-report (start_date,end_date,month,cashbox_id,branch_id,category,teacher_id,bank_account_id)
+- Test: Backend 10/10 pytest, Frontend %100 (cashboxes response shape bug'ı bulundu ve düzeltildi)
+
 ---
 ## Önceki Güncelleme: 8 Eylül 2026
 
