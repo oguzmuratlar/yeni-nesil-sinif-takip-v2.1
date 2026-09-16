@@ -2469,14 +2469,17 @@ def _fin_category_label(p: dict):
     cat = (p.get("expense_category") or "").strip()
     if cat == "Sermaye":
         return "Sermaye Çıkışı"
+    if cat == "Ofis":
+        return "Ofis Gideri"
     return cat if cat else "Diğer"
 
-_FIN_CAT_ORDER = ["Öğretmen Ödemesi", "Kira", "Reklam", "Ofis", "Vergi", "Sermaye Çıkışı", "Diğer"]
+# Her zaman gösterilecek sabit gider kalemleri (veride olmasa bile)
+_FIN_CAT_ORDER = ["Öğretmen Ödemesi", "Kira", "Reklam", "Ofis Gideri", "Vergi", "Sermaye Çıkışı", "Diğer"]
 _FIN_CAT_COLORS = {
     "Öğretmen Ödemesi": "#8b5cf6",
     "Kira": "#0ea5e9",
     "Reklam": "#f97316",
-    "Ofis": "#14b8a6",
+    "Ofis Gideri": "#14b8a6",
     "Vergi": "#eab308",
     "Sermaye Çıkışı": "#64748b",
     "Diğer": "#ec4899",
@@ -2484,12 +2487,13 @@ _FIN_CAT_COLORS = {
 _FIN_PALETTE = ["#a855f7", "#06b6d4", "#84cc16", "#f43f5e", "#22c55e", "#e879f9", "#fb923c", "#38bdf8"]
 
 def _fin_build_categories(payments: list):
-    """Ödemelerdeki tüm gider kategorilerini dinamik olarak çıkar (sabit sıra + ekstralar)."""
+    """Sabit tam gider kalemi listesi + veride bulunan ekstra (özel) kategoriler."""
     present = set()
     for p in payments:
         if p.get("payment_type") in ("teacher_payment", "expense"):
             present.add(_fin_category_label(p))
-    ordered = [c for c in _FIN_CAT_ORDER if c in present]
+    # Sabit liste her zaman dahil; verideki ekstralar sona eklenir
+    ordered = list(_FIN_CAT_ORDER)
     extras = sorted(c for c in present if c not in _FIN_CAT_ORDER)
     ordered += extras
     result = []

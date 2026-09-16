@@ -74,9 +74,8 @@ Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
 - Her branş tablosunun en altına, filtreli aylardaki her kolonun (Toplam Gelir/Gider/Net + Öğretmen Ödemesi/Reklam/Ofis/Vergi/Diğer) TOPLAM değerini gösteren "TOPLAM" satırı eklendi
 
 **Finansal Rapor - Dinamik Gider Kalemleri (iteration_26):**
-- "Diğer Giderler" toplu grubu kaldırıldı; her gider kategorisi (Öğretmen Ödemesi, Kira, Reklam, Ofis, Vergi, Sermaye Çıkışı, Diğer ve varsa özel kategoriler) hem grafiklerde hem tablolarda AYRI kalem olarak gösteriliyor
-- Backend `expense_categories` dizisini dinamik döndürüyor (veri içindeki gerçek kategorilerden); grafik çizgileri, tablo kolonları, toggle pill'leri ve TOPLAM satırı hep bundan besleniyor
-- Test: Backend 10/10 pytest, Frontend %100
+- Tüm gider kalemleri (Öğretmen Ödemesi, Kira, Reklam, Ofis Gideri, Vergi, Sermaye Çıkışı, Diğer) HER ZAMAN gösteriliyor (veride 0 olsa bile) — hem grafiklerde hem filtre/toggle'da hem tablolarda. Veride bulunan özel kategoriler de sona ekleniyor.
+- Backend `expense_categories` sabit tam listeyi + ekstraları döndürüyor; grafik çizgileri, tablo kolonları, toggle pill'leri ve TOPLAM satırı bundan besleniyor.
 
 ---
 ## Önceki Güncelleme: 8 Eylül 2026
