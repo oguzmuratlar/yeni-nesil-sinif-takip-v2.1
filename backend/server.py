@@ -2581,12 +2581,19 @@ async def get_teacher_balance(
     # Toplam net kazanç = brüt - vergi
     toplam_net_kazanc = toplam_odeme_brut - resmi_vergi_toplami
     
-    # Kamp kazançlarını hesapla - ay filtresi kamplar için uygulanamaz (kamplar belirli bir ay'a bağlı değil)
+    # Kamp kazançlarını hesapla - ay filtresi kamp oluşturulma tarihine (created_at) göre uygulanır
+    # (camp-income-detail endpoint'i ile tutarlı)
     camps = await db.camps.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
     total_camp_earnings = 0
     camp_earnings_details = []
     
     for camp in camps:
+        # Ay filtresi varsa, kampın oluşturulma tarihine göre filtrele
+        if month:
+            camp_date = camp.get("created_at", "")
+            if not (isinstance(camp_date, str) and camp_date.startswith(month)):
+                continue
+        
         # Kesin kayıtlı öğrenci sayısı = ödeme yapmış kabul edilir
         paid_students_count = await db.camp_students.count_documents({
             "camp_id": camp["id"],
@@ -2621,13 +2628,8 @@ async def get_teacher_balance(
     } for r in youtube_records]
     
     # Toplam kazanç = Ders kazancı + Kamp kazancı + YouTube kazancı
-    # Not: Ay filtresi varsa kamp kazancı hariç tutulabilir veya dahil edilebilir
-    # Şu an tüm kamplar dahil ediliyor
-    if month:
-        # Ay bazlı görünümde kamp kazancı dahil edilmez (kamplar aya bağlı değil)
-        grand_total_earnings = total_earnings + total_youtube_earnings
-    else:
-        grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings
+    # Kamp kazancı artık ay filtresinde de (created_at bazlı) dahil edilir
+    grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings
     
     balance = grand_total_earnings - total_paid
     
@@ -2635,13 +2637,13 @@ async def get_teacher_balance(
         "teacher_id": teacher_id,
         "month": month,  # Hangi ay için hesaplandığını göster
         "lesson_earnings": total_earnings,
-        "camp_earnings": total_camp_earnings if not month else 0,
+        "camp_earnings": total_camp_earnings,
         "youtube_earnings": total_youtube_earnings,
         "total_earnings": grand_total_earnings,
         "total_paid": total_paid,
         "balance": balance,
         "payments": payments,
-        "camp_earnings_details": camp_earnings_details if not month else [],
+        "camp_earnings_details": camp_earnings_details,
         "youtube_earnings_details": youtube_earnings_details,
         # Ödeme şekli detayları
         "payment_details": {
