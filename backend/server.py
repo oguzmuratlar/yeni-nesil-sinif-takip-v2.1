@@ -2438,6 +2438,186 @@ async def delete_payment(payment_id: str, current_user: User = Depends(get_curre
     await db.payments.delete_one({"id": payment_id})
     return {"message": "Ödeme başarıyla silindi"}
 
+# ============= FINANSAL RAPOR =============
+
+def _fin_month_range(start_ym: str, end_ym: str):
+    """start_ym..end_ym (YYYY-MM) arası aylık liste (dahil)."""
+    result = []
+    y, m = int(start_ym[:4]), int(start_ym[5:7])
+    ey, em = int(end_ym[:4]), int(end_ym[5:7])
+    guard = 0
+    while (y, m) <= (ey, em) and guard < 240:
+        result.append(f"{y}-{m:02d}")
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+        guard += 1
+    return result
+
+_FIN_MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+_FIN_MONTHS_TR_FULL = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+
+def _fin_month_label(ym: str):
+    m = int(ym[5:7])
+    return f"{_FIN_MONTHS_TR[m - 1]} {ym[:4]}"
+
+def _fin_expense_bucket(p: dict):
+    """Bir gider ödemesini kategori kovasına ata."""
+    if p.get("payment_type") == "teacher_payment":
+        return "teacher_payment"
+    cat = p.get("expense_category")
+    if cat == "Maaş":
+        return "teacher_payment"
+    if cat == "Reklam":
+        return "reklam"
+    if cat == "Ofis":
+        return "ofis"
+    if cat == "Vergi":
+        return "vergi"
+    if cat == "Sermaye":
+        return "sermaye"
+    return "diger"  # Kira, Diğer, boş vb.
+
+def _fin_empty_row(ym: str):
+    return {
+        "month": ym,
+        "label": _fin_month_label(ym),
+        "total_income": 0.0,
+        "total_expense": 0.0,
+        "net_balance": 0.0,
+        "teacher_payment": 0.0,
+        "reklam": 0.0,
+        "ofis": 0.0,
+        "vergi": 0.0,
+        "sermaye": 0.0,
+        "diger": 0.0,
+    }
+
+def _fin_build_series(payments: list, months: list):
+    """Ödeme listesinden aylık zaman serisi üret."""
+    rows = {ym: _fin_empty_row(ym) for ym in months}
+    for p in payments:
+        ym = (p.get("date") or "")[:7]
+        if ym not in rows:
+            continue
+        row = rows[ym]
+        ptype = p.get("payment_type")
+        amount = p.get("amount", 0) or 0
+        if ptype == "student_payment":
+            row["total_income"] += amount
+        elif ptype in ("teacher_payment", "expense"):
+            row["total_expense"] += amount
+            row[_fin_expense_bucket(p)] += amount
+    for ym in months:
+        r = rows[ym]
+        r["net_balance"] = round(r["total_income"] - r["total_expense"], 2)
+        for k in ("total_income", "total_expense", "teacher_payment", "reklam", "ofis", "vergi", "sermaye", "diger"):
+            r[k] = round(r[k], 2)
+    return [rows[ym] for ym in months]
+
+@api_router.get("/admin/financial-report")
+async def get_financial_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    month: Optional[str] = None,
+    cashbox_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    category: Optional[str] = None,
+    teacher_id: Optional[str] = None,
+    bank_account_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Aylık gelir/gider/net bilanço finansal raporu. Sadece admin."""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Bu rapora yalnızca admin erişebilir")
+
+    # Tarih aralığı belirle
+    if month:
+        start_ym = end_ym = month[:7]
+        sd = f"{start_ym}-01"
+        ed = f"{start_ym}-31"
+    elif start_date or end_date:
+        sd = start_date or "0000-01-01"
+        ed = end_date or "9999-12-31"
+        start_ym = sd[:7]
+        end_ym = ed[:7]
+    else:
+        # Varsayılan: son 12 ay (bu ay dahil)
+        now = datetime.now(timezone.utc)
+        end_ym = f"{now.year}-{now.month:02d}"
+        sy = now.year
+        sm = now.month - 11
+        while sm <= 0:
+            sm += 12
+            sy -= 1
+        start_ym = f"{sy}-{sm:02d}"
+        sd = f"{start_ym}-01"
+        ed = f"{end_ym}-31"
+
+    months = _fin_month_range(start_ym, end_ym)
+
+    # Ödeme sorgusu - transferler hariç (iç hareket, gelir/gider sayılmaz)
+    query = {
+        "date": {"$gte": sd, "$lte": ed},
+        "payment_type": {"$in": ["student_payment", "teacher_payment", "expense"]},
+    }
+    if cashbox_id:
+        query["cashbox_id"] = cashbox_id
+    if bank_account_id:
+        query["bank_account_id"] = bank_account_id
+    if teacher_id:
+        query["teacher_id"] = teacher_id
+    if category:
+        query["expense_category"] = category
+
+    all_payments = await db.payments.find(query, {"_id": 0}).to_list(100000)
+
+    # Genel grafik: branch_id filtresi varsa ona göre daralt
+    general_payments = all_payments
+    if branch_id:
+        general_payments = [p for p in all_payments if p.get("branch_id") == branch_id]
+
+    general_chart = _fin_build_series(general_payments, months)
+
+    # Branş grafikleri: mevcut tüm branşlar için (sadece o branşa ait ödemeler)
+    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
+    branch_charts = {}
+    for b in branches:
+        # branch_id filtresi verilmişse sadece o branşı üret
+        if branch_id and b["id"] != branch_id:
+            continue
+        b_payments = [p for p in all_payments if p.get("branch_id") == b["id"]]
+        branch_charts[b["name"]] = _fin_build_series(b_payments, months)
+
+    # Özet kartları (genel grafik üzerinden toplam)
+    total_income = round(sum(r["total_income"] for r in general_chart), 2)
+    total_expense = round(sum(r["total_expense"] for r in general_chart), 2)
+    teacher_payments = round(sum(r["teacher_payment"] for r in general_chart), 2)
+    net_balance = round(total_income - total_expense, 2)
+
+    if start_ym == end_ym:
+        period_label = f"{_FIN_MONTHS_TR_FULL[int(start_ym[5:7]) - 1]} {start_ym[:4]}"
+    else:
+        period_label = f"{_FIN_MONTHS_TR_FULL[int(start_ym[5:7]) - 1]} {start_ym[:4]} - {_FIN_MONTHS_TR_FULL[int(end_ym[5:7]) - 1]} {end_ym[:4]}"
+
+    has_data = len(all_payments) > 0
+
+    return {
+        "summary_cards": {
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "net_balance": net_balance,
+            "teacher_payments": teacher_payments,
+            "period_label": period_label,
+        },
+        "general_chart": general_chart,
+        "branch_charts": branch_charts,
+        "monthly_table": general_chart,
+        "has_data": has_data,
+    }
+
+
 # ============= TEACHER PRICE ROUTES =============
 
 @api_router.get("/teacher-prices", response_model=List[TeacherPrice])

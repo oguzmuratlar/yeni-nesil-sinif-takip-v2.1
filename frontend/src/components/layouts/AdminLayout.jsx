@@ -24,7 +24,8 @@ import {
   Calculator,
   Library,
   Settings,
-  Link2
+  Link2,
+  BarChart3
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -99,6 +100,7 @@ const AdminLayout = ({ children }) => {
           { path: '/admin/cashboxes', label: 'Kasalar', icon: Wallet },
           { path: '/admin/payments', label: 'Ödemeler', icon: CreditCard },
           { path: '/admin/bank-accounts', label: 'Banka Hesapları', icon: Landmark },
+          { path: '/admin/financial-report', label: 'Finansal Rapor', icon: BarChart3 },
           { path: '/admin/monthly-program', label: 'Aylık Program', icon: Calendar },
         ]
       }
