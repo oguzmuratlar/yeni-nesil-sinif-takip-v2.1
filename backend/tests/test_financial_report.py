@@ -130,6 +130,28 @@ def test_teacher_filter(admin_h):
     assert r.status_code == 200
 
 
+# --- Cashbox->branch attribution fix (iteration_24) ---
+def test_branch_attribution_via_cashbox(admin_h):
+    """Expenses w/o branch_id but w/ cashbox_id must be attributed to cashbox's branch."""
+    r = requests.get(f"{API}/admin/financial-report", headers=admin_h, timeout=60)
+    assert r.status_code == 200
+    d = r.json()
+    bc = d["branch_charts"]
+    # Matematik: expects 500 vergi + non-zero teacher_payment/expense from previous zeros
+    mat = bc["Matematik"]
+    assert sum(r["vergi"] for r in mat) == 500.0
+    assert sum(r["total_expense"] for r in mat) >= 6500.0
+    # Fen Bilimleri and Türkçe now show teacher_payment via cashbox mapping
+    fen_tp = sum(r["teacher_payment"] for r in bc["Fen Bilimleri"])
+    tur_tp = sum(r["teacher_payment"] for r in bc["Türkçe"])
+    assert fen_tp > 0, "Fen Bilimleri teacher_payment should be populated via cashbox mapping"
+    assert tur_tp > 0, "Türkçe teacher_payment should be populated via cashbox mapping"
+    # Branches should differ (each = own cashbox)
+    fen_exp = sum(r["total_expense"] for r in bc["Fen Bilimleri"])
+    mat_exp = sum(r["total_expense"] for r in mat)
+    assert fen_exp != mat_exp
+
+
 # --- Transfers exclusion ---
 def _make_payment(admin_h, ptype, amount, cashbox_id=None, extra=None):
     body = {

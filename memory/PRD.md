@@ -64,6 +64,11 @@ Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
 - API: GET /api/admin/financial-report (start_date,end_date,month,cashbox_id,branch_id,category,teacher_id,bank_account_id)
 - Test: Backend 10/10 pytest, Frontend %100 (cashboxes response shape bug'ı bulundu ve düzeltildi)
 
+**Finansal Rapor Düzeltmeleri (iteration_24):**
+- Branş grafik/tablolarında gider ve öğretmen ödemeleri artık görünüyor: giderler/öğretmen ödemeleri branch_id taşımadığı için KASA→branş eşlemesi (cashbox_branch_map + effective_branch) eklendi; örn. Matematik kasasından yapılan Vergi ödemesi Matematik grafiğinde/tablosunda görünüyor
+- Alt tablo tek yerine her branş (kasa) için ayrı ayrı 3 tablo olarak render ediliyor
+- Test: Backend 11/11 pytest, Frontend %100
+
 ---
 ## Önceki Güncelleme: 8 Eylül 2026
 

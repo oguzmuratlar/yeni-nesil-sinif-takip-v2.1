@@ -1,0 +1,22 @@
+{
+  "summary": "Verified two fixes for Admin Finansal Rapor: (1) branch attribution via cashbox mapping and (2) per-branch monthly tables. Backend: 11/11 pytest pass, including new test_branch_attribution_via_cashbox that asserts Matematik vergi=500, total_expense>=6500, and Fen Bilimleri/Türkçe now have populated teacher_payment. Frontend: charts render for Genel + 3 branches; three separate MonthlyTable blocks render (fin-table-block-{Matematik|Fen Bilimleri|Türkçe}) each with 12 rows; single combined 'fin-monthly-table' is gone (count=0); toggling fin-toggle-vergi adds a 'Vergi' dashed line to the Matematik chart and Matematik table shows 500 vergi value; all 6 optional toggles (reklam, ofis, teacher_payment, vergi, sermaye, diger) add/remove their lines correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_financial_report.py",
+    "/app/test_reports/pytest/financial_report_iter24.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py effective_branch(p) fallback via cashbox_branch_map is the correct fix; ensure cashbox_branch_map is refreshed per request (cashboxes rarely change but mapping is fetched at report time).",
+    "AdminFinancialReport.jsx: table block key uses branch display name (with space) as data-testid suffix (e.g., fin-table-block-Fen Bilimleri). Works but consider slug/id-based test ids for robustness."
+  ],
+  "updated_files": ["/app/backend/tests/test_financial_report.py"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100%"},
+  "test_credentials": "admin/admin123",
+  "seed_data_creation": "None. Read-only verification. test_transfers_excluded creates/cleans up its own data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Financial report backend and UI fully validated after iteration_24 fixes. Backend curl: branch_charts.Matematik totals -> vergi=500, expense=6500, reklam=5000, diger=1000; Fen Bilimleri teacher_payment=31400; Türkçe teacher_payment=2000. Frontend renders 4 charts + 3 per-branch tables (no combined table).",
+  "rca_of_the_issue": "Prior: expenses/teacher payments carry cashbox_id (no branch_id), so branch charts filtered on branch_id only showed zeros for Matematik vergi & other branches' teacher_payment. Fix adds cashbox_branch_map and effective_branch(p) = p.branch_id or cashbox->branch, applied in both general and branch chart aggregation. Frontend now renders MonthlyTable once per branch instead of a single combined table."
+}
