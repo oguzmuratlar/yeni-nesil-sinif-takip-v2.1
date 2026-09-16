@@ -208,7 +208,7 @@ const AdminPayments = () => {
   }, [allPaymentsForMonths]);
 
   // Gider kategorileri
-  const expenseCategories = ['Maaş', 'Kira', 'Reklam', 'Ofis', 'Sermaye', 'Diğer'];
+  const expenseCategories = ['Maaş', 'Kira', 'Reklam', 'Ofis', 'Vergi', 'Sermaye', 'Diğer'];
 
   const handleSubmitPayment = async (e) => {
     e.preventDefault();
@@ -809,6 +809,7 @@ const AdminPayments = () => {
                         <SelectItem value="Kira">Kira</SelectItem>
                         <SelectItem value="Reklam">Reklam</SelectItem>
                         <SelectItem value="Ofis">Ofis Gideri</SelectItem>
+                        <SelectItem value="Vergi">Vergi</SelectItem>
                         <SelectItem value="Sermaye">Sermaye Çıkışı</SelectItem>
                         <SelectItem value="Diğer">Diğer</SelectItem>
                       </SelectContent>

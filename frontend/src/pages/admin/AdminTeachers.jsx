@@ -98,13 +98,31 @@ const AdminTeachers = () => {
           </Button>
         </div>
 
-        {/* Balance mask toggle */}
-        <div className="flex justify-end mb-4">
+        {/* Total balance + mask toggle */}
+        <div className="admin-card p-4 lg:p-5 mb-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+              <Wallet size={22} className="text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-sm text-slate-500">Toplam Bakiye ({teachers.length} öğretmen)</p>
+              <p className="text-2xl font-bold" data-testid="total-balance-value">
+                {showBalances ? (
+                  (() => {
+                    const total = teachers.reduce((sum, t) => sum + (balances[t.id] ?? 0), 0);
+                    return <span className={total >= 0 ? 'text-green-600' : 'text-red-600'}>{formatMoney(total)} ₺</span>;
+                  })()
+                ) : (
+                  <span className="text-slate-400 tracking-widest">••••••</span>
+                )}
+              </p>
+            </div>
+          </div>
           <Button
             onClick={() => setShowBalances(!showBalances)}
             variant="outline"
             data-testid="toggle-balances-btn"
-            className="h-10"
+            className="h-10 shrink-0"
           >
             {showBalances ? <EyeOff size={18} className="mr-2" /> : <Eye size={18} className="mr-2" />}
             {showBalances ? 'Bakiyeleri Gizle' : 'Bakiyeleri Göster'}

@@ -49,6 +49,11 @@ Test: Backend 9/9 pytest geçti, Frontend %100 (iteration_20).
 - Admin takvim: bir günde 3'ten fazla etkinlik olduğunda "+N daha" artık tıklanabilir; o güne ait TÜM etkinlikleri listeleyen dialog açılıyor, satıra tıklayınca ilgili etkinliğin düzenleme ekranı geliyor
 - Öğretmen ödev ekranı: sol paneldeki "Kitaplar" başlığı tıklanabilir; öğrencinin kütüphanesindeki tüm kitapları yüzdeleriyle (ve ortalama %) tek ekranda gösteren dialog açılıyor
 
+**Takip Düzeltmeleri (iteration_23):**
+- Öğretmen bakiyesinde ay filtresi uygulandığında kamp kazancı artık dahil (kampın created_at tarihine göre) — bakiye özeti ile kamp detayı tutarlı (admin + öğretmen)
+- Admin Öğretmenler ekranı üstüne maskeli "Toplam Bakiye" kartı eklendi; aynı "Bakiyeleri Göster/Gizle" butonu hem toplamı hem tekil bakiyeleri açar/gizler
+- Admin Ödemeler > para çıkışı gider kategorilerine "Vergi" eklendi (form + filtre)
+
 ---
 ## Önceki Güncelleme: 8 Eylül 2026
 
