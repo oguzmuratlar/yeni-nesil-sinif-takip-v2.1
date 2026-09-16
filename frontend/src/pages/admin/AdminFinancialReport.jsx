@@ -63,6 +63,47 @@ const FinChart = ({ title, data, activeOptional }) => {
   );
 };
 
+const MonthlyTable = ({ title, rows }) => (
+  <div className="mb-6" data-testid={`fin-table-block-${title}`}>
+    <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
+      <BarChart3 size={16} className="text-purple-500" />
+      {title} - Aylık Özet
+    </h3>
+    <div className="admin-card overflow-x-auto">
+      <table className="w-full text-sm" data-testid={`fin-monthly-table-${title}`}>
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="text-left py-3 px-3 font-semibold text-slate-700">Ay</th>
+            <th className="text-right py-3 px-3 font-semibold text-green-700">Toplam Gelir</th>
+            <th className="text-right py-3 px-3 font-semibold text-red-700">Toplam Gider</th>
+            <th className="text-right py-3 px-3 font-semibold text-blue-700">Net Bilanço</th>
+            <th className="text-right py-3 px-3 font-semibold text-slate-700">Öğretmen Ödemesi</th>
+            <th className="text-right py-3 px-3 font-semibold text-slate-700">Reklam</th>
+            <th className="text-right py-3 px-3 font-semibold text-slate-700">Ofis</th>
+            <th className="text-right py-3 px-3 font-semibold text-slate-700">Vergi</th>
+            <th className="text-right py-3 px-3 font-semibold text-slate-700">Diğer Giderler</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(row => (
+            <tr key={row.month} className="border-t hover:bg-slate-50" data-testid={`fin-row-${title}-${row.month}`}>
+              <td className="py-2.5 px-3 font-medium text-slate-800">{row.label}</td>
+              <td className="py-2.5 px-3 text-right text-green-600">{formatMoney(row.total_income)}</td>
+              <td className="py-2.5 px-3 text-right text-red-600">{formatMoney(row.total_expense)}</td>
+              <td className={`py-2.5 px-3 text-right font-semibold ${row.net_balance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatMoney(row.net_balance)}</td>
+              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.teacher_payment)}</td>
+              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.reklam)}</td>
+              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.ofis)}</td>
+              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.vergi)}</td>
+              <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.diger)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
 const AdminFinancialReport = () => {
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState(null);
@@ -295,38 +336,11 @@ const AdminFinancialReport = () => {
               ))}
             </div>
 
-            {/* Monthly table */}
-            <div className="admin-card overflow-x-auto">
-              <table className="w-full text-sm" data-testid="fin-monthly-table">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="text-left py-3 px-3 font-semibold text-slate-700">Ay</th>
-                    <th className="text-right py-3 px-3 font-semibold text-green-700">Toplam Gelir</th>
-                    <th className="text-right py-3 px-3 font-semibold text-red-700">Toplam Gider</th>
-                    <th className="text-right py-3 px-3 font-semibold text-blue-700">Net Bilanço</th>
-                    <th className="text-right py-3 px-3 font-semibold text-slate-700">Öğretmen Ödemesi</th>
-                    <th className="text-right py-3 px-3 font-semibold text-slate-700">Reklam</th>
-                    <th className="text-right py-3 px-3 font-semibold text-slate-700">Ofis</th>
-                    <th className="text-right py-3 px-3 font-semibold text-slate-700">Vergi</th>
-                    <th className="text-right py-3 px-3 font-semibold text-slate-700">Diğer Giderler</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.monthly_table.map(row => (
-                    <tr key={row.month} className="border-t hover:bg-slate-50" data-testid={`fin-row-${row.month}`}>
-                      <td className="py-2.5 px-3 font-medium text-slate-800">{row.label}</td>
-                      <td className="py-2.5 px-3 text-right text-green-600">{formatMoney(row.total_income)}</td>
-                      <td className="py-2.5 px-3 text-right text-red-600">{formatMoney(row.total_expense)}</td>
-                      <td className={`py-2.5 px-3 text-right font-semibold ${row.net_balance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>{formatMoney(row.net_balance)}</td>
-                      <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.teacher_payment)}</td>
-                      <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.reklam)}</td>
-                      <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.ofis)}</td>
-                      <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.vergi)}</td>
-                      <td className="py-2.5 px-3 text-right text-slate-600">{formatMoney(row.diger)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Monthly tables - her branş (kasa) için ayrı */}
+            <div>
+              {branchNames.map(name => (
+                <MonthlyTable key={name} title={name} rows={report.branch_charts[name]} />
+              ))}
             </div>
           </>
         )}

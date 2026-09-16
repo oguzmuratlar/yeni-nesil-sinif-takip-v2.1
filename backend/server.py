@@ -2573,21 +2573,33 @@ async def get_financial_report(
 
     all_payments = await db.payments.find(query, {"_id": 0}).to_list(100000)
 
-    # Genel grafik: branch_id filtresi varsa ona göre daralt
+    # Kasa -> Branş eşlemesi (giderler/öğretmen ödemeleri branch_id taşımaz,
+    # kasaları üzerinden ilgili branşa bağlanır)
+    cashboxes = await db.cashboxes.find({}, {"_id": 0, "id": 1, "branch_id": 1}).to_list(1000)
+    cashbox_branch_map = {c["id"]: c.get("branch_id") for c in cashboxes}
+
+    def effective_branch(p):
+        bid = p.get("branch_id")
+        if bid:
+            return bid
+        cb = p.get("cashbox_id")
+        return cashbox_branch_map.get(cb) if cb else None
+
+    # Genel grafik: branch_id filtresi varsa ona göre daralt (kasa eşlemesi dahil)
     general_payments = all_payments
     if branch_id:
-        general_payments = [p for p in all_payments if p.get("branch_id") == branch_id]
+        general_payments = [p for p in all_payments if effective_branch(p) == branch_id]
 
     general_chart = _fin_build_series(general_payments, months)
 
-    # Branş grafikleri: mevcut tüm branşlar için (sadece o branşa ait ödemeler)
+    # Branş grafikleri: mevcut tüm branşlar için (sadece o branşa ait ödemeler - kasa eşlemesiyle)
     branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
     branch_charts = {}
     for b in branches:
         # branch_id filtresi verilmişse sadece o branşı üret
         if branch_id and b["id"] != branch_id:
             continue
-        b_payments = [p for p in all_payments if p.get("branch_id") == b["id"]]
+        b_payments = [p for p in all_payments if effective_branch(p) == b["id"]]
         branch_charts[b["name"]] = _fin_build_series(b_payments, months)
 
     # Özet kartları (genel grafik üzerinden toplam)
