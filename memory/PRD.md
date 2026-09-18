@@ -5,7 +5,20 @@
 
 ---
 
-## Son Güncelleme: 14 Eylül 2026
+## Son Güncelleme: 18 Eylül 2026
+
+### YENİ ÖZELLİK: YNS League (Öğrenci Yıldız Sistemi) ✅ (18 Eylül 2026)
+- "Yeni Geliştirmeler" ekranından açılıp kapatılabilen toggle: `yns_league_enabled` (varsayılan KAPALI). Kapalıyken menüler/kartlar gizli ve tüm YNS endpoint'leri 403.
+- Sadece POZİTİF yıldız; yıldız düşürme/seviye/rozet/otomatik kontrol YOK. Manuel giriş. Kayıtlar aktif dönem (season_id) + point_date/month/year ile saklanır; snapshot alanlarıyla (tanım adı/kategori/puan) geçmiş korunur (soft-delete).
+- Admin: Rozetler altında "YNS League" sayfası — yıldız tanımı CRUD + aktif/pasif; Liderlik Tablosu sekmesi. Öğrenciler sayfasında "YNS League" butonu. İlk açılışta 13 varsayılan başarı otomatik seed edilir (değerler admin tarafından değiştirilebilir).
+- Öğretmen: Ödev ekranında (`/teacher/students/:studentId/homework/:branchId`) "YNS League - Yıldız Ver" bölümü; Doğru Cevap türünde adet × puan; ana ekranda YNS League kartı + liderlik tablosu (`/teacher/yns-league`).
+- Yetki (backend): öğretmen yalnızca kendi branşı (teacher_branches) + kendi öğrencisine (student_courses) yıldız verir; yalnızca kendi kaydını siler; admin hepsini siler. Branştan bağımsız başarılar yalnızca veren öğretmenin branş sıralamasına yazılır.
+- Liderlik: toplam yıldıza göre azalan, eşit puanlar aynı derece; aylık/dönemlik görünüm; sınıf(5-8)/branş filtreleri.
+- API: GET /api/system-settings/yns-league-status; GET/POST/PUT/PATCH /api/admin/student-point-definitions; GET /api/student-point-definitions (aktif); POST/DELETE /api/teacher/student-points; DELETE /api/admin/student-points/{id}; GET /api/student-points; GET /api/student-points/leaderboard.
+- Test: Backend 16/16 pytest, Frontend %100 (iteration_26). Flag test sonrası KAPALI bırakıldı.
+
+---
+## Önceki Güncelleme: 14 Eylül 2026
 
 ### GÜNCELLEME: 6 Yeni Özellik ✅ (14 Eylül 2026)
 

@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration_26: Full E2E for YNS League feature. Backend pytest 16/16 PASS (feature flag on/off, admin defs CRUD + status toggle, active-only filter, teacher give-star (fixed & Doğru Cevap quantity), season_id/month/year/point_date persistence, admin cannot POST teacher star, teacher wrong branch/wrong student 403, teacher cannot delete another teacher's record, leaderboard ordering, tie handling (equal totals share same rank), branch isolation, monthly view filters by month/year). Frontend UI: admin sidebar shows 'YNS League' under Rozetler, students-yns-league-btn on AdminStudents, /admin/yns-league renders 14 definition rows (13 seeded + 1 leftover TEST from earlier), yns-new-def-btn -> dialog with all form testids works, admin toggle status works, leaderboard tab renders (empty state OK), teacher-dashboard-yns-card visible, /teacher/yns-league renders yns-lb-grade/branch/view filters + yns-lb-month (monthly), homework page yns-star-section w/ toggle/def-select/desc/submit works end-to-end incl. delete-confirm modal.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TeacherDashboard", "issue": "'planning-warning-popup' modal intercepts pointer events on dashboard, so a real teacher clicking the YNS card is blocked until they dismiss the planning warning. Not a YNS-specific defect but affects YNS card access.", "selector": "[data-testid='teacher-dashboard-yns-card']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin YNS definition dialog & delete-confirm modal", "issues": ["Radix Dialog console warning: 'Missing Description or aria-describedby={undefined}' — accessibility improvement, non-blocking"]},
+      {"screen": "TeacherHomeworkEntry", "issues": ["React hydration/console error: <span> inside <option> (grade selector) — pre-existing, unrelated to YNS but present on the page carrying yns-star-section"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_yns_league.py",
+    "/app/test_reports/pytest/yns_iter26.xml"
+  ],
+  "action_items": [
+    "(Optional) Suppress or dismiss planning-warning-popup so it does not intercept clicks on other dashboard cards, or move it to non-modal placement.",
+    "(Optional) Add DialogDescription to YNS definition create/edit and star delete-confirm dialogs to remove the a11y warning.",
+    "(Optional) Fix <option> children in TeacherHomeworkEntry.jsx grade selector to be plain strings/numbers (React hydration warning)."
+  ],
+  "critical_code_review_comments": [
+    "check_yns_enabled() is called at the top of every YNS endpoint — good gating. Consider a FastAPI dependency to DRY.",
+    "get_points_leaderboard groups by student_id regardless of branch when branch_id is null; that's intended for the admin overview but note the docstring says 'Branş/sınıf bazlı'. Consider documenting the aggregate mode.",
+    "Ties: rank is assigned by the first index at a given total_point value — verified correct (equal totals share the same rank, next distinct total gets rank = position+1, i.e. skip ranks). This matches request.",
+    "list_student_points allows any teacher to see any record (only filtered by student_id/branch_id/season/month/year, not by teacher ownership). If teacher-level privacy is required, add teacher_id filter for user_type=='teacher'.",
+    "PATCH status endpoint accepts is_active but no ownership check — fine since admin-only, but ensure route decorator enforces admin via require_admin (currently uses get_current_user + user_type check inline)."
+  ],
+  "updated_files": ["/app/backend/tests/test_yns_league.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all YNS testids resolved, full give-star -> list -> delete flow verified)"},
+  "test_credentials": "admin/admin123 ; buse.ozakdas/bozakdas.1 ; sıla.aslan/test123",
+  "seed_data_creation": "Two admin definitions created during testing named 'TEST_YNS_Def' and 'TEST_UI_Def_ZZZ' — both set to is_active=false (system has no delete endpoint for definitions, per feature spec). All star records created during tests were deleted. 13 seeded definitions untouched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "YNS feature flag is ON. To find another buse student in Fen for tie tests, use GET /api/student-courses. Backend pytest at /app/backend/tests/test_yns_league.py covers 16 cases. Two passive TEST_* definitions remain in DB (harmless, hidden from teacher active list). yns-star-section is inside TeacherHomeworkEntry route /teacher/students/{studentId}/homework/{branchId}.",
+  "rca_of_the_issue": "N/A — new feature verification. No YNS bugs found. Only tangential findings: planning-warning-popup blocks dashboard clicks (pre-existing), Radix Dialog a11y warnings, and an <option><span></span></option> hydration warning in TeacherHomeworkEntry grade selector."
+}
