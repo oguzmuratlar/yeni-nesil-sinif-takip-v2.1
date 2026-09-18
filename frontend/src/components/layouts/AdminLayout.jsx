@@ -25,7 +25,8 @@ import {
   Library,
   Settings,
   Link2,
-  BarChart3
+  BarChart3,
+  Star
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -33,6 +34,13 @@ const AdminLayout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [ynsEnabled, setYnsEnabled] = useState(false);
+
+  useEffect(() => {
+    import('../../api/axios').then(({ default: api }) => {
+      api.get('/system-settings/yns-league-status').then(r => setYnsEnabled(r.data.enabled)).catch(() => {});
+    });
+  }, []);
   
   // Collapsible menu state - localStorage'dan oku
   const [expandedGroups, setExpandedGroups] = useState(() => {
@@ -109,6 +117,7 @@ const AdminLayout = ({ children }) => {
       { path: '/admin/settings', label: 'Yeni Geliştirmeler', icon: Settings },
       { path: '/admin/homework-content', label: 'İçerik Yönetimi', icon: Library },
       { path: '/admin/badges', label: 'Rozetler', icon: Trophy },
+      ...(ynsEnabled ? [{ path: '/admin/yns-league', label: 'YNS League', icon: Star }] : []),
       { path: '/admin/audit-logs', label: 'Günlük Değişiklikler', icon: Clock },
     ]
   };

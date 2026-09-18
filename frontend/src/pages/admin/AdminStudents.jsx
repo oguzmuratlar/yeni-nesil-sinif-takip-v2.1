@@ -4,7 +4,7 @@ import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Plus, Search, ChevronRight, Users, BookOpen, Calendar, X, Book } from 'lucide-react';
+import { Plus, Search, ChevronRight, Users, BookOpen, Calendar, X, Book, Star } from 'lucide-react';
 import { Badge } from '../../components/ui/badge';
 import { toast } from 'sonner';
 
@@ -16,12 +16,14 @@ const AdminStudents = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [ynsEnabled, setYnsEnabled] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchStudents();
     fetchStudentStats();
     fetchBranches();
+    apiClient.get('/system-settings/yns-league-status').then(r => setYnsEnabled(r.data.enabled)).catch(() => {});
   }, [showInactive]);
 
   const fetchStudents = async () => {
@@ -87,14 +89,27 @@ const AdminStudents = () => {
             </h1>
             <p className="page-subtitle mt-1">Tüm öğrencilerinizi görüntüleyin ve yönetin</p>
           </div>
-          <Button
-            onClick={() => navigate('/admin/students/new')}
-            data-testid="add-student-btn"
-            className="admin-btn w-full sm:w-auto"
-          >
-            <Plus size={20} className="mr-2" />
-            Öğrenci Ekle
-          </Button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            {ynsEnabled && (
+              <Button
+                onClick={() => navigate('/admin/yns-league?tab=leaderboard')}
+                data-testid="students-yns-league-btn"
+                variant="outline"
+                className="w-full sm:w-auto border-amber-400 text-amber-600 hover:bg-amber-50"
+              >
+                <Star size={18} className="mr-2" />
+                YNS League
+              </Button>
+            )}
+            <Button
+              onClick={() => navigate('/admin/students/new')}
+              data-testid="add-student-btn"
+              className="admin-btn w-full sm:w-auto"
+            >
+              <Plus size={20} className="mr-2" />
+              Öğrenci Ekle
+            </Button>
+          </div>
         </div>
 
         {/* Branş Bazlı Öğrenci Listelerine Hızlı Erişim - EN ÜSTTE */}

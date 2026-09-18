@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import YnsStarSection from '../../components/YnsStarSection';
 import TeacherLayout from '../../components/layouts/TeacherLayout';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -1583,6 +1584,8 @@ const TeacherHomeworkEntry = () => {
             Denemeler
           </button>
         </div>
+
+        <YnsStarSection studentId={studentId} branchId={branchId} />
 
         {activeTab === 'homework' ? (
           <>

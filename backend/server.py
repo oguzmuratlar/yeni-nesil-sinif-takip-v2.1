@@ -557,6 +557,33 @@ class SystemSettingsUpdate(BaseModel):
     value: bool
     description: Optional[str] = None
 
+# ============= YNS LEAGUE MODELS =============
+
+class StudentPointDefinitionCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    point: float
+    category: str
+    is_active: Optional[bool] = True
+
+class StudentPointDefinitionUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    point: Optional[float] = None
+    category: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class StudentPointStatusUpdate(BaseModel):
+    is_active: bool
+
+class StudentPointRecordCreate(BaseModel):
+    student_id: str
+    branch_id: str
+    point_definition_id: str
+    quantity: Optional[int] = 1
+    description: Optional[str] = ""
+
+
 # ============= AUDIT LOG MODELS =============
 
 class AuditLogActionType:
@@ -6148,7 +6175,8 @@ async def get_system_settings(current_user: User = Depends(get_current_user)):
     # Default ayarları ekle (yoksa)
     default_settings = [
         {"key": "homework_tool_enabled", "value": True, "description": "Ödev Takip Sistemi"},
-        {"key": "lesson_links_enabled", "value": False, "description": "Ders Giriş Özelliği"}
+        {"key": "lesson_links_enabled", "value": False, "description": "Ders Giriş Özelliği"},
+        {"key": "yns_league_enabled", "value": False, "description": "YNS League (Öğrenci Yıldız Sistemi)"}
     ]
     
     existing_keys = [s["key"] for s in settings]
@@ -6184,6 +6212,10 @@ async def update_system_setting(key: str, data: SystemSettingsUpdate, current_us
         update_data["id"] = str(uuid.uuid4())
         await db.system_settings.insert_one(update_data)
     
+    # YNS League aktif edilince varsayılan tanımları otomatik seed et
+    if key == "yns_league_enabled" and data.value:
+        await seed_yns_definitions()
+    
     return {"message": "Ayar güncellendi", "key": key, "value": data.value}
 
 @api_router.get("/system-settings/homework-status")
@@ -6191,6 +6223,331 @@ async def get_homework_status(current_user: User = Depends(get_current_user)):
     """Ödev sistemi durumunu kontrol et - tüm kullanıcılar"""
     enabled = await is_homework_tool_enabled()
     return {"enabled": enabled}
+
+# ============= YNS LEAGUE (ÖĞRENCİ YILDIZ SİSTEMİ) =============
+
+YNS_DEFAULT_DEFINITIONS = [
+    {"name": "Haftalık ödevlerini tamamen yapmak", "point": 20, "category": "Ödev"},
+    {"name": "Aylık ödevlerini tamamen yapmak", "point": 50, "category": "Ödev"},
+    {"name": "Derse aktif katılmak", "point": 5, "category": "Ders Katılımı"},
+    {"name": "Doğru cevap vermek", "point": 2, "category": "Doğru Cevap"},
+    {"name": "Kamera ve mikrofonu dersin en az 30 dakikasında açık tutmak", "point": 5, "category": "Ders Disiplini"},
+    {"name": "Kitap bitirmek", "point": 30, "category": "Kitap Okuma"},
+    {"name": "Denemede branş başına 15-17 net yapmak", "point": 15, "category": "Deneme Başarısı"},
+    {"name": "Denemede branş başına 18-19 net yapmak", "point": 20, "category": "Deneme Başarısı"},
+    {"name": "Denemede branş başına 20 net yapmak", "point": 30, "category": "Deneme Başarısı"},
+    {"name": "Okul yazılısından 85 ve üzeri almak", "point": 15, "category": "Okul Başarısı"},
+    {"name": "Dönem sonunda teşekkür belgesi almak", "point": 25, "category": "Belge / Dönem Başarısı"},
+    {"name": "Dönem sonunda takdir belgesi almak", "point": 40, "category": "Belge / Dönem Başarısı"},
+    {"name": "Okul birinciliği", "point": 100, "category": "Özel Başarı"},
+]
+
+async def seed_yns_definitions():
+    """YNS League ilk açıldığında varsayılan yıldız tanımlarını oluştur (koleksiyon boşsa)."""
+    count = await db.student_point_definitions.count_documents({})
+    if count > 0:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    docs = []
+    for d in YNS_DEFAULT_DEFINITIONS:
+        docs.append({
+            "id": str(uuid.uuid4()),
+            "name": d["name"],
+            "description": "",
+            "point": float(d["point"]),
+            "category": d["category"],
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+            "created_by": "system",
+            "updated_by": None,
+        })
+    if docs:
+        await db.student_point_definitions.insert_many(docs)
+
+async def is_yns_enabled() -> bool:
+    setting = await db.system_settings.find_one({"key": "yns_league_enabled"}, {"_id": 0})
+    if setting is None:
+        return False
+    return setting.get("value", False)
+
+async def check_yns_enabled():
+    if not await is_yns_enabled():
+        raise HTTPException(status_code=403, detail="YNS League şu anda pasif durumda.")
+
+@api_router.get("/system-settings/yns-league-status")
+async def get_yns_status(current_user: User = Depends(get_current_user)):
+    """YNS League durumunu kontrol et - tüm kullanıcılar"""
+    return {"enabled": await is_yns_enabled()}
+
+# --- Yıldız tanımları (admin) ---
+
+@api_router.get("/admin/student-point-definitions")
+async def admin_list_point_definitions(current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin erişebilir")
+    await check_yns_enabled()
+    await seed_yns_definitions()
+    defs = await db.student_point_definitions.find({}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return defs
+
+@api_router.post("/admin/student-point-definitions")
+async def admin_create_point_definition(data: StudentPointDefinitionCreate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin erişebilir")
+    await check_yns_enabled()
+    if not data.name.strip():
+        raise HTTPException(status_code=400, detail="Başarı adı gerekli")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": str(uuid.uuid4()),
+        "name": data.name.strip(),
+        "description": data.description or "",
+        "point": float(data.point),
+        "category": data.category,
+        "is_active": data.is_active if data.is_active is not None else True,
+        "created_at": now,
+        "updated_at": now,
+        "created_by": current_user.id,
+        "updated_by": None,
+    }
+    await db.student_point_definitions.insert_one(dict(doc))
+    return {"message": "Yıldız tanımı oluşturuldu", "definition": doc}
+
+@api_router.put("/admin/student-point-definitions/{def_id}")
+async def admin_update_point_definition(def_id: str, data: StudentPointDefinitionUpdate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin erişebilir")
+    await check_yns_enabled()
+    existing = await db.student_point_definitions.find_one({"id": def_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tanım bulunamadı")
+    update = {k: v for k, v in data.model_dump().items() if v is not None}
+    if "point" in update:
+        update["point"] = float(update["point"])
+    if "name" in update:
+        update["name"] = update["name"].strip()
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update["updated_by"] = current_user.id
+    await db.student_point_definitions.update_one({"id": def_id}, {"$set": update})
+    return {"message": "Yıldız tanımı güncellendi"}
+
+@api_router.patch("/admin/student-point-definitions/{def_id}/status")
+async def admin_toggle_point_definition(def_id: str, data: StudentPointStatusUpdate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin erişebilir")
+    await check_yns_enabled()
+    existing = await db.student_point_definitions.find_one({"id": def_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tanım bulunamadı")
+    await db.student_point_definitions.update_one(
+        {"id": def_id},
+        {"$set": {"is_active": data.is_active, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": current_user.id}}
+    )
+    return {"message": "Durum güncellendi", "is_active": data.is_active}
+
+# --- Aktif tanımlar (öğretmen + admin, yıldız verirken) ---
+
+@api_router.get("/student-point-definitions")
+async def list_active_point_definitions(current_user: User = Depends(get_current_user)):
+    await check_yns_enabled()
+    await seed_yns_definitions()
+    defs = await db.student_point_definitions.find({"is_active": True}, {"_id": 0}).sort("category", 1).to_list(500)
+    return defs
+
+# --- Yıldız kayıtları ---
+
+@api_router.post("/teacher/student-points")
+async def create_student_point(data: StudentPointRecordCreate, current_user: User = Depends(get_current_user)):
+    await check_yns_enabled()
+    if current_user.user_type != "teacher":
+        raise HTTPException(status_code=403, detail="Sadece öğretmen yıldız verebilir")
+
+    teacher_id = current_user.teacher_id
+    # Öğretmen bu branşa sahip mi? (teacher_branches koleksiyonu)
+    tb = await db.teacher_branches.find_one({"teacher_id": teacher_id, "branch_id": data.branch_id}, {"_id": 0})
+    if not tb:
+        raise HTTPException(status_code=403, detail="Bu branş için yetkiniz yok")
+
+    # Öğretmen bu öğrenciyi bu branşta okutuyor mu? (student_courses)
+    course = await db.student_courses.find_one({
+        "teacher_id": teacher_id,
+        "student_id": data.student_id,
+        "branch_id": data.branch_id
+    }, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=403, detail="Bu öğrenciye bu branştan yıldız veremezsiniz")
+
+    definition = await db.student_point_definitions.find_one({"id": data.point_definition_id}, {"_id": 0})
+    if not definition:
+        raise HTTPException(status_code=404, detail="Yıldız tanımı bulunamadı")
+    if not definition.get("is_active", True):
+        raise HTTPException(status_code=400, detail="Pasif yıldız tanımı ile giriş yapılamaz")
+
+    quantity = data.quantity if (data.quantity and data.quantity > 0) else 1
+    base_point = float(definition["point"])
+    total_point = base_point * quantity
+
+    now = datetime.now(timezone.utc)
+    point_date = now.strftime("%Y-%m-%d")
+    season_id = await get_active_season_id()
+
+    record = {
+        "id": str(uuid.uuid4()),
+        "student_id": data.student_id,
+        "teacher_id": teacher_id,
+        "branch_id": data.branch_id,
+        "season_id": season_id,
+        "point_definition_id": data.point_definition_id,
+        "point_definition_name_snapshot": definition["name"],
+        "category_snapshot": definition["category"],
+        "base_point_snapshot": base_point,
+        "quantity": quantity,
+        "total_point": total_point,
+        "description": data.description or "",
+        "point_date": point_date,
+        "month": now.month,
+        "year": now.year,
+        "created_at": now.isoformat(),
+        "deleted_at": None,
+        "deleted_by": None,
+    }
+    await db.student_point_records.insert_one(dict(record))
+    return {"message": "Yıldız verildi", "record": record}
+
+@api_router.delete("/teacher/student-points/{record_id}")
+async def teacher_delete_student_point(record_id: str, current_user: User = Depends(get_current_user)):
+    await check_yns_enabled()
+    if current_user.user_type != "teacher":
+        raise HTTPException(status_code=403, detail="Sadece öğretmen silebilir")
+    record = await db.student_point_records.find_one({"id": record_id, "deleted_at": None}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    if record["teacher_id"] != current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Sadece kendi verdiğiniz yıldızı silebilirsiniz")
+    await db.student_point_records.update_one(
+        {"id": record_id},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat(), "deleted_by": current_user.id}}
+    )
+    return {"message": "Yıldız kaydı silindi"}
+
+@api_router.delete("/admin/student-points/{record_id}")
+async def admin_delete_student_point(record_id: str, current_user: User = Depends(get_current_user)):
+    await check_yns_enabled()
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin erişebilir")
+    record = await db.student_point_records.find_one({"id": record_id, "deleted_at": None}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="Kayıt bulunamadı")
+    await db.student_point_records.update_one(
+        {"id": record_id},
+        {"$set": {"deleted_at": datetime.now(timezone.utc).isoformat(), "deleted_by": current_user.id}}
+    )
+    return {"message": "Yıldız kaydı silindi"}
+
+@api_router.get("/student-points")
+async def list_student_points(
+    student_id: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    season_id: Optional[str] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Yıldız kayıtlarını listele (öğretmen + admin). Detay/silme için."""
+    await check_yns_enabled()
+    if current_user.user_type not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Yetkisiz")
+    query = {"deleted_at": None}
+    if student_id:
+        query["student_id"] = student_id
+    if branch_id:
+        query["branch_id"] = branch_id
+    if season_id:
+        query["season_id"] = season_id
+    if month:
+        query["month"] = month
+    if year:
+        query["year"] = year
+    records = await db.student_point_records.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    # Öğretmen adları
+    teacher_ids = list({r["teacher_id"] for r in records})
+    teachers = await db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
+    tmap = {t["id"]: t["name"] for t in teachers}
+    for r in records:
+        r["teacher_name"] = tmap.get(r["teacher_id"], "")
+        r["can_delete"] = (current_user.user_type == "admin") or (current_user.teacher_id == r["teacher_id"])
+    return records
+
+@api_router.get("/student-points/leaderboard")
+async def get_points_leaderboard(
+    season_id: Optional[str] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    grade_level: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    view_type: str = "season",
+    current_user: User = Depends(get_current_user)
+):
+    """Branş/sınıf bazlı liderlik tablosu (öğretmen + admin)."""
+    await check_yns_enabled()
+    if current_user.user_type not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Yetkisiz")
+
+    if not season_id:
+        season_id = await get_active_season_id()
+
+    query = {"deleted_at": None}
+    if branch_id:
+        query["branch_id"] = branch_id
+    if view_type == "monthly":
+        if month:
+            query["month"] = month
+        if year:
+            query["year"] = year
+        else:
+            query["year"] = datetime.now(timezone.utc).year
+    else:  # season
+        if season_id:
+            query["season_id"] = season_id
+
+    records = await db.student_point_records.find(query, {"_id": 0}).to_list(50000)
+
+    totals = {}
+    for r in records:
+        totals[r["student_id"]] = totals.get(r["student_id"], 0) + (r.get("total_point", 0) or 0)
+
+    # Öğrenci bilgileri (isim + sınıf)
+    student_ids = list(totals.keys())
+    students = await db.students.find({"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "name": 1, "level": 1}).to_list(10000)
+    smap = {s["id"]: s for s in students}
+
+    rows = []
+    for sid, total in totals.items():
+        s = smap.get(sid)
+        if not s:
+            continue
+        if grade_level and str(s.get("level")) != str(grade_level):
+            continue
+        rows.append({
+            "student_id": sid,
+            "student_name": s["name"],
+            "level": s.get("level"),
+            "total_point": round(total, 2),
+        })
+
+    rows.sort(key=lambda x: x["total_point"], reverse=True)
+    # Eşit yıldızda aynı derece
+    rank = 0
+    prev = None
+    for i, row in enumerate(rows):
+        if prev is None or row["total_point"] != prev:
+            rank = i + 1
+            prev = row["total_point"]
+        row["rank"] = rank
+
+    return {"season_id": season_id, "view_type": view_type, "leaderboard": rows}
+
 
 # ------------- KİTAP YÖNETİMİ -------------
 
@@ -10208,7 +10565,7 @@ BACKUP_COLLECTIONS = [
     "homework_plans", "homework_plan_items", "student_book_assignments",
     "student_test_progress", "trial_exams", "youtube_contents", "camps",
     "camp_students", "system_settings", "settings", "calendar_events",
-    "groups"
+    "groups", "student_point_definitions", "student_point_records"
 ]
 
 @api_router.post("/admin/database/backup")

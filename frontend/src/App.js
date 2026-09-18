@@ -25,6 +25,7 @@ import AdminTeacherBalance from "./pages/admin/AdminTeacherBalance";
 
 import AdminPayments from "./pages/admin/AdminPayments";
 import AdminFinancialReport from "./pages/admin/AdminFinancialReport";
+import AdminYnsLeague from "./pages/admin/AdminYnsLeague";
 import AdminMonthlyProgram from "./pages/admin/AdminMonthlyProgram";
 import AdminUserForm from "./pages/admin/AdminUserForm";
 import AdminBankAccounts from "./pages/admin/AdminBankAccounts";
@@ -61,6 +62,7 @@ import TeacherLessonIncomeDetail from "./pages/teacher/TeacherLessonIncomeDetail
 import TeacherCampIncomeDetail from "./pages/teacher/TeacherCampIncomeDetail";
 import TeacherYoutubeIncomeDetail from "./pages/teacher/TeacherYoutubeIncomeDetail";
 import TeacherHomeworkEntry from "./pages/teacher/TeacherHomeworkEntry";
+import TeacherYnsLeague from "./pages/teacher/TeacherYnsLeague";
 import TeacherHomeworkContent from "./pages/teacher/TeacherHomeworkContent";
 
 // Production'da aynı origin kullan, development'ta .env'den al
@@ -188,6 +190,11 @@ function App() {
             <Route path="/admin/financial-report" element={
               <ProtectedRoute requiredRole="admin">
                 <AdminFinancialReport />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/yns-league" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminYnsLeague />
               </ProtectedRoute>
             } />
             <Route path="/admin/users/new" element={
@@ -380,6 +387,11 @@ function App() {
             <Route path="/teacher/students/:studentId/homework/:branchId" element={
               <ProtectedRoute requiredRole="teacher">
                 <TeacherHomeworkEntry />
+              </ProtectedRoute>
+            } />
+            <Route path="/teacher/yns-league" element={
+              <ProtectedRoute requiredRole="teacher">
+                <TeacherYnsLeague />
               </ProtectedRoute>
             } />
             <Route path="/teacher/content" element={

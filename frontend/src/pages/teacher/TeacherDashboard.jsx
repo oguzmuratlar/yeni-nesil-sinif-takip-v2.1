@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import TeacherLayout from '../../components/layouts/TeacherLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/axios';
-import { Users, Wallet, ArrowRight, Calendar, Tent, Youtube, AlertTriangle, X, BookOpen } from 'lucide-react';
+import { Users, Wallet, ArrowRight, Calendar, Tent, Youtube, AlertTriangle, X, BookOpen, Star } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import PlanningMasterCard from './PlanningMasterCard';
 import { TeacherCalendarBar, TeacherCalendarDialog } from '../../components/TeacherCalendar';
@@ -14,6 +14,11 @@ const TeacherDashboard = () => {
   const [planningWarning, setPlanningWarning] = useState(null);
   const [showWarning, setShowWarning] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [ynsEnabled, setYnsEnabled] = useState(false);
+
+  useEffect(() => {
+    apiClient.get('/system-settings/yns-league-status').then(r => setYnsEnabled(r.data.enabled)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (user?.teacher_id) {
@@ -101,6 +106,14 @@ const TeacherDashboard = () => {
       path: '/teacher/content',
       testId: 'teacher-dashboard-content-card'
     },
+    ...(ynsEnabled ? [{
+      title: 'YNS League',
+      description: 'Öğrenci yıldız sıralamalarını görüntüleyin',
+      icon: Star,
+      color: 'bg-amber-500',
+      path: '/teacher/yns-league',
+      testId: 'teacher-dashboard-yns-card'
+    }] : []),
   ];
 
   return (
