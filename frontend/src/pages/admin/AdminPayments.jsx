@@ -757,7 +757,7 @@ const AdminPayments = () => {
                     </Popover>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="branch">Branş *</Label>
+                    <Label htmlFor="branch">Branş</Label>
                     <Select 
                       value={newPayment.branch_id} 
                       onValueChange={(value) => {
@@ -805,7 +805,7 @@ const AdminPayments = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="cashbox">Kasa *</Label>
+                    <Label htmlFor="cashbox">Kasa</Label>
                     <Select 
                       value={newPayment.cashbox_id} 
                       onValueChange={(value) => setNewPayment({ ...newPayment, cashbox_id: value })}
@@ -908,7 +908,7 @@ const AdminPayments = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="bank_account">Banka Hesabı *</Label>
+                <Label htmlFor="bank_account">Banka Hesabı</Label>
                 <Select 
                   value={newPayment.bank_account_id} 
                   onValueChange={(value) => setNewPayment({ ...newPayment, bank_account_id: value })}

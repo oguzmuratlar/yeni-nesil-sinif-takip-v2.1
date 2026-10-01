@@ -7,6 +7,9 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
+### Ödemeler - Opsiyonel Alanlar (18 Eylül 2026)
+- Admin Ödemeler ekranında ödeme girişi/para çıkışı yaparken Branş/Kasa ve Banka hesabı artık zorunlu değil. Boş bırakılırsa hata yerine onay penceresi çıkar ("<alan> alanı boş. Böyle kaydetmek istediğinize emin misiniz?"). Onaylanınca: banka boşsa işlem yalnızca branş/kasaya, kasa boşsa yalnızca bankaya yansır. Backend'deki zorunluluk kontrolleri (create/update) kaldırıldı. Test: Backend 6/6, Frontend 3/3 (iteration_27).
+
 ### YENİ ÖZELLİK: YNS League (Öğrenci Yıldız Sistemi) ✅ (18 Eylül 2026)
 - "Yeni Geliştirmeler" ekranından açılıp kapatılabilen toggle: `yns_league_enabled` (varsayılan KAPALI). Kapalıyken menüler/kartlar gizli ve tüm YNS endpoint'leri 403.
 - Sadece POZİTİF yıldız; yıldız düşürme/seviye/rozet/otomatik kontrol YOK. Manuel giriş. Kayıtlar aktif dönem (season_id) + point_date/month/year ile saklanır; snapshot alanlarıyla (tanım adı/kategori/puan) geçmiş korunur (soft-delete).
