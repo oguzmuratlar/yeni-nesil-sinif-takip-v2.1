@@ -50,6 +50,7 @@ const AdminPayments = () => {
   const [allPaymentsForMonths, setAllPaymentsForMonths] = useState([]);
   const [selectedBankFilter, setSelectedBankFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc' = baştan sona, 'desc' = sondan başa
+  const [emptyFieldConfirm, setEmptyFieldConfirm] = useState({ open: false, fields: [] });
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -210,59 +211,7 @@ const AdminPayments = () => {
   // Gider kategorileri
   const expenseCategories = ['Maaş', 'Kira', 'Reklam', 'Ofis', 'Vergi', 'Sermaye', 'Diğer'];
 
-  const handleSubmitPayment = async (e) => {
-    e.preventDefault();
-    
-    // Gelir için validasyonlar
-    if (dialogType === 'income') {
-      // Branş zorunlu
-      if (!newPayment.branch_id) {
-        toast.error('Branş seçimi zorunludur');
-        return;
-      }
-      // Banka zorunlu
-      if (!newPayment.bank_account_id) {
-        toast.error('Banka hesabı seçimi zorunludur');
-        return;
-      }
-      // Kasa bulunamadıysa, ilk kasayı kullan veya uyarı ver
-      if (!newPayment.cashbox_id) {
-        // Branşa göre kasayı bul
-        const selectedBranch = branches.find(b => b.id === newPayment.branch_id);
-        const matchingCashbox = cashboxes.find(c => 
-          c.branch_id === newPayment.branch_id || c.name?.toLowerCase() === selectedBranch?.name?.toLowerCase()
-        );
-        if (matchingCashbox) {
-          newPayment.cashbox_id = matchingCashbox.id;
-        } else if (cashboxes.length > 0) {
-          // Eşleşen kasa yoksa ilk kasayı kullan
-          newPayment.cashbox_id = cashboxes[0].id;
-        } else {
-          toast.error('Sistemde kasa tanımlı değil. Önce kasa ekleyin.');
-          return;
-        }
-      }
-    }
-    
-    // Gider için kasa zorunlu
-    if (dialogType === 'expense' && !newPayment.cashbox_id) {
-      toast.error('Kasa seçimi zorunludur');
-      return;
-    }
-    
-    // Maaş ödemelerinde ödeme şekli zorunlu
-    if (dialogType === 'expense' && newPayment.expense_category === 'Maaş') {
-      if (!newPayment.payment_method) {
-        toast.error('Maaş ödemelerinde ödeme şekli zorunludur');
-        return;
-      }
-      // Resmi ödemede vergi tutarı zorunlu
-      if (newPayment.payment_method === 'resmi' && !newPayment.tax_amount) {
-        toast.error('Resmi ödemede vergi tutarı zorunludur');
-        return;
-      }
-    }
-    
+  const doSavePayment = async () => {
     try {
       const paymentData = {
         ...newPayment,
@@ -280,11 +229,51 @@ const AdminPayments = () => {
         toast.success('Ödeme eklendi');
       }
       
+      setEmptyFieldConfirm({ open: false, fields: [] });
       closeDialog();
       fetchPayments();
     } catch (error) {
       toast.error(error.response?.data?.detail || (editingPayment ? 'Güncelleme başarısız' : 'Ödeme eklenemedi'));
     }
+  };
+
+  const handleSubmitPayment = async (e) => {
+    e.preventDefault();
+    
+    // Gelir için branşa göre kasayı otomatik eşleştir (varsa)
+    if (dialogType === 'income' && !newPayment.cashbox_id && newPayment.branch_id) {
+      const selectedBranch = branches.find(b => b.id === newPayment.branch_id);
+      const matchingCashbox = cashboxes.find(c => 
+        c.branch_id === newPayment.branch_id || c.name?.toLowerCase() === selectedBranch?.name?.toLowerCase()
+      );
+      if (matchingCashbox) {
+        newPayment.cashbox_id = matchingCashbox.id;
+      }
+    }
+    
+    // Maaş ödemelerinde ödeme şekli zorunlu (bu zorunluluklar korunur)
+    if (dialogType === 'expense' && newPayment.expense_category === 'Maaş') {
+      if (!newPayment.payment_method) {
+        toast.error('Maaş ödemelerinde ödeme şekli zorunludur');
+        return;
+      }
+      if (newPayment.payment_method === 'resmi' && !newPayment.tax_amount) {
+        toast.error('Resmi ödemede vergi tutarı zorunludur');
+        return;
+      }
+    }
+    
+    // Branş/Kasa ve Banka hesabı artık opsiyonel - boşsa onay iste
+    const emptyFields = [];
+    if (!newPayment.cashbox_id) emptyFields.push('Branş / Kasa');
+    if (!newPayment.bank_account_id) emptyFields.push('Banka hesabı');
+    
+    if (emptyFields.length > 0) {
+      setEmptyFieldConfirm({ open: true, fields: emptyFields });
+      return;
+    }
+    
+    await doSavePayment();
   };
 
   const handleDeletePayment = async () => {
@@ -965,6 +954,34 @@ const AdminPayments = () => {
                 className="bg-red-600 hover:bg-red-700"
               >
                 Sil
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Boş alan onay dialogu */}
+        <AlertDialog open={emptyFieldConfirm.open} onOpenChange={(open) => !open && setEmptyFieldConfirm({ open: false, fields: [] })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eksik alan var</AlertDialogTitle>
+              <AlertDialogDescription data-testid="empty-field-confirm-text">
+                <strong>{emptyFieldConfirm.fields.join(' ve ')}</strong> alanı boş. Böyle kaydetmek istediğinize emin misiniz?
+                {emptyFieldConfirm.fields.length === 1 && emptyFieldConfirm.fields[0] === 'Branş / Kasa' && (
+                  <span className="block mt-2 text-slate-500">İşlem yalnızca banka hesabına yansıyacak; branş/kasa bakiyesi değişmeyecek.</span>
+                )}
+                {emptyFieldConfirm.fields.length === 1 && emptyFieldConfirm.fields[0] === 'Banka hesabı' && (
+                  <span className="block mt-2 text-slate-500">İşlem yalnızca branş/kasa bakiyesine yansıyacak; banka hesabında işlem olmayacak.</span>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="empty-field-confirm-cancel">Vazgeç</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={doSavePayment}
+                data-testid="empty-field-confirm-yes"
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Evet, kaydet
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

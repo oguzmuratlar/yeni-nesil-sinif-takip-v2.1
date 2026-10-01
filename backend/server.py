@@ -2417,10 +2417,6 @@ async def create_payment(payment_data: PaymentCreate, current_user: User = Depen
     # FAZ 5: Kapalı dönem kontrolü
     await check_season_is_open()
     
-    # Kasa zorunlu kontrolü
-    if not payment_data.cashbox_id:
-        raise HTTPException(status_code=400, detail="Kasa seçimi zorunludur")
-    
     payment = Payment(**payment_data.model_dump())
     doc = payment.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
@@ -2439,10 +2435,6 @@ async def update_payment(payment_id: str, payment_data: PaymentCreate, current_u
     existing = await db.payments.find_one({"id": payment_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Ödeme bulunamadı")
-    
-    # Banka hesabı zorunlu kontrolü
-    if not payment_data.bank_account_id:
-        raise HTTPException(status_code=400, detail="Banka hesabı seçimi zorunludur")
     
     update_data = payment_data.model_dump()
     await db.payments.update_one({"id": payment_id}, {"$set": update_data})
