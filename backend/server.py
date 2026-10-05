@@ -992,6 +992,21 @@ async def calculate_teacher_earning_rate(
     
     return fallback.get("price", 0) if fallback else 0
 
+
+def get_teacher_rate_cached(tp_by_tb, teacher_id, branch_id, lesson_type_id, group_size):
+    """calculate_teacher_earning_rate'in bellekten çalışan sürümü (N+1 sorgu önlemek için)."""
+    records = tp_by_tb.get((teacher_id, branch_id), [])
+    if not records:
+        return 0
+    if group_size is not None and group_size > 0:
+        target_gs = min(group_size, 4)
+    else:
+        target_gs = None
+    for r in records:
+        if r.get("group_size") == target_gs:
+            return r.get("price", 0)
+    return records[0].get("price", 0)
+
 # ============================================================
 # AUDIT LOG HELPER FUNCTIONS
 # ============================================================
@@ -3526,6 +3541,26 @@ async def get_monthly_program_detailed(month: str, current_user: User = Depends(
     bank_accounts = await db.bank_accounts.find({}, {"_id": 0}).to_list(100)
     bank_map = {b["id"]: f"{b['bank_name']} - {b['holder_name']}" for b in bank_accounts}
     
+    # --- Performans: fiyat geçmişi ve öğretmen ücretlerini tek seferde belleğe al (N+1 sorgu önlendi) ---
+    all_price_history = await db.student_price_history.find({"lesson_type": "birebir"}, {"_id": 0}).to_list(100000)
+    price_hist_by_sb = {}
+    for pr in all_price_history:
+        price_hist_by_sb.setdefault((pr.get("student_id"), pr.get("branch_id")), []).append(pr)
+    
+    all_teacher_prices = await db.teacher_prices.find({}, {"_id": 0}).to_list(100000)
+    tp_by_tb = {}
+    for tp in all_teacher_prices:
+        tp_by_tb.setdefault((tp.get("teacher_id"), tp.get("branch_id")), []).append(tp)
+    
+    # Ay sınırlarını bir kez hesapla
+    try:
+        _y, _m = month.split("-")
+        month_start = datetime(int(_y), int(_m), 1)
+        month_end = datetime(int(_y) + 1, 1, 1) if int(_m) == 12 else datetime(int(_y), int(_m) + 1, 1)
+    except Exception:
+        month_start = datetime(1900, 1, 1)
+        month_end = datetime(2100, 1, 1)
+    
     # Sonuç listesi
     result = []
     teacher_totals = {t["id"]: 0 for t in teachers}  # Öğretmen kazanç toplamları
@@ -3594,44 +3629,24 @@ async def get_monthly_program_detailed(month: str, current_user: User = Depends(
                     all_dates.extend([d.strip() for d in pl["dates"].split(",")])
                 total_lessons += pl.get("number_of_lessons", 0)
             
-            # FAZ 4: Ay içindeki EN YÜKSEK fiyatı bul
-            # Ay başı ve sonu
+            # FAZ 4: Ay içindeki EN YÜKSEK fiyatı bul (bellekten - N+1 sorgu önlendi)
             try:
-                year, month_num = month.split("-")
-                month_start = datetime(int(year), int(month_num), 1)
-                if int(month_num) == 12:
-                    month_end = datetime(int(year) + 1, 1, 1)
-                else:
-                    month_end = datetime(int(year), int(month_num) + 1, 1)
-                
-                # Bu ay için tüm geçerli fiyatları bul
-                # Mantık: Bu ayla kesişen tüm fiyat kayıtları
-                price_records = await db.student_price_history.find({
-                    "student_id": student["id"],
-                    "branch_id": branch_id,
-                    "lesson_type": "birebir",
-                    "valid_from": {"$lt": month_end},  # Ay sonundan önce başlamış
-                    "$or": [
-                        {"valid_to": None},  # Aktif
-                        {"valid_to": {"$gt": month_start}}  # Ay başından sonra bitmiş
-                    ]
-                }, {"_id": 0}).to_list(100)
-                
-                if price_records:
+                hist_records = price_hist_by_sb.get((student["id"], branch_id), [])
+                overlapping = [
+                    pr for pr in hist_records
+                    if pr.get("valid_from") is not None and pr["valid_from"] < month_end
+                    and (pr.get("valid_to") is None or pr["valid_to"] > month_start)
+                ]
+                if overlapping:
                     # En yüksek fiyatı seç
-                    unit_price = max(pr["price"] for pr in price_records)
+                    unit_price = max(pr["price"] for pr in overlapping)
+                elif hist_records:
+                    # Hiç kesişen kayıt yoksa en eski fiyatı kullan
+                    oldest = min(hist_records, key=lambda r: r.get("valid_from") or datetime.min)
+                    unit_price = oldest["price"]
                 else:
-                    # Hiç kayıt yoksa en eski fiyatı veya course fiyatını kullan
-                    oldest = await db.student_price_history.find_one({
-                        "student_id": student["id"],
-                        "branch_id": branch_id,
-                        "lesson_type": "birebir"
-                    }, {"_id": 0}, sort=[("valid_from", 1)])
-                    
-                    if oldest:
-                        unit_price = oldest["price"]
-                    else:
-                        unit_price = course.get("student_price") or course.get("price", 0)
+                    # Hiç kayıt yoksa course fiyatını kullan
+                    unit_price = course.get("student_price") or course.get("price", 0)
             except Exception:
                 unit_price = course.get("student_price") or course.get("price", 0)
             
@@ -3677,12 +3692,13 @@ async def get_monthly_program_detailed(month: str, current_user: User = Depends(
                     group_size = min(actual_size, 4)
                     break
             
-            # Öğretmen ücretini teacher_prices'dan al
-            teacher_rate = await calculate_teacher_earning_rate(
-                teacher_id=teacher_id,
-                branch_id=branch_id,
-                lesson_type_id=lesson_type_id,
-                group_size=group_size if is_group_lesson else None
+            # Öğretmen ücretini teacher_prices'dan al (bellekten - N+1 sorgu önlendi)
+            teacher_rate = get_teacher_rate_cached(
+                tp_by_tb,
+                teacher_id,
+                branch_id,
+                lesson_type_id,
+                group_size if is_group_lesson else None
             )
             
             for pl in course_planned:

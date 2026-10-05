@@ -7,6 +7,12 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
+### Performans & UX İyileştirmeleri (5 Ekim 2026)
+- **Ödemeler sayfalama**: Admin Ödemeler ekranına sayfa altında sayfalama eklendi (10/25/50/100, varsayılan 10). Tümü/Gelir/Gider sekmelerinin her biri ayrı sayfalanır; filtre/sekme/sayfa boyutu değişince 1. sayfaya döner. Amaç: binlerce kaydın tek seferde DOM'a basılmasından kaynaklı yavaşlığı gidermek. (`AdminPayments.jsx`)
+- **Aylık Program hızlandırma (N+1 giderme)**: `/monthly-program-detailed` endpoint'i her öğrenci×branş için `student_price_history` ve her ders için `calculate_teacher_earning_rate` sorgusu atıyordu (yüzlerce ardışık DB çağrısı). Artık `student_price_history` (birebir) ve `teacher_prices` tek seferde belleğe alınıp lookup dict'lerle hesaplanıyor. Yeni yardımcı: `get_teacher_rate_cached`. Hesap mantığı birebir aynı; endpoint ~0.1-0.2s. (`server.py`)
+- **Menü sırası**: Muhasebe menüsünde "Aylık Program" artık "Finansal Rapor"un üstünde. (`AdminLayout.jsx`)
+
+
 ### Ödemeler - Opsiyonel Alanlar (18 Eylül 2026)
 - Admin Ödemeler ekranında ödeme girişi/para çıkışı yaparken Branş/Kasa ve Banka hesabı artık zorunlu değil. Boş bırakılırsa hata yerine onay penceresi çıkar ("<alan> alanı boş. Böyle kaydetmek istediğinize emin misiniz?"). Onaylanınca: banka boşsa işlem yalnızca branş/kasaya, kasa boşsa yalnızca bankaya yansır. Backend'deki zorunluluk kontrolleri (create/update) kaldırıldı. Test: Backend 6/6, Frontend 3/3 (iteration_27).
 

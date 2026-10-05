@@ -51,6 +51,9 @@ const AdminPayments = () => {
   const [selectedBankFilter, setSelectedBankFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc' = baştan sona, 'desc' = sondan başa
   const [emptyFieldConfirm, setEmptyFieldConfirm] = useState({ open: false, fields: [] });
+  const [activeTab, setActiveTab] = useState('all');
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -349,6 +352,67 @@ const AdminPayments = () => {
   const totalIncome = incomePayments.reduce((sum, p) => sum + p.amount, 0);
   const totalExpense = expensePayments.reduce((sum, p) => sum + p.amount, 0);
 
+  // Sayfalama - filtre, sekme veya sayfa boyutu değişince ilk sayfaya dön
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedMonth, selectedCashbox, selectedStudentFilter, selectedExpenseCategory, selectedTeacherFilter, selectedBankFilter, sortOrder, activeTab, pageSize]);
+
+  const paginate = (list) => list.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const activeList = activeTab === 'income' ? incomePayments : activeTab === 'expense' ? expensePayments : payments;
+  const totalPages = Math.max(1, Math.ceil(activeList.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = activeList.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = Math.min(safePage * pageSize, activeList.length);
+
+  const PaginationFooter = () => (
+    activeList.length > 0 && (
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-slate-100" data-testid="payments-pagination">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-500">Sayfa başına:</span>
+          <Select value={pageSize.toString()} onValueChange={(v) => setPageSize(parseInt(v))}>
+            <SelectTrigger className="h-9 w-20 text-sm" data-testid="page-size-select">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[10, 25, 50, 100].map(size => (
+                <SelectItem key={size} value={size.toString()}>{size}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-slate-500 ml-2">
+            {pageStart}-{pageEnd} / {activeList.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            disabled={safePage <= 1}
+            onClick={() => setCurrentPage(safePage - 1)}
+            data-testid="page-prev-btn"
+          >
+            Önceki
+          </Button>
+          <span className="text-sm text-slate-600 px-2" data-testid="page-indicator">
+            {safePage} / {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            disabled={safePage >= totalPages}
+            onClick={() => setCurrentPage(safePage + 1)}
+            data-testid="page-next-btn"
+          >
+            Sonraki
+          </Button>
+        </div>
+      </div>
+    )
+  );
+
   const renderPaymentItem = (payment, bgClass) => {
     const student = students.find(s => s.id === payment.student_id);
     const teacher = teachers.find(t => t.id === payment.teacher_id);
@@ -629,7 +693,7 @@ const AdminPayments = () => {
           </div>
 
           {/* Tabs - Mobile optimized */}
-          <Tabs defaultValue="all" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="w-full sm:w-auto grid grid-cols-3 sm:flex h-11 sm:h-10">
               <TabsTrigger value="all" className="text-xs sm:text-sm">Tümü</TabsTrigger>
               <TabsTrigger value="income" className="text-xs sm:text-sm">Gelir</TabsTrigger>
@@ -640,7 +704,10 @@ const AdminPayments = () => {
               {payments.length === 0 ? (
                 <p className="text-slate-600 text-center py-8">Henüz ödeme yok</p>
               ) : (
-                payments.map((payment) => renderPaymentItem(payment, 'bg-slate-50'))
+                <>
+                  {paginate(payments).map((payment) => renderPaymentItem(payment, 'bg-slate-50'))}
+                  <PaginationFooter />
+                </>
               )}
             </TabsContent>
 
@@ -648,7 +715,10 @@ const AdminPayments = () => {
               {incomePayments.length === 0 ? (
                 <p className="text-slate-600 text-center py-8">Henüz gelir kaydı yok</p>
               ) : (
-                incomePayments.map((payment) => renderPaymentItem(payment, 'bg-green-50'))
+                <>
+                  {paginate(incomePayments).map((payment) => renderPaymentItem(payment, 'bg-green-50'))}
+                  <PaginationFooter />
+                </>
               )}
             </TabsContent>
 
@@ -656,7 +726,10 @@ const AdminPayments = () => {
               {expensePayments.length === 0 ? (
                 <p className="text-slate-600 text-center py-8">Henüz gider kaydı yok</p>
               ) : (
-                expensePayments.map((payment) => renderPaymentItem(payment, 'bg-red-50'))
+                <>
+                  {paginate(expensePayments).map((payment) => renderPaymentItem(payment, 'bg-red-50'))}
+                  <PaginationFooter />
+                </>
               )}
             </TabsContent>
           </Tabs>
