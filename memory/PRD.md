@@ -7,6 +7,11 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
+### Veli Özelliği Feature Flag (7 Ekim 2026)
+- "Veli Kullanıcısı" artık "Yeni Geliştirmeler" ekranından açılıp kapatılabilir (system setting key: `veli_enabled`, UI: "Veli Kullanıcısı"). Diğer bayraklar gibi dinamik toggle.
+- Pasifken: veli girişi 401 ("Veli girişi şu anda kapalı"), tüm `/api/veli/*` endpoint'leri 403, `/auth/register` parent 403, öğrenci create/update veli oluşturma 403; öğrenci formundaki "Veli Giriş Bilgileri" bölümü ve kullanıcı formundaki "Veli" seçeneği gizlenir. Aktifken her şey çalışır.
+- Public durum endpoint'i: `GET /api/system-settings/veli-status`. Frontend formlar bu duruma göre koşullu render eder. Curl ile OFF→401/403, ON→200 doğrulandı; toggle AdminSettings'te görünür. Şu an AKTİF bırakıldı.
+
 ### YENİ ÖZELLİK: Veli (Parent) Kullanıcı Tipi ✅ (7 Ekim 2026)
 - Yeni rol: kod `user_type="parent"`, UI etiketi "Veli". User modeline `linked_student_ids` (çoklu öğrenci) eklendi; parent için zorunlu. Token yanıtı `linked_student_ids` döner. Şifreler diğer kullanıcılar gibi bcrypt ile hash'li saklanır.
 - **Öğrenci oluşturma/düzenleme**: "Veli Giriş Bilgileri" bölümü — opsiyonel "Veli kullanıcısı ekle" checkbox'ı; işaretlenirse veli kullanıcı adı + şifre zorunlu. Create → aynı anda parent user oluşturulur (linked_student_ids=[öğrenci]). Update → veli kullanıcı adı/şifre değişimi bağlı parent user'a yansır (yoksa oluşturulur). Student modelinde `veli_username` saklanır. Öğrenci silinince bağlı veli (başka öğrencisi yoksa) silinir.

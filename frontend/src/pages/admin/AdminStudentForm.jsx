@@ -49,6 +49,7 @@ const AdminStudentForm = () => {
     valid_from: new Date().toISOString().split('T')[0]
   });
   const [priceHistory, setPriceHistory] = useState([]);
+  const [veliEnabled, setVeliEnabled] = useState(false);
   const [newCourse, setNewCourse] = useState({
     teacher_id: '',
     branch_id: '',
@@ -111,6 +112,10 @@ const AdminStudentForm = () => {
     } catch (error) {
       toast.error('Referans veriler yüklenemedi');
     }
+    try {
+      const r = await apiClient.get('/system-settings/veli-status');
+      setVeliEnabled(!!r.data.enabled);
+    } catch (e) { /* veli durumu alınamazsa gizli kalır */ }
   };
 
   const fetchCourses = async () => {
@@ -135,13 +140,11 @@ const AdminStudentForm = () => {
     e.preventDefault();
 
     // Veli giriş bilgileri validasyonu
-    if (formData.create_parent) {
+    if (veliEnabled && formData.create_parent) {
       if (!formData.veli_username.trim()) {
         toast.error('Veli kullanıcı adı zorunludur');
         return;
       }
-      // Yeni öğrenci veya henüz veli hesabı olmayan öğrenci için şifre zorunlu
-      const parentExists = isEdit && formData.veli_username && false; // backend decides; require pw if new
       if (!isEdit && !formData.veli_password) {
         toast.error('Veli şifresi zorunludur');
         return;
@@ -150,12 +153,17 @@ const AdminStudentForm = () => {
 
     setLoading(true);
 
+    // Veli özelliği kapalıysa veli alanlarını gönderme
+    const payload = veliEnabled
+      ? formData
+      : { ...formData, create_parent: false, veli_username: '', veli_password: '' };
+
     try {
       if (isEdit) {
-        await apiClient.put(`/students/${id}`, formData);
+        await apiClient.put(`/students/${id}`, payload);
         toast.success('Öğrenci güncellendi');
       } else {
-        const response = await apiClient.post('/students', formData);
+        const response = await apiClient.post('/students', payload);
         const studentId = response.data.id;
         
         // Add courses if any
@@ -530,6 +538,7 @@ const AdminStudentForm = () => {
           </div>
 
           {/* Veli Giriş Bilgileri */}
+          {veliEnabled && (
           <div className="admin-card p-8">
             <h2 className="text-xl font-bold text-slate-800 mb-2 flex items-center gap-2">
               <KeyRound size={20} className="text-indigo-600" />
@@ -595,6 +604,7 @@ const AdminStudentForm = () => {
               </div>
             )}
           </div>
+          )}
 
           {/* Dahil Olduğu Gruplar - Sadece düzenleme modunda */}
           {isEdit && studentGroups.length > 0 && (

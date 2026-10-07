@@ -1124,6 +1124,13 @@ async def login(login_data: LoginRequest):
                 detail="Bu hesap pasife alınmıştır. Lütfen yönetici ile iletişime geçin.",
             )
     
+    # Veli ise, özellik aktif mi kontrol et
+    if user["user_type"] == "parent" and not await is_veli_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Veli girişi şu anda kapalı. Lütfen yönetici ile iletişime geçin.",
+        )
+    
     access_token = create_access_token(data={"sub": user["username"]})
     
     # Admin login zamanını KAYDETME - sadece popup kapatıldığında mark-read ile kaydedilecek
@@ -1153,6 +1160,8 @@ async def register_user(user_data: UserCreate, current_user: User = Depends(get_
     
     linked_ids = []
     if user_data.user_type == "parent":
+        if not await is_veli_enabled():
+            raise HTTPException(status_code=403, detail="Veli Kullanıcısı özelliği şu anda pasif durumda.")
         linked_ids = user_data.linked_student_ids or []
         if not linked_ids:
             raise HTTPException(status_code=400, detail="Veli kullanıcısı için en az bir öğrenci seçilmelidir")
@@ -1379,6 +1388,8 @@ async def create_student(student_data: StudentCreate, current_user: User = Depen
     veli_password = student_data.veli_password or ""
     
     if create_parent:
+        if not await is_veli_enabled():
+            raise HTTPException(status_code=403, detail="Veli Kullanıcısı özelliği şu anda pasif durumda.")
         if not veli_username or not veli_password:
             raise HTTPException(status_code=400, detail="Veli kullanıcı adı ve şifre zorunludur")
         existing_user = await db.users.find_one({"username": veli_username})
@@ -1427,6 +1438,8 @@ async def update_student(student_id: str, student_data: StudentCreate, current_u
                    if v is not None and k not in ("veli_password", "create_parent", "veli_username")}
     
     if create_parent and veli_username:
+        if not await is_veli_enabled():
+            raise HTTPException(status_code=403, detail="Veli Kullanıcısı özelliği şu anda pasif durumda.")
         # Bu öğrenciye bağlı mevcut veli kullanıcısını bul
         parent = await db.users.find_one({"user_type": "parent", "linked_student_ids": student_id})
         if parent:
@@ -5123,6 +5136,7 @@ def _resolve_parent_student(current_user: User, student_id: Optional[str]) -> st
 async def get_veli_students(current_user: User = Depends(get_current_user)):
     """Velinin bağlı olduğu öğrencilerin listesi (seçici için)."""
     _require_parent(current_user)
+    await check_veli_enabled()
     linked = current_user.linked_student_ids or []
     students = await db.students.find({"id": {"$in": linked}}, {"_id": 0, "id": 1, "name": 1, "level": 1}).to_list(100)
     return students
@@ -5131,6 +5145,7 @@ async def get_veli_students(current_user: User = Depends(get_current_user)):
 async def get_veli_summary(student_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
     """Veli ana sayfası: branş kartları (branş, öğretmen, girilen ders, kalan ders, kalan bakiye)."""
     _require_parent(current_user)
+    await check_veli_enabled()
     sid = _resolve_parent_student(current_user, student_id)
     finance = await compute_student_finance(sid)
     cards = []
@@ -5156,6 +5171,7 @@ async def get_veli_summary(student_id: Optional[str] = None, current_user: User 
 async def get_veli_lessons(student_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
     """Veli dersler ekranı: branş bazlı detay tablo."""
     _require_parent(current_user)
+    await check_veli_enabled()
     sid = _resolve_parent_student(current_user, student_id)
     finance = await compute_student_finance(sid)
     rows = []
@@ -5184,6 +5200,7 @@ async def get_veli_lessons(student_id: Optional[str] = None, current_user: User 
 async def get_veli_payments(student_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
     """Veli ödemeler ekranı: tarih, branş, tutar, hesap adı."""
     _require_parent(current_user)
+    await check_veli_enabled()
     sid = _resolve_parent_student(current_user, student_id)
     student = await db.students.find_one({"id": sid}, {"_id": 0})
     if not student:
@@ -6512,7 +6529,8 @@ async def get_system_settings(current_user: User = Depends(get_current_user)):
     default_settings = [
         {"key": "homework_tool_enabled", "value": True, "description": "Ödev Takip Sistemi"},
         {"key": "lesson_links_enabled", "value": False, "description": "Ders Giriş Özelliği"},
-        {"key": "yns_league_enabled", "value": False, "description": "YNS League (Öğrenci Yıldız Sistemi)"}
+        {"key": "yns_league_enabled", "value": False, "description": "YNS League (Öğrenci Yıldız Sistemi)"},
+        {"key": "veli_enabled", "value": False, "description": "Veli Kullanıcısı"}
     ]
     
     existing_keys = [s["key"] for s in settings]
@@ -6615,6 +6633,21 @@ async def check_yns_enabled():
 async def get_yns_status(current_user: User = Depends(get_current_user)):
     """YNS League durumunu kontrol et - tüm kullanıcılar"""
     return {"enabled": await is_yns_enabled()}
+
+async def is_veli_enabled() -> bool:
+    setting = await db.system_settings.find_one({"key": "veli_enabled"}, {"_id": 0})
+    if setting is None:
+        return False
+    return setting.get("value", False)
+
+async def check_veli_enabled():
+    if not await is_veli_enabled():
+        raise HTTPException(status_code=403, detail="Veli Kullanıcısı özelliği şu anda pasif durumda.")
+
+@api_router.get("/system-settings/veli-status")
+async def get_veli_status_public():
+    """Veli özelliği durumunu kontrol et - herkese açık (login ekranı/panel için)."""
+    return {"enabled": await is_veli_enabled()}
 
 # --- Yıldız tanımları (admin) ---
 

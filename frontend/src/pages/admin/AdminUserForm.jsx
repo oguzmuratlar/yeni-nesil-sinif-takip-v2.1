@@ -27,6 +27,7 @@ const AdminUserForm = () => {
     linked_student_ids: []
   });
   const [submitting, setSubmitting] = useState(false);
+  const [veliEnabled, setVeliEnabled] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -48,6 +49,10 @@ const AdminUserForm = () => {
     } finally {
       setLoading(false);
     }
+    try {
+      const r = await apiClient.get('/system-settings/veli-status');
+      setVeliEnabled(!!r.data.enabled);
+    } catch (e) { /* veli durumu alınamazsa gizli kalır */ }
   };
 
   const resetForm = () => {
@@ -279,7 +284,7 @@ const AdminUserForm = () => {
                     <SelectContent>
                       <SelectItem value="admin">Admin</SelectItem>
                       <SelectItem value="teacher">Öğretmen</SelectItem>
-                      <SelectItem value="parent">Veli</SelectItem>
+                      {veliEnabled && <SelectItem value="parent">Veli</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
