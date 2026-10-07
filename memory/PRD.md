@@ -7,7 +7,13 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
-### Veli Özelliği Feature Flag (7 Ekim 2026)
+### Veli Düzeltmeleri & İyileştirmeler (7 Ekim 2026 - 2. tur)
+- **REGRESYON FIX**: `/api/students/by-branch/{branch_id}` route decorator'ı önceki düzenlemede yanlışlıkla silinmişti → Admin Öğrenciler branş seçince "Veriler yüklenemedi" hatası. Decorator geri eklendi (200).
+- Veli ana sayfasında branş kartına tıklayınca Dersler sayfası o branş filtresiyle açılır (`/veli/lessons?branch=&student=` query param + `useSearchParams`).
+- Veli Dersler: belirli bir branş seçilince altında öğrencinin o branşta girdiği ders tarihleri + ders sayıları listelenir; ücretsiz dersler "Ücretsiz" rozetiyle belirtilir. `compute_student_finance` her branşa `lessons` (tarih/adet/ücretsiz) ekler.
+- Veli Ödemeler: hesap adı artık ödemenin kendi `bank_account_id` (format "bankaAdı- hesapSahibi") veya `cashbox_id` adından gelir (ör. "örnek banka2- Oğuz Yılmaz"). Önceki hatalı öğrenci-varsayılan-hesap mantığı kaldırıldı.
+
+
 - "Veli Kullanıcısı" artık "Yeni Geliştirmeler" ekranından açılıp kapatılabilir (system setting key: `veli_enabled`, UI: "Veli Kullanıcısı"). Diğer bayraklar gibi dinamik toggle.
 - Pasifken: veli girişi 401 ("Veli girişi şu anda kapalı"), tüm `/api/veli/*` endpoint'leri 403, `/auth/register` parent 403, öğrenci create/update veli oluşturma 403; öğrenci formundaki "Veli Giriş Bilgileri" bölümü ve kullanıcı formundaki "Veli" seçeneği gizlenir. Aktifken her şey çalışır.
 - Public durum endpoint'i: `GET /api/system-settings/veli-status`. Frontend formlar bu duruma göre koşullu render eder. Curl ile OFF→401/403, ON→200 doğrulandı; toggle AdminSettings'te görünür. Şu an AKTİF bırakıldı.

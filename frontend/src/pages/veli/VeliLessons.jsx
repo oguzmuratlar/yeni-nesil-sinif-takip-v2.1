@@ -1,35 +1,55 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import VeliLayout from '../../components/layouts/VeliLayout';
 import VeliStudentSelector from '../../components/veli/VeliStudentSelector';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
 import { formatMoney } from '../../lib/utils';
+import { formatDateTurkish } from '../../lib/dateUtils';
 import { Button } from '../../components/ui/button';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, CalendarDays, Gift } from 'lucide-react';
 
 const VeliLessons = () => {
+  const [searchParams] = useSearchParams();
+  const initialBranch = searchParams.get('branch');
+  const initialStudent = searchParams.get('student');
+
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [branchFilter, setBranchFilter] = useState('all');
+  const paramApplied = useRef(false);
 
   useEffect(() => {
     apiClient.get('/veli/students').then(r => {
       setStudents(r.data);
-      if (r.data.length > 0) setSelectedStudent(r.data[0].id);
-      else setLoading(false);
+      if (r.data.length > 0) {
+        const match = initialStudent && r.data.find(s => s.id === initialStudent);
+        setSelectedStudent(match ? initialStudent : r.data[0].id);
+      } else {
+        setLoading(false);
+      }
     }).catch(() => { setLoading(false); toast.error('Öğrenci bilgisi yüklenemedi'); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     if (!selectedStudent) return;
     setLoading(true);
-    setBranchFilter('all');
     apiClient.get(`/veli/lessons?student_id=${selectedStudent}`)
-      .then(r => setData(r.data))
+      .then(r => {
+        setData(r.data);
+        if (!paramApplied.current && initialBranch) {
+          setBranchFilter(initialBranch);
+          paramApplied.current = true;
+        } else {
+          setBranchFilter('all');
+        }
+      })
       .catch(() => toast.error('Veriler yüklenemedi'))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStudent]);
 
   const branchNames = useMemo(() => {
@@ -42,6 +62,17 @@ const VeliLessons = () => {
     if (branchFilter === 'all') return data.rows;
     return data.rows.filter(r => r.branch_name === branchFilter);
   }, [data, branchFilter]);
+
+  // Seçili branş için ders tarihleri (tüm kurslar birleştirilir)
+  const lessonDates = useMemo(() => {
+    if (branchFilter === 'all') return [];
+    const all = [];
+    filteredRows.forEach(r => (r.lessons || []).forEach(l => all.push(l)));
+    return all.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }, [filteredRows, branchFilter]);
+
+  const totalLessonCount = lessonDates.reduce((s, l) => s + (l.number_of_lessons || 0), 0);
+  const freeLessonCount = lessonDates.filter(l => l.is_free).reduce((s, l) => s + (l.number_of_lessons || 0), 0);
 
   return (
     <VeliLayout>
@@ -151,6 +182,43 @@ const VeliLessons = () => {
               </div>
             ))}
           </div>
+
+          {/* Seçili branş için ders tarihleri listesi */}
+          {branchFilter !== 'all' && (
+            <div className="mt-6 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden" data-testid="veli-lesson-dates">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <CalendarDays size={18} className="text-indigo-600" />
+                  {branchFilter} — Girilen Dersler
+                </h3>
+                <span className="text-sm text-slate-500">
+                  Toplam {totalLessonCount} ders{freeLessonCount > 0 ? ` (${freeLessonCount} ücretsiz)` : ''}
+                </span>
+              </div>
+              {lessonDates.length === 0 ? (
+                <p className="text-center py-6 text-slate-500 text-sm">Bu branşta girilmiş ders bulunmuyor.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {lessonDates.map((l, i) => (
+                    <li key={i} className="flex items-center justify-between px-4 py-3" data-testid={`veli-lesson-date-${i}`}>
+                      <span className="flex items-center gap-2 text-slate-700">
+                        <CalendarDays size={15} className="text-slate-400" />
+                        {formatDateTurkish(l.date)}
+                      </span>
+                      <span className="flex items-center gap-3">
+                        {l.is_free && (
+                          <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">
+                            <Gift size={12} /> Ücretsiz
+                          </span>
+                        )}
+                        <span className="text-sm font-semibold text-slate-800">{l.number_of_lessons} ders</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </>
       )}
     </VeliLayout>

@@ -4982,6 +4982,16 @@ async def compute_student_finance(student_id: str):
         total_lessons = sum([l["number_of_lessons"] for l in lessons])
         free_lessons = sum([l["number_of_lessons"] for l in lessons if l.get("is_free_lesson", False)])
         
+        # Ders detay listesi (tarih bazlı, veli ekranı için)
+        lesson_entries = sorted([
+            {
+                "date": l.get("date"),
+                "number_of_lessons": l.get("number_of_lessons", 0),
+                "is_free": bool(l.get("is_free_lesson", False))
+            }
+            for l in lessons if l.get("date")
+        ], key=lambda x: x["date"])
+        
         # FAZ 4: Kullanılan tutar hesaplaması (snapshot bazlı)
         used_amount = 0
         current_student_price = course.get("student_price") or course.get("price") or 0
@@ -5091,7 +5101,8 @@ async def compute_student_finance(student_id: str):
             "total_paid": total_paid,
             "remaining_balance": remaining_balance,
             "remaining_lessons": round(remaining_lessons, 1),
-            "status": "alacakli" if remaining_balance >= 0 else "borclu"
+            "status": "alacakli" if remaining_balance >= 0 else "borclu",
+            "lessons": lesson_entries
         })
     
     # Genel özet
@@ -5188,6 +5199,7 @@ async def get_veli_lessons(student_id: Optional[str] = None, current_user: User 
             "remaining_lessons": b["remaining_lessons"],
             "remaining_balance": b["remaining_balance"],
             "status": b["status"],
+            "lessons": b.get("lessons", []),
         })
     return {
         "student_id": sid,
@@ -5214,12 +5226,18 @@ async def get_veli_payments(student_id: Optional[str] = None, current_user: User
     branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)
     branch_map = {b["id"]: b["name"] for b in branches}
     
-    bank_name = ""
-    if student.get("bank_account_id"):
-        bank = await db.bank_accounts.find_one({"id": student["bank_account_id"]}, {"_id": 0})
-        if bank:
-            bank_name = f"{bank.get('bank_name', '')} - {bank.get('holder_name', '')}"
-    default_account = student.get("payment_account_name") or bank_name
+    # Hesap adlarını çöz (banka + kasa)
+    banks = await db.bank_accounts.find({}, {"_id": 0}).to_list(1000)
+    bank_map = {b["id"]: f"{b.get('bank_name', '')}- {b.get('holder_name', '')}" for b in banks}
+    cashboxes = await db.cashboxes.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
+    cashbox_map = {c["id"]: c.get("name", "") for c in cashboxes}
+    
+    def _account_name(p):
+        if p.get("bank_account_id") and p["bank_account_id"] in bank_map:
+            return bank_map[p["bank_account_id"]]
+        if p.get("cashbox_id") and p["cashbox_id"] in cashbox_map:
+            return cashbox_map[p["cashbox_id"]]
+        return "-"
     
     rows = []
     for p in payments:
@@ -5227,7 +5245,7 @@ async def get_veli_payments(student_id: Optional[str] = None, current_user: User
             "date": p.get("date"),
             "branch_name": branch_map.get(p.get("branch_id"), "-"),
             "amount": p.get("amount", 0),
-            "account_name": default_account or "-",
+            "account_name": _account_name(p),
         })
     return {
         "student_id": sid,
@@ -5235,6 +5253,7 @@ async def get_veli_payments(student_id: Optional[str] = None, current_user: User
         "payments": rows,
     }
 
+@api_router.get("/students/by-branch/{branch_id}")
 async def get_students_by_branch(branch_id: str, current_user: User = Depends(get_current_user)):
     """
     Branş bazlı öğrenci listesi.

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import VeliLayout from '../../components/layouts/VeliLayout';
 import VeliStudentSelector from '../../components/veli/VeliStudentSelector';
 import apiClient from '../../api/axios';
@@ -7,6 +8,7 @@ import { formatMoney } from '../../lib/utils';
 import { BookOpen, GraduationCap, Wallet, CalendarCheck } from 'lucide-react';
 
 const VeliDashboard = () => {
+  const navigate = useNavigate();
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState('');
   const [data, setData] = useState(null);
@@ -52,7 +54,13 @@ const VeliDashboard = () => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="veli-branch-cards">
           {data.cards.map((c) => (
-            <div key={c.branch_id} className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:shadow-md transition-shadow" data-testid={`veli-card-${c.branch_id}`}>
+            <div
+              key={c.branch_id}
+              className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer"
+              data-testid={`veli-card-${c.branch_id}`}
+              onClick={() => navigate(`/veli/lessons?branch=${encodeURIComponent(c.branch_name)}&student=${selectedStudent}`)}
+              role="button"
+            >
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold text-slate-800">{c.branch_name}</h3>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">{c.lesson_type}</span>
