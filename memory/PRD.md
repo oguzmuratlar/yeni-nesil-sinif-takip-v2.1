@@ -7,6 +7,16 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
+### YENİ ÖZELLİK: Veli (Parent) Kullanıcı Tipi ✅ (7 Ekim 2026)
+- Yeni rol: kod `user_type="parent"`, UI etiketi "Veli". User modeline `linked_student_ids` (çoklu öğrenci) eklendi; parent için zorunlu. Token yanıtı `linked_student_ids` döner. Şifreler diğer kullanıcılar gibi bcrypt ile hash'li saklanır.
+- **Öğrenci oluşturma/düzenleme**: "Veli Giriş Bilgileri" bölümü — opsiyonel "Veli kullanıcısı ekle" checkbox'ı; işaretlenirse veli kullanıcı adı + şifre zorunlu. Create → aynı anda parent user oluşturulur (linked_student_ids=[öğrenci]). Update → veli kullanıcı adı/şifre değişimi bağlı parent user'a yansır (yoksa oluşturulur). Student modelinde `veli_username` saklanır. Öğrenci silinince bağlı veli (başka öğrencisi yoksa) silinir.
+- **Kullanıcı Yönetimi (AdminUserForm)**: kullanıcı tipi select'ine "Veli" eklendi; seçilince aranabilir çoklu öğrenci seçici gösterilir (en az 1 zorunlu). Liste görünümü parent rolünü ve bağlı öğrencileri gösterir.
+- **Yetki (backend, source of truth)**: `/api/veli/*` yalnızca parent; istenen `student_id` parent'ın linked_student_ids'inde olmalı yoksa 403. Parent admin/teacher endpoint'lerine 403; admin/teacher `/api/veli/*`'e 403. Frontend ProtectedRoute + App.js catch-all yalnızca UX yönlendirmesi.
+- **Veli paneli (frontend)**: `/veli` (Ana Sayfa - branş kartları), `/veli/lessons` (Dersler - branş filtreli tablo), `/veli/payments` (Ödemeler). Üstte çoklu öğrenci için öğrenci seçici (tek öğrencide gizli). VeliLayout menüsü: Ana Sayfa, Dersler, Ödemeler.
+- **Hesaplama**: Mevcut `compute_student_finance` helper'ı kullanılır (admin finance-detail ile ortak). Kalan bakiye = toplam ödeme − (ücretli ders × öğrenci fiyatı). Ücretsiz dersler bakiyeyi düşürmez. Grup dersleri öğrenci sayısıyla çarpılmaz. Durum: balance<0 → "Borçlu", değilse "Bakiye Mevcut".
+- API: GET /api/veli/students, /api/veli/summary, /api/veli/lessons, /api/veli/payments (hepsi opsiyonel student_id). Test: Backend 14/14 pytest, Frontend ~%95 (iteration_29). Test velisi: veli_test/veli123 (Ali Yılmaz'a bağlı).
+
+
 ### Performans & UX İyileştirmeleri (5 Ekim 2026)
 - **Ödemeler — sunucu taraflı sayfalama + zenginleştirme (7 Ekim 2026 güncellemesi)**: Sayfa artık TÜM ödemeleri/öğrencileri istemciye indirmiyor. Yeni endpoint'ler: `GET /api/payments/paginated` (filtre+sayfalama+isim zenginleştirme+özet) ve `GET /api/payments/months` (benzersiz aylar). Liste satırları isim/kasa bilgisini sunucudan hazır alır (student_name/teacher_name/cashbox_name/branch_name) — isimler artık anında gelir. Özet kartları (Gelir/Gider/Net) sunucudaki tam filtreli küme üzerinden hesaplanır (sekmeden bağımsız). Sekmeler (Tümü/Gelir/Gider) her biri sunucudan sayfalanır. Öğrenci kursları (branş etiketleri) ayrı/bloklamadan yüklenir, böylece giriş formundaki öğrenci listesi beklemeden açılır. Test: Backend 11/11 pytest, Frontend %100 (iteration_28).
 - **Ödemeler sayfalama**: 10/25/50/100 (varsayılan 10), sayfa altında; filtre/sekme/sayfa boyutu değişince 1. sayfaya döner.

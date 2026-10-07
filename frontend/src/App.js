@@ -4,6 +4,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { Toaster } from "./components/ui/sonner";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { useAuth } from "./contexts/AuthContext";
+import { Navigate as RRNavigate } from "react-router-dom";
 import axios from "axios";
 
 // Pages
@@ -82,6 +84,18 @@ const getBaseUrl = () => {
 
 const BACKEND_URL = getBaseUrl();
 const API = `${BACKEND_URL}/api`;
+
+// Kimliği doğrulanmış kullanıcıyı kendi paneline yönlendiren catch-all
+const RoleHomeRedirect = () => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <RRNavigate to="/login" replace />;
+  const home = user.user_type === 'admin' ? '/admin/dashboard'
+    : user.user_type === 'parent' ? '/veli'
+    : user.user_type === 'teacher' ? '/teacher/dashboard'
+    : '/login';
+  return <RRNavigate to={home} replace />;
+};
 
 function App() {
   useEffect(() => {
@@ -421,6 +435,9 @@ function App() {
                 <VeliPayments />
               </ProtectedRoute>
             } />
+
+            {/* Catch-all: kimliği doğrulanmış kullanıcıyı kendi paneline yönlendir */}
+            <Route path="*" element={<RoleHomeRedirect />} />
           </Routes>
         </BrowserRouter>
         <Toaster />

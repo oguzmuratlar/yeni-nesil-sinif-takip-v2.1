@@ -1,0 +1,37 @@
+{
+  "summary": "End-to-end testing of new Veli (Parent) role. Backend: 14/14 pytest cases pass covering parent login, /api/veli/* endpoints, authorization guards (parent->admin 403, admin->veli 403, teacher->veli 403, cross-student 403), student creation with parent (incl. duplicate-username, missing-password validation) and /api/auth/register parent flow (empty linked_student_ids rejected). Frontend E2E: admin + teacher login regressions pass; Admin > Yeni Öğrenci shows Veli Giriş Bilgileri with create-parent-checkbox toggling veli-username/password fields; Admin > Kullanıcı Yönetimi user-type-select has 'Veli' option, parent-student-multiselect appears, 'Veli için en az bir öğrenci seçmelisiniz' error toast shown when saving with 0 students; parent login redirects to /veli; Veli Paneli menu (Ana Sayfa/Dersler/Ödemeler) and all three screens render correctly with status badges (Borçlu/Bakiye Mevcut), Birebir/Grup ders tipi, branch filter, payment total; VeliStudentSelector correctly hidden for single-student parent (veli_test).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Parent route guard", "issue": "When a logged-in parent navigates directly to /admin or /teacher, URL stays on that path and React Router logs 'No routes matched location'. No admin/teacher content is rendered (security OK), but ProtectedRoute does not redirect because /admin/* and /teacher/* routes are only mounted inside role-specific branches of App.js. Add a catch-all redirect in App.js for authenticated users (e.g. a <Route path='*'> that routes to /veli for parent, /admin/dashboard for admin, etc.) for cleaner UX.", "affected_selectors": []}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_veli_parent.py",
+    "/app/test_reports/pytest/veli_parent.xml"
+  ],
+  "action_items": [
+    "Optional UX polish: add catch-all route in App.js so a parent hitting /admin or /teacher is redirected to /veli (currently URL remains but nothing renders)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is >11,000 lines — split by domain modules (auth, students, veli, payments, lessons) for maintainability.",
+    "Backend returns status 'borclu'/'alacakli' (lowercase, legacy) and the frontend maps to 'Borçlu'/'Bakiye Mevcut'. Consider aligning backend values with product spec to avoid double-mapping drift.",
+    "DELETE /api/students removes the linked parent user when they have no other students — good; make sure cascading audit log entries are written."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_veli_parent.py (new)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "~95% (all critical flows pass; minor route-guard polish)"},
+  "test_credentials": "admin/admin123, veli_test/veli123 (linked to Ali Yılmaz), ilknur.uzunal/test123",
+  "seed_data_creation": "Transient test data created and cleaned up within tests (TEST_ prefix). veli_test/veli_yeni not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Veli feature is working end-to-end. Backend regression file at /app/backend/tests/test_veli_parent.py — reuse it. Note login endpoint returns Token with top-level user_type/linked_student_ids (NOT nested under 'user'). Status values from backend are 'borclu'/'alacakli' lowercase; UI remaps them. Student create requires fields: name, parent_name, phone, level, payment_freq (+ optional create_parent/veli_username/veli_password).",
+  "rca of the issue": "N/A — no bugs that block delivery."
+}
