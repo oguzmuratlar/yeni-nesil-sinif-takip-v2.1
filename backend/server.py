@@ -2424,6 +2424,124 @@ async def get_payments(
             payment['created_at'] = datetime.fromisoformat(payment['created_at'])
     return payments
 
+@api_router.get("/payments/months")
+async def get_payment_months(current_user: User = Depends(get_current_user)):
+    """Ödemelerde bulunan benzersiz ayları (YYYY-MM) azalan sırada döner."""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+    pipeline = [
+        {"$match": {"date": {"$ne": None}}},
+        {"$group": {"_id": {"$substr": ["$date", 0, 7]}}},
+        {"$sort": {"_id": -1}},
+    ]
+    rows = await db.payments.aggregate(pipeline).to_list(1000)
+    return [r["_id"] for r in rows if r.get("_id")]
+
+@api_router.get("/payments/paginated")
+async def get_payments_paginated(
+    tab: str = "all",
+    page: int = 1,
+    page_size: int = 10,
+    month: Optional[str] = None,
+    cashbox_id: Optional[str] = None,
+    student_id: Optional[str] = None,
+    expense_category: Optional[str] = None,
+    teacher_id: Optional[str] = None,
+    bank_account_id: Optional[str] = None,
+    sort_order: str = "desc",
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Sunucu tarafında filtrelenmiş + sayfalanmış + isimlerle zenginleştirilmiş ödeme listesi.
+    Çok sayıda ödeme olsa bile hızlı çalışır (sadece ilgili sayfa çekilir ve zenginleştirilir).
+    """
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+
+    # Ortak filtre (sekme hariç)
+    base_query = {}
+    if month:
+        base_query["date"] = {"$regex": f"^{month}"}
+    if cashbox_id and cashbox_id != "all":
+        base_query["cashbox_id"] = cashbox_id
+    if student_id:
+        base_query["student_id"] = student_id
+    if expense_category and expense_category != "all":
+        base_query["expense_category"] = expense_category
+    if teacher_id and teacher_id != "all":
+        base_query["teacher_id"] = teacher_id
+    if bank_account_id and bank_account_id != "all":
+        base_query["bank_account_id"] = bank_account_id
+
+    # Sekme filtresi
+    tab_query = dict(base_query)
+    if tab == "income":
+        tab_query["payment_type"] = "student_payment"
+    elif tab == "expense":
+        tab_query["payment_type"] = {"$in": ["expense", "teacher_payment"]}
+
+    total = await db.payments.count_documents(tab_query)
+
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    skip = (page - 1) * page_size
+    direction = 1 if sort_order == "asc" else -1
+    items = await db.payments.find(tab_query, {"_id": 0}).sort(
+        [("date", direction), ("created_at", direction)]
+    ).skip(skip).limit(page_size).to_list(page_size)
+
+    # Zenginleştirme - yalnızca bu sayfadaki kayıtların referansları
+    student_ids = list({p["student_id"] for p in items if p.get("student_id")})
+    teacher_ids = list({p["teacher_id"] for p in items if p.get("teacher_id")})
+    branch_ids = list({p["branch_id"] for p in items if p.get("branch_id")})
+    cashbox_ids = list({p["cashbox_id"] for p in items if p.get("cashbox_id")})
+
+    student_map, teacher_map, branch_map, cashbox_map = {}, {}, {}, {}
+    if student_ids:
+        async for s in db.students.find({"id": {"$in": student_ids}}, {"_id": 0, "id": 1, "name": 1}):
+            student_map[s["id"]] = s.get("name")
+    if teacher_ids:
+        async for t in db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "name": 1}):
+            teacher_map[t["id"]] = t.get("name")
+    if branch_ids:
+        async for b in db.branches.find({"id": {"$in": branch_ids}}, {"_id": 0, "id": 1, "name": 1}):
+            branch_map[b["id"]] = b.get("name")
+    if cashbox_ids:
+        async for c in db.cashboxes.find({"id": {"$in": cashbox_ids}}, {"_id": 0, "id": 1, "name": 1}):
+            cashbox_map[c["id"]] = c.get("name")
+
+    for p in items:
+        p["student_name"] = student_map.get(p.get("student_id"))
+        p["teacher_name"] = teacher_map.get(p.get("teacher_id"))
+        p["branch_name"] = branch_map.get(p.get("branch_id"))
+        p["cashbox_name"] = cashbox_map.get(p.get("cashbox_id"))
+        if isinstance(p.get("created_at"), datetime):
+            p["created_at"] = p["created_at"].isoformat()
+
+    # Özet (sekme hariç tüm filtreli küme üzerinden)
+    summary_pipeline = [
+        {"$match": base_query},
+        {"$group": {"_id": "$payment_type", "total": {"$sum": "$amount"}}},
+    ]
+    total_income = 0.0
+    total_expense = 0.0
+    async for row in db.payments.aggregate(summary_pipeline):
+        pt = row["_id"]
+        amt = row.get("total", 0) or 0
+        if pt == "student_payment":
+            total_income += amt
+        elif pt in ("expense", "teacher_payment"):
+            total_expense += amt
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total + page_size - 1) // page_size),
+        "summary": {"total_income": total_income, "total_expense": total_expense},
+    }
+
 @api_router.post("/payments", response_model=Payment)
 async def create_payment(payment_data: PaymentCreate, current_user: User = Depends(get_current_user)):
     if current_user.user_type != "admin":

@@ -47,13 +47,16 @@ const AdminPayments = () => {
   const [formStudentOpen, setFormStudentOpen] = useState(false);
   const [formStudentSearch, setFormStudentSearch] = useState('');
   const [studentCourses, setStudentCourses] = useState([]);
-  const [allPaymentsForMonths, setAllPaymentsForMonths] = useState([]);
+  const [monthsRaw, setMonthsRaw] = useState([]);
   const [selectedBankFilter, setSelectedBankFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('desc'); // 'asc' = baştan sona, 'desc' = sondan başa
   const [emptyFieldConfirm, setEmptyFieldConfirm] = useState({ open: false, fields: [] });
   const [activeTab, setActiveTab] = useState('all');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState({ total_income: 0, total_expense: 0 });
   const [newPayment, setNewPayment] = useState({
     amount: '',
     date: new Date().toISOString().split('T')[0],
@@ -70,11 +73,13 @@ const AdminPayments = () => {
 
   useEffect(() => {
     fetchReferenceData();
+    fetchMonths();
   }, []);
 
   useEffect(() => {
     fetchPayments();
-  }, [selectedMonth, selectedCashbox, selectedStudentFilter, selectedExpenseCategory, selectedTeacherFilter, selectedBankFilter, sortOrder]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, selectedCashbox, selectedStudentFilter, selectedExpenseCategory, selectedTeacherFilter, selectedBankFilter, sortOrder, activeTab, pageSize, currentPage]);
 
   // Custom filter function for combo search (student name + parent name)
   const filterStudents = (searchTerm, studentList) => {
@@ -122,94 +127,78 @@ const AdminPayments = () => {
 
   const fetchReferenceData = async () => {
     try {
-      const [studentsRes, teachersRes, branchesRes, cashboxesRes, banksRes, coursesRes] = await Promise.all([
+      const [studentsRes, teachersRes, branchesRes, cashboxesRes, banksRes] = await Promise.all([
         apiClient.get('/students'),
         apiClient.get('/teachers'),
         apiClient.get('/branches'),
         apiClient.get('/cashboxes'),
-        apiClient.get('/bank-accounts'),
-        apiClient.get('/student-courses')
+        apiClient.get('/bank-accounts')
       ]);
       setStudents(studentsRes.data);
       setTeachers(teachersRes.data);
       setBranches(branchesRes.data);
       setCashboxes(cashboxesRes.data?.cashboxes || []);
       setBankAccounts(banksRes.data);
-      setStudentCourses(coursesRes.data);
     } catch (error) {
       toast.error('Referans veriler yüklenemedi');
+    }
+    // Öğrenci kursları (branş etiketleri için) - liste/formu bloklamadan ayrı yükle
+    try {
+      const coursesRes = await apiClient.get('/student-courses');
+      setStudentCourses(coursesRes.data);
+    } catch (error) {
+      // branş etiketleri yüklenemezse sorun değil
+    }
+  };
+
+  const fetchMonths = async () => {
+    try {
+      const res = await apiClient.get('/payments/months');
+      setMonthsRaw(res.data || []);
+    } catch (error) {
+      // sessizce geç
     }
   };
 
   const fetchPayments = async () => {
     try {
-      // Önce tüm ödemeleri al (ay listesi için)
-      const allResponse = await apiClient.get('/payments');
-      setAllPaymentsForMonths(allResponse.data);
-      
-      // Filtrelenmiş ödemeleri al
-      let filteredPayments = allResponse.data;
-      
-      if (selectedMonth) {
-        filteredPayments = filteredPayments.filter(p => p.date?.startsWith(selectedMonth));
-      }
-      if (selectedCashbox && selectedCashbox !== 'all') {
-        filteredPayments = filteredPayments.filter(p => p.cashbox_id === selectedCashbox);
-      }
-      if (selectedStudentFilter) {
-        filteredPayments = filteredPayments.filter(p => p.student_id === selectedStudentFilter);
-      }
-      if (selectedExpenseCategory && selectedExpenseCategory !== 'all') {
-        filteredPayments = filteredPayments.filter(p => p.expense_category === selectedExpenseCategory);
-      }
-      if (selectedTeacherFilter && selectedTeacherFilter !== 'all') {
-        filteredPayments = filteredPayments.filter(p => p.teacher_id === selectedTeacherFilter);
-      }
-      if (selectedBankFilter && selectedBankFilter !== 'all') {
-        filteredPayments = filteredPayments.filter(p => p.bank_account_id === selectedBankFilter);
-      }
-      
-      // Tarih bazlı sıralama
-      filteredPayments.sort((a, b) => {
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
-      });
-      
-      setPayments(filteredPayments);
+      const params = new URLSearchParams();
+      params.append('tab', activeTab);
+      params.append('page', currentPage);
+      params.append('page_size', pageSize);
+      params.append('sort_order', sortOrder);
+      if (selectedMonth) params.append('month', selectedMonth);
+      if (selectedCashbox && selectedCashbox !== 'all') params.append('cashbox_id', selectedCashbox);
+      if (selectedStudentFilter) params.append('student_id', selectedStudentFilter);
+      if (selectedExpenseCategory && selectedExpenseCategory !== 'all') params.append('expense_category', selectedExpenseCategory);
+      if (selectedTeacherFilter && selectedTeacherFilter !== 'all') params.append('teacher_id', selectedTeacherFilter);
+      if (selectedBankFilter && selectedBankFilter !== 'all') params.append('bank_account_id', selectedBankFilter);
+
+      const res = await apiClient.get(`/payments/paginated?${params.toString()}`);
+      setPayments(res.data.items || []);
+      setTotal(res.data.total || 0);
+      setTotalPages(res.data.total_pages || 1);
+      setSummary(res.data.summary || { total_income: 0, total_expense: 0 });
     } catch (error) {
       toast.error('Ödemeler yüklenemedi');
     }
   };
 
-  // Veritabanındaki ödemelerden benzersiz ayları hesapla
+  // Ödemelerdeki benzersiz aylar (sunucudan)
   const availableMonths = useMemo(() => {
-    const monthSet = new Set();
-    allPaymentsForMonths.forEach(p => {
-      if (p.date) {
-        const month = p.date.substring(0, 7); // "2026-04" formatı
-        monthSet.add(month);
-      }
-    });
-    
-    // Ayları sırala (yeniden eskiye)
-    const sortedMonths = Array.from(monthSet).sort((a, b) => b.localeCompare(a));
-    
-    // Türkçe ay adları
     const monthNames = {
       '01': 'Ocak', '02': 'Şubat', '03': 'Mart', '04': 'Nisan',
       '05': 'Mayıs', '06': 'Haziran', '07': 'Temmuz', '08': 'Ağustos',
       '09': 'Eylül', '10': 'Ekim', '11': 'Kasım', '12': 'Aralık'
     };
-    
-    return sortedMonths.map(m => {
+    return monthsRaw.map(m => {
       const [year, month] = m.split('-');
       return {
         value: m,
         label: `${monthNames[month]} ${year}`
       };
     });
-  }, [allPaymentsForMonths]);
+  }, [monthsRaw]);
 
   // Gider kategorileri
   const expenseCategories = ['Maaş', 'Kira', 'Reklam', 'Ofis', 'Vergi', 'Sermaye', 'Diğer'];
@@ -235,6 +224,7 @@ const AdminPayments = () => {
       setEmptyFieldConfirm({ open: false, fields: [] });
       closeDialog();
       fetchPayments();
+      fetchMonths();
     } catch (error) {
       toast.error(error.response?.data?.detail || (editingPayment ? 'Güncelleme başarısız' : 'Ödeme eklenemedi'));
     }
@@ -288,6 +278,7 @@ const AdminPayments = () => {
       setDeleteDialogOpen(false);
       setPaymentToDelete(null);
       fetchPayments();
+      fetchMonths();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Silme işlemi başarısız');
     }
@@ -346,27 +337,20 @@ const AdminPayments = () => {
     });
   };
 
-  const incomePayments = payments.filter(p => p.payment_type === 'student_payment');
-  const expensePayments = payments.filter(p => p.payment_type === 'expense' || p.payment_type === 'teacher_payment');
-
-  const totalIncome = incomePayments.reduce((sum, p) => sum + p.amount, 0);
-  const totalExpense = expensePayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalIncome = summary.total_income;
+  const totalExpense = summary.total_expense;
 
   // Sayfalama - filtre, sekme veya sayfa boyutu değişince ilk sayfaya dön
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedMonth, selectedCashbox, selectedStudentFilter, selectedExpenseCategory, selectedTeacherFilter, selectedBankFilter, sortOrder, activeTab, pageSize]);
 
-  const paginate = (list) => list.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
-  const activeList = activeTab === 'income' ? incomePayments : activeTab === 'expense' ? expensePayments : payments;
-  const totalPages = Math.max(1, Math.ceil(activeList.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
-  const pageStart = activeList.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
-  const pageEnd = Math.min(safePage * pageSize, activeList.length);
+  const pageStart = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = Math.min(safePage * pageSize, total);
 
   const PaginationFooter = () => (
-    activeList.length > 0 && (
+    total > 0 && (
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-4 border-t border-slate-100" data-testid="payments-pagination">
         <div className="flex items-center gap-2">
           <span className="text-sm text-slate-500">Sayfa başına:</span>
@@ -381,7 +365,7 @@ const AdminPayments = () => {
             </SelectContent>
           </Select>
           <span className="text-sm text-slate-500 ml-2">
-            {pageStart}-{pageEnd} / {activeList.length}
+            {pageStart}-{pageEnd} / {total}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -414,11 +398,6 @@ const AdminPayments = () => {
   );
 
   const renderPaymentItem = (payment, bgClass) => {
-    const student = students.find(s => s.id === payment.student_id);
-    const teacher = teachers.find(t => t.id === payment.teacher_id);
-    const branch = branches.find(b => b.id === payment.branch_id);
-    const cashbox = cashboxes.find(c => c.id === payment.cashbox_id);
-    const bankAccount = bankAccounts.find(b => b.id === payment.bank_account_id);
     const isIncome = payment.payment_type === 'student_payment' || payment.payment_type === 'transfer_in';
     
     return (
@@ -426,18 +405,18 @@ const AdminPayments = () => {
         <div className="min-w-0 flex-1 mr-3">
           <p className="font-semibold text-slate-800 text-sm lg:text-base">{formatDateTurkish(payment.date)}</p>
           <p className="text-xs lg:text-sm text-slate-600 truncate">
-            {payment.payment_type === 'student_payment' ? `Öğrenci: ${student?.name || 'Bilinmiyor'}` : 
-             payment.payment_type === 'teacher_payment' ? `Öğretmen: ${teacher?.name || 'Bilinmiyor'}` : 
+            {payment.payment_type === 'student_payment' ? `Öğrenci: ${payment.student_name || 'Bilinmiyor'}` : 
+             payment.payment_type === 'teacher_payment' ? `Öğretmen: ${payment.teacher_name || 'Bilinmiyor'}` : 
              payment.payment_type === 'transfer_in' ? 'Transfer Girişi' :
              payment.payment_type === 'transfer_out' ? 'Transfer Çıkışı' :
              payment.expense_category || 'Gider'}
           </p>
           <div className="flex gap-2 mt-1">
-            {cashbox && (
-              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{cashbox.name}</span>
+            {payment.cashbox_name && (
+              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{payment.cashbox_name}</span>
             )}
-            {branch && (
-              <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">{branch.name}</span>
+            {payment.branch_name && (
+              <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">{payment.branch_name}</span>
             )}
           </div>
           {payment.description && (
@@ -705,29 +684,29 @@ const AdminPayments = () => {
                 <p className="text-slate-600 text-center py-8">Henüz ödeme yok</p>
               ) : (
                 <>
-                  {paginate(payments).map((payment) => renderPaymentItem(payment, 'bg-slate-50'))}
+                  {payments.map((payment) => renderPaymentItem(payment, 'bg-slate-50'))}
                   <PaginationFooter />
                 </>
               )}
             </TabsContent>
 
             <TabsContent value="income" className="space-y-2 lg:space-y-3 mt-4">
-              {incomePayments.length === 0 ? (
+              {payments.length === 0 ? (
                 <p className="text-slate-600 text-center py-8">Henüz gelir kaydı yok</p>
               ) : (
                 <>
-                  {paginate(incomePayments).map((payment) => renderPaymentItem(payment, 'bg-green-50'))}
+                  {payments.map((payment) => renderPaymentItem(payment, 'bg-green-50'))}
                   <PaginationFooter />
                 </>
               )}
             </TabsContent>
 
             <TabsContent value="expense" className="space-y-2 lg:space-y-3 mt-4">
-              {expensePayments.length === 0 ? (
+              {payments.length === 0 ? (
                 <p className="text-slate-600 text-center py-8">Henüz gider kaydı yok</p>
               ) : (
                 <>
-                  {paginate(expensePayments).map((payment) => renderPaymentItem(payment, 'bg-red-50'))}
+                  {payments.map((payment) => renderPaymentItem(payment, 'bg-red-50'))}
                   <PaginationFooter />
                 </>
               )}
