@@ -65,6 +65,11 @@ import TeacherHomeworkEntry from "./pages/teacher/TeacherHomeworkEntry";
 import TeacherYnsLeague from "./pages/teacher/TeacherYnsLeague";
 import TeacherHomeworkContent from "./pages/teacher/TeacherHomeworkContent";
 
+// Veli (Parent) Pages
+import VeliDashboard from "./pages/veli/VeliDashboard";
+import VeliLessons from "./pages/veli/VeliLessons";
+import VeliPayments from "./pages/veli/VeliPayments";
+
 // Production'da aynı origin kullan, development'ta .env'den al
 const getBaseUrl = () => {
   if (typeof window !== 'undefined' && 
@@ -397,6 +402,23 @@ function App() {
             <Route path="/teacher/content" element={
               <ProtectedRoute requiredRole="teacher">
                 <TeacherHomeworkContent />
+              </ProtectedRoute>
+            } />
+
+            {/* Veli (Parent) Routes */}
+            <Route path="/veli" element={
+              <ProtectedRoute requiredRole="parent">
+                <VeliDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/veli/lessons" element={
+              <ProtectedRoute requiredRole="parent">
+                <VeliLessons />
+              </ProtectedRoute>
+            } />
+            <Route path="/veli/payments" element={
+              <ProtectedRoute requiredRole="parent">
+                <VeliPayments />
               </ProtectedRoute>
             } />
           </Routes>

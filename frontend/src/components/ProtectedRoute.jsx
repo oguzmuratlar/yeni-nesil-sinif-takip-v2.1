@@ -18,7 +18,12 @@ const ProtectedRoute = ({ children, requiredRole }) => {
   }
 
   if (requiredRole && user.user_type !== requiredRole) {
-    return <Navigate to="/" replace />;
+    // Kullanıcıyı kendi paneline yönlendir
+    const home = user.user_type === 'admin' ? '/admin/dashboard'
+      : user.user_type === 'parent' ? '/veli'
+      : user.user_type === 'teacher' ? '/teacher/dashboard'
+      : '/login';
+    return <Navigate to={home} replace />;
   }
 
   return children;

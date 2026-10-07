@@ -13,6 +13,8 @@ const AdminUserForm = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [studentSearch, setStudentSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -21,7 +23,8 @@ const AdminUserForm = () => {
     username: '',
     password: '',
     user_type: 'teacher',
-    teacher_id: ''
+    teacher_id: '',
+    linked_student_ids: []
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -32,12 +35,14 @@ const AdminUserForm = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [usersRes, teachersRes] = await Promise.all([
+      const [usersRes, teachersRes, studentsRes] = await Promise.all([
         apiClient.get('/users'),
-        apiClient.get('/teachers')
+        apiClient.get('/teachers'),
+        apiClient.get('/students')
       ]);
       setUsers(usersRes.data);
       setTeachers(teachersRes.data);
+      setStudents(studentsRes.data);
     } catch (error) {
       toast.error('Veriler yüklenemedi');
     } finally {
@@ -50,19 +55,44 @@ const AdminUserForm = () => {
       username: '',
       password: '',
       user_type: 'teacher',
-      teacher_id: ''
+      teacher_id: '',
+      linked_student_ids: []
     });
     setEditingUser(null);
     setShowForm(false);
     setShowPassword(false);
+    setStudentSearch('');
+  };
+
+  const toggleLinkedStudent = (studentId) => {
+    setFormData(prev => ({
+      ...prev,
+      linked_student_ids: prev.linked_student_ids.includes(studentId)
+        ? prev.linked_student_ids.filter(id => id !== studentId)
+        : [...prev.linked_student_ids, studentId]
+    }));
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
+
+    if (formData.user_type === 'parent' && formData.linked_student_ids.length === 0) {
+      toast.error('Veli için en az bir öğrenci seçmelisiniz');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      await apiClient.post('/auth/register', formData);
+      const payload = {
+        username: formData.username,
+        password: formData.password,
+        user_type: formData.user_type,
+      };
+      if (formData.user_type === 'teacher') payload.teacher_id = formData.teacher_id || null;
+      if (formData.user_type === 'parent') payload.linked_student_ids = formData.linked_student_ids;
+
+      await apiClient.post('/auth/register', payload);
       toast.success('Kullanıcı oluşturuldu');
       resetForm();
       fetchData();
@@ -119,7 +149,8 @@ const AdminUserForm = () => {
       username: user.username,
       password: '',
       user_type: user.user_type,
-      teacher_id: user.teacher_id || ''
+      teacher_id: user.teacher_id || '',
+      linked_student_ids: user.linked_student_ids || []
     });
     setShowForm(true);
     setShowPassword(false);
@@ -129,6 +160,24 @@ const AdminUserForm = () => {
     const teacher = teachers.find(t => t.id === teacherId);
     return teacher ? teacher.name : '-';
   };
+
+  const getStudentName = (studentId) => {
+    const s = students.find(st => st.id === studentId);
+    return s ? s.name : studentId;
+  };
+
+  const roleLabel = (ut) => ut === 'admin' ? 'Admin' : ut === 'parent' ? 'Veli' : 'Öğretmen';
+  const roleBadgeClass = (ut) => ut === 'admin'
+    ? 'bg-purple-100 text-purple-700'
+    : ut === 'parent'
+    ? 'bg-indigo-100 text-indigo-700'
+    : 'bg-blue-100 text-blue-700';
+
+  const filteredStudents = students.filter(s =>
+    !studentSearch.trim() ||
+    (s.name || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
+    (s.parent_name || '').toLowerCase().includes(studentSearch.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -230,6 +279,7 @@ const AdminUserForm = () => {
                     <SelectContent>
                       <SelectItem value="admin">Admin</SelectItem>
                       <SelectItem value="teacher">Öğretmen</SelectItem>
+                      <SelectItem value="parent">Veli</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -254,6 +304,54 @@ const AdminUserForm = () => {
                   </div>
                 )}
               </div>
+
+              {/* Veli için öğrenci seçimi */}
+              {formData.user_type === 'parent' && !editingUser && (
+                <div className="space-y-2" data-testid="parent-student-multiselect">
+                  <Label>Öğrenci Seç * (birden fazla seçilebilir)</Label>
+                  <Input
+                    placeholder="Öğrenci veya veli adı ara..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="mb-2"
+                    data-testid="parent-student-search"
+                  />
+                  <div className="border border-slate-200 rounded-lg max-h-60 overflow-y-auto divide-y divide-slate-100">
+                    {filteredStudents.length === 0 ? (
+                      <p className="p-3 text-sm text-slate-500 text-center">Öğrenci bulunamadı</p>
+                    ) : (
+                      filteredStudents.map(s => (
+                        <label
+                          key={s.id}
+                          className="flex items-center gap-3 p-3 hover:bg-slate-50 cursor-pointer"
+                          data-testid={`parent-student-item-${s.id}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={formData.linked_student_ids.includes(s.id)}
+                            onChange={() => toggleLinkedStudent(s.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{s.name}</p>
+                            {s.parent_name && <p className="text-xs text-slate-500 truncate">Veli: {s.parent_name}</p>}
+                          </div>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">{formData.linked_student_ids.length} öğrenci seçildi</p>
+                </div>
+              )}
+
+              {editingUser && formData.user_type === 'parent' && (
+                <div className="p-4 bg-indigo-50 rounded-lg">
+                  <p className="text-sm text-indigo-700">
+                    Bağlı öğrenciler: {(formData.linked_student_ids || []).map(getStudentName).join(', ') || '-'}
+                    <br />Bağlı öğrencileri değiştirmek için kullanıcıyı silip yeniden oluşturun.
+                  </p>
+                </div>
+              )}
 
               {formData.user_type === 'teacher' && !editingUser && (
                 <div className="p-4 bg-blue-50 rounded-lg">
@@ -308,16 +406,17 @@ const AdminUserForm = () => {
                       <div>
                         <p className="font-semibold text-slate-800">{user.username}</p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            user.user_type === 'admin' 
-                              ? 'bg-purple-100 text-purple-700' 
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {user.user_type === 'admin' ? 'Admin' : 'Öğretmen'}
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${roleBadgeClass(user.user_type)}`}>
+                            {roleLabel(user.user_type)}
                           </span>
                           {user.teacher_id && (
                             <span className="text-xs text-slate-500">
                               {getTeacherName(user.teacher_id)}
+                            </span>
+                          )}
+                          {user.user_type === 'parent' && user.linked_student_ids?.length > 0 && (
+                            <span className="text-xs text-slate-500 truncate">
+                              {user.linked_student_ids.map(getStudentName).join(', ')}
                             </span>
                           )}
                         </div>
@@ -352,7 +451,7 @@ const AdminUserForm = () => {
                     <tr>
                       <th className="text-left py-3 px-4 font-semibold text-slate-700">Kullanıcı Adı</th>
                       <th className="text-left py-3 px-4 font-semibold text-slate-700">Tip</th>
-                      <th className="text-left py-3 px-4 font-semibold text-slate-700">Bağlı Öğretmen</th>
+                      <th className="text-left py-3 px-4 font-semibold text-slate-700">Bağlı Öğretmen / Öğrenci</th>
                       <th className="text-right py-3 px-4 font-semibold text-slate-700">İşlemler</th>
                     </tr>
                   </thead>
@@ -361,16 +460,14 @@ const AdminUserForm = () => {
                       <tr key={user.username} className="hover:bg-slate-50" data-testid={`user-row-${user.username}`}>
                         <td className="py-3 px-4 font-medium text-slate-800">{user.username}</td>
                         <td className="py-3 px-4">
-                          <span className={`text-xs px-2 py-1 rounded-full ${
-                            user.user_type === 'admin' 
-                              ? 'bg-purple-100 text-purple-700' 
-                              : 'bg-blue-100 text-blue-700'
-                          }`}>
-                            {user.user_type === 'admin' ? 'Admin' : 'Öğretmen'}
+                          <span className={`text-xs px-2 py-1 rounded-full ${roleBadgeClass(user.user_type)}`}>
+                            {roleLabel(user.user_type)}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-slate-600">
-                          {user.teacher_id ? getTeacherName(user.teacher_id) : '-'}
+                          {user.user_type === 'parent'
+                            ? (user.linked_student_ids?.map(getStudentName).join(', ') || '-')
+                            : (user.teacher_id ? getTeacherName(user.teacher_id) : '-')}
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">

@@ -55,8 +55,9 @@ class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     username: str
     password_hash: str
-    user_type: str  # "admin" or "teacher"
+    user_type: str  # "admin", "teacher" or "parent"
     teacher_id: Optional[str] = None
+    linked_student_ids: List[str] = Field(default_factory=list)  # parent (veli) için bağlı öğrenciler
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class UserCreate(BaseModel):
@@ -64,6 +65,7 @@ class UserCreate(BaseModel):
     password: str
     user_type: str
     teacher_id: Optional[str] = None
+    linked_student_ids: Optional[List[str]] = None  # parent (veli) için zorunlu
 
 class LoginRequest(BaseModel):
     username: str
@@ -74,6 +76,7 @@ class Token(BaseModel):
     token_type: str
     user_type: str
     teacher_id: Optional[str] = None
+    linked_student_ids: List[str] = Field(default_factory=list)
 
 class Student(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -88,6 +91,7 @@ class Student(BaseModel):
     bank_account_id: Optional[str] = None
     payment_account_name: Optional[str] = None  # Hesap adı (aylık program için)
     is_risky: bool = False  # Riskli öğrenci işareti
+    veli_username: Optional[str] = None  # Bağlı veli kullanıcı adı (varsa)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class StudentCreate(BaseModel):
@@ -101,6 +105,9 @@ class StudentCreate(BaseModel):
     status: Optional[str] = None  # Pasifleştirme için
     payment_account_name: Optional[str] = None  # Hesap adı (aylık program için)
     is_risky: Optional[bool] = None  # Riskli öğrenci işareti
+    create_parent: Optional[bool] = None  # Veli kullanıcısı oluşturulsun mu
+    veli_username: Optional[str] = None  # Veli kullanıcı adı
+    veli_password: Optional[str] = None  # Veli şifresi (düz metin - hash'lenerek saklanır)
 
 class Teacher(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1125,7 +1132,8 @@ async def login(login_data: LoginRequest):
         access_token=access_token,
         token_type="bearer",
         user_type=user["user_type"],
-        teacher_id=user.get("teacher_id")
+        teacher_id=user.get("teacher_id"),
+        linked_student_ids=user.get("linked_student_ids", []) if user["user_type"] == "parent" else []
     )
 
 @api_router.get("/auth/me", response_model=User)
@@ -1143,11 +1151,22 @@ async def register_user(user_data: UserCreate, current_user: User = Depends(get_
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
     
+    linked_ids = []
+    if user_data.user_type == "parent":
+        linked_ids = user_data.linked_student_ids or []
+        if not linked_ids:
+            raise HTTPException(status_code=400, detail="Veli kullanıcısı için en az bir öğrenci seçilmelidir")
+        # Öğrencilerin var olduğunu doğrula
+        found = await db.students.count_documents({"id": {"$in": linked_ids}})
+        if found != len(set(linked_ids)):
+            raise HTTPException(status_code=400, detail="Seçilen öğrencilerden bazıları bulunamadı")
+    
     user = User(
         username=user_data.username,
         password_hash=get_password_hash(user_data.password),
         user_type=user_data.user_type,
-        teacher_id=user_data.teacher_id
+        teacher_id=user_data.teacher_id if user_data.user_type != "parent" else None,
+        linked_student_ids=list(dict.fromkeys(linked_ids))
     )
     
     doc = user.model_dump()
@@ -1354,12 +1373,40 @@ async def create_student(student_data: StudentCreate, current_user: User = Depen
     if current_user.user_type != "admin":
         raise HTTPException(status_code=403, detail="Only admins can create students")
     
-    # Filter out None values to use model defaults
-    create_data = {k: v for k, v in student_data.model_dump().items() if v is not None}
+    # Veli kullanıcısı bilgilerini ayır
+    create_parent = bool(student_data.create_parent)
+    veli_username = (student_data.veli_username or "").strip()
+    veli_password = student_data.veli_password or ""
+    
+    if create_parent:
+        if not veli_username or not veli_password:
+            raise HTTPException(status_code=400, detail="Veli kullanıcı adı ve şifre zorunludur")
+        existing_user = await db.users.find_one({"username": veli_username})
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Bu veli kullanıcı adı zaten kullanılıyor")
+    
+    # Filter out None values to use model defaults (veli_password/create_parent Student modelinde yok, ignore edilir)
+    create_data = {k: v for k, v in student_data.model_dump().items()
+                   if v is not None and k not in ("veli_password", "create_parent")}
+    if not create_parent:
+        create_data.pop("veli_username", None)
     student = Student(**create_data)
     doc = student.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     await db.students.insert_one(doc)
+    
+    # Veli kullanıcısı oluştur
+    if create_parent:
+        parent_user = User(
+            username=veli_username,
+            password_hash=get_password_hash(veli_password),
+            user_type="parent",
+            linked_student_ids=[student.id]
+        )
+        pdoc = parent_user.model_dump()
+        pdoc['created_at'] = pdoc['created_at'].isoformat()
+        await db.users.insert_one(pdoc)
+    
     return student
 
 @api_router.put("/students/{student_id}", response_model=Student)
@@ -1371,7 +1418,46 @@ async def update_student(student_id: str, student_data: StudentCreate, current_u
     if not existing:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    update_data = {k: v for k, v in student_data.model_dump().items() if v is not None}
+    # Veli bilgilerini ayır
+    create_parent = bool(student_data.create_parent)
+    veli_username = (student_data.veli_username or "").strip()
+    veli_password = student_data.veli_password or ""
+    
+    update_data = {k: v for k, v in student_data.model_dump().items()
+                   if v is not None and k not in ("veli_password", "create_parent", "veli_username")}
+    
+    if create_parent and veli_username:
+        # Bu öğrenciye bağlı mevcut veli kullanıcısını bul
+        parent = await db.users.find_one({"user_type": "parent", "linked_student_ids": student_id})
+        if parent:
+            pupdate = {}
+            if veli_username != parent.get("username"):
+                clash = await db.users.find_one({"username": veli_username})
+                if clash and clash.get("username") != parent.get("username"):
+                    raise HTTPException(status_code=400, detail="Bu veli kullanıcı adı zaten kullanılıyor")
+                pupdate["username"] = veli_username
+            if veli_password:
+                pupdate["password_hash"] = get_password_hash(veli_password)
+            if pupdate:
+                await db.users.update_one({"id": parent["id"]}, {"$set": pupdate})
+        else:
+            # Veli kullanıcısı yoksa ve şifre verildiyse yeni oluştur
+            if not veli_password:
+                raise HTTPException(status_code=400, detail="Yeni veli kullanıcısı için şifre zorunludur")
+            clash = await db.users.find_one({"username": veli_username})
+            if clash:
+                raise HTTPException(status_code=400, detail="Bu veli kullanıcı adı zaten kullanılıyor")
+            parent_user = User(
+                username=veli_username,
+                password_hash=get_password_hash(veli_password),
+                user_type="parent",
+                linked_student_ids=[student_id]
+            )
+            pdoc = parent_user.model_dump()
+            pdoc['created_at'] = pdoc['created_at'].isoformat()
+            await db.users.insert_one(pdoc)
+        update_data["veli_username"] = veli_username
+    
     await db.students.update_one({"id": student_id}, {"$set": update_data})
     
     updated = await db.students.find_one({"id": student_id}, {"_id": 0})
@@ -1387,6 +1473,13 @@ async def delete_student(student_id: str, current_user: User = Depends(get_curre
     result = await db.students.delete_one({"id": student_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Student not found")
+    # Bağlı veli kullanıcılarından bu öğrenciyi çıkar; başka öğrencisi kalmayan veliyi sil
+    async for parent in db.users.find({"user_type": "parent", "linked_student_ids": student_id}, {"_id": 0}):
+        remaining = [sid for sid in parent.get("linked_student_ids", []) if sid != student_id]
+        if remaining:
+            await db.users.update_one({"id": parent["id"]}, {"$set": {"linked_student_ids": remaining}})
+        else:
+            await db.users.delete_one({"id": parent["id"]})
     return {"message": "Student deleted successfully"}
 
 # ============= TEACHER ROUTES =============
@@ -4836,19 +4929,12 @@ async def get_teacher_youtube_income_detail(teacher_id: str, month: Optional[str
 
 # ============= STUDENT FINANCE ROUTES =============
 
-@api_router.get("/students/{student_id}/finance-detail")
-async def get_student_finance_detail(student_id: str, current_user: User = Depends(get_current_user)):
+async def compute_student_finance(student_id: str):
     """
-    Öğrencinin branş bazlı finans detaylarını getir.
-    Her branş için: girilen ders sayısı, ödenen tutar, kullanılan tutar, kalan bakiye, kalan ders
-    
-    FAZ 4 GÜNCELLEMESİ: Fiyat geçmişi snapshot'ını kullanır.
-    - Ders kaydında student_total_amount_at_lesson varsa onu kullan
-    - Yoksa o tarihteki fiyattan hesapla
+    Öğrencinin branş bazlı finans detaylarını hesaplar (yetki kontrolü içermez).
+    Her branş için: girilen ders sayısı, ödenen tutar, kullanılan tutar, kalan bakiye, kalan ders.
+    Ücretsiz dersler bakiyeye dahil edilmez.
     """
-    if current_user.user_type != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can view student finance")
-    
     student = await db.students.find_one({"id": student_id}, {"_id": 0})
     if not student:
         raise HTTPException(status_code=404, detail="Öğrenci bulunamadı")
@@ -4862,8 +4948,10 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
     # Referans verileri
     branches = await db.branches.find({}, {"_id": 0}).to_list(100)
     teachers = await db.teachers.find({}, {"_id": 0}).to_list(1000)
+    lesson_types_list = await db.lesson_types.find({}, {"_id": 0}).to_list(100)
     branch_map = {b["id"]: b for b in branches}
     teacher_map = {t["id"]: t for t in teachers}
+    lt_map = {lt["id"]: lt["name"] for lt in lesson_types_list}
     
     result = []
     
@@ -4982,6 +5070,7 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
             "branch_name": branch.get("name", "Bilinmiyor"),
             "teacher_id": course.get("teacher_id"),
             "teacher_name": teacher.get("name", "Bilinmiyor"),
+            "lesson_type": lt_map.get(course.get("lesson_type_id"), "Birebir"),
             "student_price": current_student_price,
             "total_lessons": total_lessons,
             "free_lessons": free_lessons,
@@ -5007,7 +5096,128 @@ async def get_student_finance_detail(student_id: str, current_user: User = Depen
         }
     }
 
-@api_router.get("/students/by-branch/{branch_id}")
+@api_router.get("/students/{student_id}/finance-detail")
+async def get_student_finance_detail(student_id: str, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view student finance")
+    return await compute_student_finance(student_id)
+
+# ============= VELİ (PARENT) ROUTES =============
+
+def _require_parent(current_user: User):
+    if current_user.user_type != "parent":
+        raise HTTPException(status_code=403, detail="Sadece veli kullanıcıları erişebilir")
+
+def _resolve_parent_student(current_user: User, student_id: Optional[str]) -> str:
+    """Veli için erişilebilir öğrenci id'sini doğrula/çöz."""
+    linked = current_user.linked_student_ids or []
+    if not linked:
+        raise HTTPException(status_code=403, detail="Bağlı öğrenci bulunamadı")
+    if student_id:
+        if student_id not in linked:
+            raise HTTPException(status_code=403, detail="Bu öğrenciye erişim yetkiniz yok")
+        return student_id
+    return linked[0]
+
+@api_router.get("/veli/students")
+async def get_veli_students(current_user: User = Depends(get_current_user)):
+    """Velinin bağlı olduğu öğrencilerin listesi (seçici için)."""
+    _require_parent(current_user)
+    linked = current_user.linked_student_ids or []
+    students = await db.students.find({"id": {"$in": linked}}, {"_id": 0, "id": 1, "name": 1, "level": 1}).to_list(100)
+    return students
+
+@api_router.get("/veli/summary")
+async def get_veli_summary(student_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    """Veli ana sayfası: branş kartları (branş, öğretmen, girilen ders, kalan ders, kalan bakiye)."""
+    _require_parent(current_user)
+    sid = _resolve_parent_student(current_user, student_id)
+    finance = await compute_student_finance(sid)
+    cards = []
+    for b in finance["by_branch"]:
+        cards.append({
+            "branch_id": b["branch_id"],
+            "branch_name": b["branch_name"],
+            "teacher_name": b["teacher_name"],
+            "lesson_type": b["lesson_type"],
+            "total_lessons": b["total_lessons"],
+            "remaining_lessons": b["remaining_lessons"],
+            "remaining_balance": b["remaining_balance"],
+            "status": b["status"],
+        })
+    return {
+        "student_id": sid,
+        "student_name": finance["student_name"],
+        "cards": cards,
+        "summary": finance["summary"],
+    }
+
+@api_router.get("/veli/lessons")
+async def get_veli_lessons(student_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    """Veli dersler ekranı: branş bazlı detay tablo."""
+    _require_parent(current_user)
+    sid = _resolve_parent_student(current_user, student_id)
+    finance = await compute_student_finance(sid)
+    rows = []
+    for b in finance["by_branch"]:
+        rows.append({
+            "branch_id": b["branch_id"],
+            "branch_name": b["branch_name"],
+            "teacher_name": b["teacher_name"],
+            "lesson_type": b["lesson_type"],
+            "student_price": b["student_price"],
+            "total_lessons": b["total_lessons"],
+            "free_lessons": b["free_lessons"],
+            "total_paid": b["total_paid"],
+            "remaining_lessons": b["remaining_lessons"],
+            "remaining_balance": b["remaining_balance"],
+            "status": b["status"],
+        })
+    return {
+        "student_id": sid,
+        "student_name": finance["student_name"],
+        "rows": rows,
+        "summary": finance["summary"],
+    }
+
+@api_router.get("/veli/payments")
+async def get_veli_payments(student_id: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    """Veli ödemeler ekranı: tarih, branş, tutar, hesap adı."""
+    _require_parent(current_user)
+    sid = _resolve_parent_student(current_user, student_id)
+    student = await db.students.find_one({"id": sid}, {"_id": 0})
+    if not student:
+        raise HTTPException(status_code=404, detail="Öğrenci bulunamadı")
+    
+    payments = await db.payments.find({
+        "student_id": sid,
+        "payment_type": "student_payment"
+    }, {"_id": 0}).sort([("date", -1)]).to_list(10000)
+    
+    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)
+    branch_map = {b["id"]: b["name"] for b in branches}
+    
+    bank_name = ""
+    if student.get("bank_account_id"):
+        bank = await db.bank_accounts.find_one({"id": student["bank_account_id"]}, {"_id": 0})
+        if bank:
+            bank_name = f"{bank.get('bank_name', '')} - {bank.get('holder_name', '')}"
+    default_account = student.get("payment_account_name") or bank_name
+    
+    rows = []
+    for p in payments:
+        rows.append({
+            "date": p.get("date"),
+            "branch_name": branch_map.get(p.get("branch_id"), "-"),
+            "amount": p.get("amount", 0),
+            "account_name": default_account or "-",
+        })
+    return {
+        "student_id": sid,
+        "student_name": student["name"],
+        "payments": rows,
+    }
+
 async def get_students_by_branch(branch_id: str, current_user: User = Depends(get_current_user)):
     """
     Branş bazlı öğrenci listesi.

@@ -32,6 +32,19 @@
 
 ---
 
+## Parent (Veli) Accounts
+- **Username**: `veli_test`
+- **Password**: `veli123`
+- **User Type**: parent
+- **Linked Student**: Ali Yılmaz (aaf2775f-615a-415c-8572-b0f81273fdd8)
+
+- **Username**: `veli_yeni`
+- **Password**: `yeni123`
+- **User Type**: parent
+- **Linked Student**: Test Veli Ogrenci (created via student form)
+
+---
+
 ## Test Student IDs (with courses)
 - `aaf2775f-615a-415c-8572-b0f81273fdd8` (Ali Yılmaz - has Türkçe courses)
 - `608483ea-b912-41b7-af0b-efc30a0d5039` (has courses)

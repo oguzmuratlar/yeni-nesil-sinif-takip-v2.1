@@ -47,10 +47,10 @@ export const AuthProvider = ({ children }) => {
         username,
         password
       });
-      const { access_token, user_type, teacher_id } = response.data;
+      const { access_token, user_type, teacher_id, linked_student_ids } = response.data;
       setToken(access_token);
       localStorage.setItem('token', access_token);
-      setUser({ username, user_type, teacher_id });
+      setUser({ username, user_type, teacher_id, linked_student_ids: linked_student_ids || [] });
       // Her login'de planlama uyarısı gösterilmesi için flag'i temizle
       sessionStorage.removeItem('planning_warning_shown');
       return { success: true, user_type, teacher_id };

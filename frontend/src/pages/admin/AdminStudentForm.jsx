@@ -8,7 +8,7 @@ import { Label } from '../../components/ui/label';
 import { Textarea } from '../../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { toast } from 'sonner';
-import { Plus, X, Users, AlertTriangle, Edit, Calendar, TrendingUp, Pencil, Trash2 } from 'lucide-react';
+import { Plus, X, Users, AlertTriangle, Edit, Calendar, TrendingUp, Pencil, Trash2, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../../components/ui/dialog';
 import { Checkbox } from '../../components/ui/checkbox';
 
@@ -25,8 +25,12 @@ const AdminStudentForm = () => {
     payment_freq: '1',
     notes: '',
     bank_account_id: '',
-    is_risky: false
+    is_risky: false,
+    create_parent: false,
+    veli_username: '',
+    veli_password: ''
   });
+  const [showVeliPassword, setShowVeliPassword] = useState(false);
 
   const [bankAccounts, setBankAccounts] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -80,7 +84,10 @@ const AdminStudentForm = () => {
         payment_freq: response.data.payment_freq,
         notes: response.data.notes || '',
         bank_account_id: response.data.bank_account_id || '',
-        is_risky: response.data.is_risky || false
+        is_risky: response.data.is_risky || false,
+        create_parent: !!response.data.veli_username,
+        veli_username: response.data.veli_username || '',
+        veli_password: ''
       });
     } catch (error) {
       toast.error('Öğrenci bilgileri yüklenemedi');
@@ -126,6 +133,21 @@ const AdminStudentForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Veli giriş bilgileri validasyonu
+    if (formData.create_parent) {
+      if (!formData.veli_username.trim()) {
+        toast.error('Veli kullanıcı adı zorunludur');
+        return;
+      }
+      // Yeni öğrenci veya henüz veli hesabı olmayan öğrenci için şifre zorunlu
+      const parentExists = isEdit && formData.veli_username && false; // backend decides; require pw if new
+      if (!isEdit && !formData.veli_password) {
+        toast.error('Veli şifresi zorunludur');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -505,6 +527,73 @@ const AdminStudentForm = () => {
                 data-testid="notes-input"
               />
             </div>
+          </div>
+
+          {/* Veli Giriş Bilgileri */}
+          <div className="admin-card p-8">
+            <h2 className="text-xl font-bold text-slate-800 mb-2 flex items-center gap-2">
+              <KeyRound size={20} className="text-indigo-600" />
+              Veli Giriş Bilgileri
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">Veli, bu bilgilerle giriş yapıp çocuğunun ders ve ödeme bilgilerini görebilir.</p>
+
+            <label
+              htmlFor="create_parent"
+              className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                formData.create_parent ? 'bg-indigo-50 border-indigo-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              <Checkbox
+                id="create_parent"
+                checked={formData.create_parent}
+                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, create_parent: !!checked }))}
+                data-testid="create-parent-checkbox"
+              />
+              <div>
+                <span className="font-medium text-slate-800">Veli kullanıcısı ekle</span>
+                <p className="text-xs text-slate-500">İşaretlenirse kullanıcı adı ve şifre zorunludur</p>
+              </div>
+            </label>
+
+            {formData.create_parent && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="veli_username">Veli Kullanıcı Adı *</Label>
+                  <Input
+                    id="veli_username"
+                    value={formData.veli_username}
+                    onChange={(e) => setFormData({ ...formData, veli_username: e.target.value })}
+                    data-testid="veli-username-input"
+                    placeholder="Örn: veli_ali"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="veli_password">
+                    {isEdit ? 'Veli Şifresi (boş bırakılırsa değişmez)' : 'Veli Şifresi *'}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="veli_password"
+                      type={showVeliPassword ? 'text' : 'password'}
+                      value={formData.veli_password}
+                      onChange={(e) => setFormData({ ...formData, veli_password: e.target.value })}
+                      data-testid="veli-password-input"
+                      placeholder={isEdit ? '••••••••' : 'Şifre girin'}
+                      className="pr-10"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowVeliPassword(!showVeliPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showVeliPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dahil Olduğu Gruplar - Sadece düzenleme modunda */}

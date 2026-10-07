@@ -25,6 +25,8 @@ const LoginPage = () => {
     if (result.success) {
       if (result.user_type === 'admin') {
         navigate('/admin/dashboard');
+      } else if (result.user_type === 'parent') {
+        navigate('/veli');
       } else {
         navigate('/teacher/dashboard');
       }
