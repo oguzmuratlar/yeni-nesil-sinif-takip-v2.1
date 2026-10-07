@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import { Plus, X, Users, AlertTriangle, Edit, Calendar, TrendingUp, Pencil, Trash2, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../../components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../../components/ui/alert-dialog';
 import { Checkbox } from '../../components/ui/checkbox';
 
 const AdminStudentForm = () => {
@@ -31,6 +32,7 @@ const AdminStudentForm = () => {
     veli_password: ''
   });
   const [showVeliPassword, setShowVeliPassword] = useState(false);
+  const [veliConfirm, setVeliConfirm] = useState({ open: false, username: '', names: [] });
 
   const [bankAccounts, setBankAccounts] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -145,12 +147,35 @@ const AdminStudentForm = () => {
         toast.error('Veli kullanıcı adı zorunludur');
         return;
       }
-      if (!isEdit && !formData.veli_password) {
-        toast.error('Veli şifresi zorunludur');
-        return;
+      // Kullanıcı adını kontrol et - mevcut bir veliyse uyar
+      try {
+        const { data } = await apiClient.get(`/admin/veli-lookup?username=${encodeURIComponent(formData.veli_username.trim())}`);
+        if (data.exists && !data.is_parent) {
+          toast.error('Bu kullanıcı adı başka bir kullanıcıya ait, veli olarak kullanılamaz');
+          return;
+        }
+        if (data.exists && data.is_parent) {
+          // Mevcut veli - onay iste, sonra kaydet
+          setVeliConfirm({ open: true, username: data.username, names: data.student_names || [] });
+          return;
+        }
+        // Mevcut değil - yeni veli, şifre zorunlu (ekleme modunda)
+        if (!isEdit && !formData.veli_password) {
+          toast.error('Veli şifresi zorunludur');
+          return;
+        }
+      } catch (err) {
+        if (!isEdit && !formData.veli_password) {
+          toast.error('Veli şifresi zorunludur');
+          return;
+        }
       }
     }
 
+    await doSave();
+  };
+
+  const doSave = async () => {
     setLoading(true);
 
     // Veli özelliği kapalıysa veli alanlarını gönderme
@@ -186,7 +211,7 @@ const AdminStudentForm = () => {
       }
       navigate('/admin/students');
     } catch (error) {
-      toast.error(isEdit ? 'Güncelleme başarısız' : 'Ekleme başarısız');
+      toast.error(error.response?.data?.detail || (isEdit ? 'Güncelleme başarısız' : 'Ekleme başarısız'));
     } finally {
       setLoading(false);
     }
@@ -986,6 +1011,32 @@ const AdminStudentForm = () => {
           </div>
         </form>
       </div>
+
+      {/* Mevcut veli onay dialogu */}
+      <AlertDialog open={veliConfirm.open} onOpenChange={(open) => setVeliConfirm(prev => ({ ...prev, open }))}>
+        <AlertDialogContent data-testid="veli-exists-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mevcut Veli Kullanıcısı</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-semibold text-slate-800">{veliConfirm.username}</span> velisi mevcut
+              {veliConfirm.names.length > 0 ? (
+                <>, <span className="font-semibold text-slate-800">{veliConfirm.names.join(', ')}</span> öğrencilerinin velisi.</>
+              ) : '.'}
+              <br /><br />
+              Bu öğrenciyi de <span className="font-semibold">{veliConfirm.username}</span> velisine eklemek istiyor musunuz?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="veli-exists-cancel">İptal</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="veli-exists-confirm"
+              onClick={() => { setVeliConfirm({ open: false, username: '', names: [] }); doSave(); }}
+            >
+              Evet, Ekle
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminLayout>
   );
 };

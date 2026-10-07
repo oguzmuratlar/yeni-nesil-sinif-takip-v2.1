@@ -43,6 +43,12 @@
 - **User Type**: parent
 - **Linked Student**: Test Veli Ogrenci (created via student form)
 
+- **Username**: `multi_veli`
+- **Password**: `pw123`
+- **User Type**: parent (ÇOKLU öğrenci)
+- **Linked Students**: Multi Ogrenci A, Multi Ogrenci B (velinin 2 öğrencisi - öğrenci seçici test için)
+
+
 ---
 
 ## Test Student IDs (with courses)

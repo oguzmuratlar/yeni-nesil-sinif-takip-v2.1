@@ -7,7 +7,13 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
-### Veli Düzeltmeleri & İyileştirmeler (7 Ekim 2026 - 2. tur)
+### Veli - Çoklu Öğrenci & Mevcut Veliye Ekleme (7 Ekim 2026 - 3. tur)
+- Öğrenci formunda veli eklerken MEVCUT bir veli kullanıcı adı girilirse onay dialogu çıkar: "{username} velisi mevcut, {öğrenciler} öğrencilerinin velisi. Bu öğrenciyi de {username} velisine eklemek istiyor musunuz?" Onaylanırsa öğrenci o veliye eklenir (linked_student_ids'e append). Böylece bir veliye önyüzden birden fazla öğrenci bağlanabilir.
+- Yeni endpoint: `GET /api/admin/veli-lookup?username=` → {exists, is_parent, student_names, student_count} (admin).
+- Backend `create_student`: mevcut parent kullanıcı adıyla gelince hata vermek yerine öğrenciyi mevcut veliye ekler; şifre gerekmez. Parent olmayan (admin/teacher) kullanıcı adı → 400. `update_student`: girilen kullanıcı adı başka mevcut veliye aitse öğrenciyi eski veliden çıkarıp hedef veliye taşır; eski veli öğrencisiz kalırsa silinir.
+- Frontend: AdminStudentForm submit öncesi lookup + AlertDialog onayı; mevcut veli seçilince şifre zorunlu değil. Curl + ekran görüntüsüyle doğrulandı (multi_veli → 2 öğrenci).
+
+
 - **REGRESYON FIX**: `/api/students/by-branch/{branch_id}` route decorator'ı önceki düzenlemede yanlışlıkla silinmişti → Admin Öğrenciler branş seçince "Veriler yüklenemedi" hatası. Decorator geri eklendi (200).
 - Veli ana sayfasında branş kartına tıklayınca Dersler sayfası o branş filtresiyle açılır (`/veli/lessons?branch=&student=` query param + `useSearchParams`).
 - Veli Dersler: belirli bir branş seçilince altında öğrencinin o branşta girdiği ders tarihleri + ders sayıları listelenir; ücretsiz dersler "Ücretsiz" rozetiyle belirtilir. `compute_student_finance` her branşa `lessons` (tarih/adet/ücretsiz) ekler.

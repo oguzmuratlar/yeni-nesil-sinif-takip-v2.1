@@ -1377,6 +1377,32 @@ async def get_student(student_id: str, current_user: User = Depends(get_current_
         student['created_at'] = datetime.fromisoformat(student['created_at'])
     return Student(**student)
 
+@api_router.get("/admin/veli-lookup")
+async def veli_lookup(username: str, current_user: User = Depends(get_current_user)):
+    """Bir veli kullanıcı adının mevcut olup olmadığını ve bağlı öğrencilerini döner."""
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
+    uname = (username or "").strip()
+    if not uname:
+        return {"exists": False}
+    user = await db.users.find_one({"username": uname}, {"_id": 0})
+    if not user:
+        return {"exists": False}
+    if user.get("user_type") != "parent":
+        return {"exists": True, "is_parent": False}
+    linked = user.get("linked_student_ids", []) or []
+    names = []
+    if linked:
+        async for s in db.students.find({"id": {"$in": linked}}, {"_id": 0, "name": 1}):
+            names.append(s.get("name"))
+    return {
+        "exists": True,
+        "is_parent": True,
+        "username": uname,
+        "student_names": names,
+        "student_count": len(linked),
+    }
+
 @api_router.post("/students", response_model=Student)
 async def create_student(student_data: StudentCreate, current_user: User = Depends(get_current_user)):
     if current_user.user_type != "admin":
@@ -1387,14 +1413,20 @@ async def create_student(student_data: StudentCreate, current_user: User = Depen
     veli_username = (student_data.veli_username or "").strip()
     veli_password = student_data.veli_password or ""
     
+    existing_parent = None
     if create_parent:
         if not await is_veli_enabled():
             raise HTTPException(status_code=403, detail="Veli Kullanıcısı özelliği şu anda pasif durumda.")
-        if not veli_username or not veli_password:
-            raise HTTPException(status_code=400, detail="Veli kullanıcı adı ve şifre zorunludur")
+        if not veli_username:
+            raise HTTPException(status_code=400, detail="Veli kullanıcı adı zorunludur")
         existing_user = await db.users.find_one({"username": veli_username})
         if existing_user:
-            raise HTTPException(status_code=400, detail="Bu veli kullanıcı adı zaten kullanılıyor")
+            if existing_user.get("user_type") != "parent":
+                raise HTTPException(status_code=400, detail="Bu kullanıcı adı başka bir kullanıcı tipine ait, veli olarak kullanılamaz")
+            # Mevcut veliye öğrenci eklenecek - şifre gerekmez
+            existing_parent = existing_user
+        elif not veli_password:
+            raise HTTPException(status_code=400, detail="Veli kullanıcı adı ve şifre zorunludur")
     
     # Filter out None values to use model defaults (veli_password/create_parent Student modelinde yok, ignore edilir)
     create_data = {k: v for k, v in student_data.model_dump().items()
@@ -1406,17 +1438,23 @@ async def create_student(student_data: StudentCreate, current_user: User = Depen
     doc['created_at'] = doc['created_at'].isoformat()
     await db.students.insert_one(doc)
     
-    # Veli kullanıcısı oluştur
+    # Veli kullanıcısı oluştur veya mevcut veliye öğrenci ekle
     if create_parent:
-        parent_user = User(
-            username=veli_username,
-            password_hash=get_password_hash(veli_password),
-            user_type="parent",
-            linked_student_ids=[student.id]
-        )
-        pdoc = parent_user.model_dump()
-        pdoc['created_at'] = pdoc['created_at'].isoformat()
-        await db.users.insert_one(pdoc)
+        if existing_parent:
+            links = existing_parent.get("linked_student_ids", []) or []
+            if student.id not in links:
+                links = links + [student.id]
+            await db.users.update_one({"id": existing_parent["id"]}, {"$set": {"linked_student_ids": links}})
+        else:
+            parent_user = User(
+                username=veli_username,
+                password_hash=get_password_hash(veli_password),
+                user_type="parent",
+                linked_student_ids=[student.id]
+            )
+            pdoc = parent_user.model_dump()
+            pdoc['created_at'] = pdoc['created_at'].isoformat()
+            await db.users.insert_one(pdoc)
     
     return student
 
@@ -1440,35 +1478,55 @@ async def update_student(student_id: str, student_data: StudentCreate, current_u
     if create_parent and veli_username:
         if not await is_veli_enabled():
             raise HTTPException(status_code=403, detail="Veli Kullanıcısı özelliği şu anda pasif durumda.")
-        # Bu öğrenciye bağlı mevcut veli kullanıcısını bul
-        parent = await db.users.find_one({"user_type": "parent", "linked_student_ids": student_id})
-        if parent:
-            pupdate = {}
-            if veli_username != parent.get("username"):
-                clash = await db.users.find_one({"username": veli_username})
-                if clash and clash.get("username") != parent.get("username"):
-                    raise HTTPException(status_code=400, detail="Bu veli kullanıcı adı zaten kullanılıyor")
-                pupdate["username"] = veli_username
-            if veli_password:
-                pupdate["password_hash"] = get_password_hash(veli_password)
-            if pupdate:
-                await db.users.update_one({"id": parent["id"]}, {"$set": pupdate})
+        # Bu öğrenciye bağlı mevcut veli
+        current_parent = await db.users.find_one({"user_type": "parent", "linked_student_ids": student_id})
+        # Girilen kullanıcı adına sahip kullanıcı
+        target_user = await db.users.find_one({"username": veli_username})
+        if target_user and target_user.get("user_type") != "parent":
+            raise HTTPException(status_code=400, detail="Bu kullanıcı adı başka bir kullanıcı tipine ait, veli olarak kullanılamaz")
+
+        if target_user:
+            # Mevcut bir veli seçildi
+            if current_parent and current_parent["id"] == target_user["id"]:
+                # Aynı veli - istenirse şifre güncelle
+                if veli_password:
+                    await db.users.update_one({"id": target_user["id"]}, {"$set": {"password_hash": get_password_hash(veli_password)}})
+            else:
+                # Öğrenciyi varsa eski veliden çıkar
+                if current_parent and current_parent["id"] != target_user["id"]:
+                    old_links = [sid for sid in current_parent.get("linked_student_ids", []) if sid != student_id]
+                    if old_links:
+                        await db.users.update_one({"id": current_parent["id"]}, {"$set": {"linked_student_ids": old_links}})
+                    else:
+                        await db.users.delete_one({"id": current_parent["id"]})
+                # Hedef veliye öğrenciyi ekle
+                links = target_user.get("linked_student_ids", []) or []
+                if student_id not in links:
+                    links = links + [student_id]
+                tupdate = {"linked_student_ids": links}
+                if veli_password:
+                    tupdate["password_hash"] = get_password_hash(veli_password)
+                await db.users.update_one({"id": target_user["id"]}, {"$set": tupdate})
         else:
-            # Veli kullanıcısı yoksa ve şifre verildiyse yeni oluştur
-            if not veli_password:
-                raise HTTPException(status_code=400, detail="Yeni veli kullanıcısı için şifre zorunludur")
-            clash = await db.users.find_one({"username": veli_username})
-            if clash:
-                raise HTTPException(status_code=400, detail="Bu veli kullanıcı adı zaten kullanılıyor")
-            parent_user = User(
-                username=veli_username,
-                password_hash=get_password_hash(veli_password),
-                user_type="parent",
-                linked_student_ids=[student_id]
-            )
-            pdoc = parent_user.model_dump()
-            pdoc['created_at'] = pdoc['created_at'].isoformat()
-            await db.users.insert_one(pdoc)
+            # Böyle bir kullanıcı yok
+            if current_parent:
+                # Mevcut veliyi yeniden adlandır
+                pupdate = {"username": veli_username}
+                if veli_password:
+                    pupdate["password_hash"] = get_password_hash(veli_password)
+                await db.users.update_one({"id": current_parent["id"]}, {"$set": pupdate})
+            else:
+                if not veli_password:
+                    raise HTTPException(status_code=400, detail="Yeni veli kullanıcısı için şifre zorunludur")
+                parent_user = User(
+                    username=veli_username,
+                    password_hash=get_password_hash(veli_password),
+                    user_type="parent",
+                    linked_student_ids=[student_id]
+                )
+                pdoc = parent_user.model_dump()
+                pdoc['created_at'] = pdoc['created_at'].isoformat()
+                await db.users.insert_one(pdoc)
         update_data["veli_username"] = veli_username
     
     await db.students.update_one({"id": student_id}, {"$set": update_data})
