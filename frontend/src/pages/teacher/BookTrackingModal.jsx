@@ -77,7 +77,6 @@ const BookTrackingModal = ({ open, onOpenChange, studentId, branchId, onDataChan
   const gridStyle = { display: 'grid', gridTemplateColumns: `200px repeat(${n}, 46px)`, gap: 6, alignItems: 'stretch' };
   const handle = INSTAGRAM[data?.branch?.name] || '@yeni.nesil.egitim';
   const overall = books.length ? Math.round(books.reduce((s, b) => s + (b.progress_percent || 0), 0) / books.length) : 0;
-  const mascot = `${window.location.origin}/mascot-books.png`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -125,8 +124,7 @@ const BookTrackingModal = ({ open, onOpenChange, studentId, branchId, onDataChan
                     <div className="bg-white rounded-xl px-3 py-1 font-black text-2xl tracking-wider" style={{ color: DARK, boxShadow: `inset 0 0 0 2px ${TEAL}` }}>
                       %{overall}
                     </div>
-                    <img src={mascot} alt="" className="mt-2" style={{ width: 112 }} />
-                    <div className="mt-2 font-extrabold text-xs tracking-wide" style={{ color: TEAL, writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                    <div className="mt-4 font-extrabold text-xs tracking-wide" style={{ color: TEAL, writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
                       {handle}
                     </div>
                   </div>

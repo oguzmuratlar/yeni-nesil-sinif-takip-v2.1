@@ -67,7 +67,6 @@ export const buildBookTrackingSection = (tracking) => {
       <div class="bt-body">
         <div class="bt-left">
           <div class="bt-odo">%${overall}</div>
-          <img class="bt-mascot" src="${mascotUrl()}" alt="" />
           <div class="bt-handle">${escapeHtml(handle)}</div>
         </div>
 
@@ -104,8 +103,7 @@ export const bookTrackingStyles = `
   .bt-body { display: flex; gap: 14px; margin-top: 14px; align-items: flex-start; }
   .bt-left { width: 120px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; }
   .bt-odo { background: #fff; border-radius: 12px; padding: 4px 10px; font-weight: 900; font-size: 26px; color: #0f4c54; letter-spacing: 1px; box-shadow: inset 0 0 0 2px #1596a3; }
-  .bt-mascot { width: 118px; margin-top: 6px; }
-  .bt-handle { writing-mode: vertical-rl; transform: rotate(180deg); color: #1596a3; font-weight: 800; font-size: 13px; letter-spacing: 1px; margin-top: 6px; }
+  .bt-handle { writing-mode: vertical-rl; transform: rotate(180deg); color: #1596a3; font-weight: 800; font-size: 13px; letter-spacing: 1px; margin-top: 16px; }
   .bt-matrix { flex: 1; min-width: 0; }
   .bt-grid-head, .bt-grid-num, .bt-row { display: grid; align-items: stretch; gap: 6px; }
   .bt-grid-head { margin-bottom: 6px; }
