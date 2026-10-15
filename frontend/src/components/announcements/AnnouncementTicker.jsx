@@ -8,7 +8,7 @@ export const AnnouncementTicker = ({ announcements = [], variant = 'light', onCl
   const dark = variant === 'dark';
   // Kesintisiz loop için listeyi iki kez bas (CSS -50% kaydırır)
   const items = [...announcements, ...announcements];
-  const duration = Math.max(14, announcements.length * 10);
+  const duration = Math.max(45, announcements.length * 32);
 
   return (
     <div
