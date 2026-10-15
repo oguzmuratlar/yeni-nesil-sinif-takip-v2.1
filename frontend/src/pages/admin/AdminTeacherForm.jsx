@@ -8,7 +8,7 @@ import { Label } from '../../components/ui/label';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Plus, X, Eye, EyeOff, Edit, Calendar, TrendingUp } from 'lucide-react';
+import { Plus, X, Eye, EyeOff, Edit, Calendar, TrendingUp, Megaphone } from 'lucide-react';
 
 const AdminTeacherForm = () => {
   const { id } = useParams();
@@ -24,7 +24,10 @@ const AdminTeacherForm = () => {
     password: '',
     user_type: 'teacher',
     branches: [],  // [{branch_id, birebir_price, group_prices: {1, 2, 3, 4}}]
+    sponsor_reels_price: '',
+    sponsor_story_price: '',
   });
+  const [sponsorEnabled, setSponsorEnabled] = useState(false);
   const [existingUser, setExistingUser] = useState(null);
   const [seasons, setSeasons] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -54,6 +57,7 @@ const AdminTeacherForm = () => {
 
   useEffect(() => {
     fetchReferenceData();
+    apiClient.get('/system-settings/sponsor-status').then(r => setSponsorEnabled(r.data.enabled)).catch(() => {});
     if (isEdit) {
       fetchTeacher();
       fetchUserInfo();
@@ -135,7 +139,9 @@ const AdminTeacherForm = () => {
           name: formData.name,
           phone: formData.phone,
           address: formData.address,
-          season_id: formData.season_id
+          season_id: formData.season_id,
+          sponsor_reels_price: formData.sponsor_reels_price === '' ? null : parseFloat(formData.sponsor_reels_price),
+          sponsor_story_price: formData.sponsor_story_price === '' ? null : parseFloat(formData.sponsor_story_price)
         });
         
         // Update user info if provided
@@ -199,7 +205,9 @@ const AdminTeacherForm = () => {
           name: formData.name,
           phone: formData.phone,
           address: formData.address,
-          season_id: formData.season_id
+          season_id: formData.season_id,
+          sponsor_reels_price: formData.sponsor_reels_price === '' ? null : parseFloat(formData.sponsor_reels_price),
+          sponsor_story_price: formData.sponsor_story_price === '' ? null : parseFloat(formData.sponsor_story_price)
         });
         const teacherId = teacherResponse.data.id;
         
@@ -736,6 +744,39 @@ const AdminTeacherForm = () => {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {sponsorEnabled && (
+          <div className="admin-card p-8 space-y-4" data-testid="teacher-sponsor-section">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Megaphone size={20} className="text-fuchsia-600" /> Sponsorlu Paylaşım
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">Öğretmenin sponsorlu paylaşım kazanç ücretleri (yayınevi ücretinden bağımsızdır).</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label>Reels Ücreti</Label>
+                <Input
+                  type="number"
+                  value={formData.sponsor_reels_price ?? ''}
+                  onChange={(e) => setFormData({ ...formData, sponsor_reels_price: e.target.value })}
+                  placeholder="₺"
+                  data-testid="teacher-sponsor-reels-input"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Hikaye Ücreti</Label>
+                <Input
+                  type="number"
+                  value={formData.sponsor_story_price ?? ''}
+                  onChange={(e) => setFormData({ ...formData, sponsor_story_price: e.target.value })}
+                  placeholder="₺"
+                  data-testid="teacher-sponsor-story-input"
+                />
+              </div>
+            </div>
+          </div>
+          )}
 
           <div className="flex items-center gap-4">
             <Button

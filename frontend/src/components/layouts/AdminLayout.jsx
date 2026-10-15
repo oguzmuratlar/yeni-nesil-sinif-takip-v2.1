@@ -26,7 +26,8 @@ import {
   Settings,
   Link2,
   BarChart3,
-  Star
+  Star,
+  Building2
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -35,10 +36,12 @@ const AdminLayout = ({ children }) => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [ynsEnabled, setYnsEnabled] = useState(false);
+  const [sponsorEnabled, setSponsorEnabled] = useState(false);
 
   useEffect(() => {
     import('../../api/axios').then(({ default: api }) => {
       api.get('/system-settings/yns-league-status').then(r => setYnsEnabled(r.data.enabled)).catch(() => {});
+      api.get('/system-settings/sponsor-status').then(r => setSponsorEnabled(r.data.enabled)).catch(() => {});
     });
   }, []);
   
@@ -98,6 +101,7 @@ const AdminLayout = ({ children }) => {
           { path: '/admin/camps', label: 'Kamplar', icon: Tent },
           { path: '/admin/youtube', label: 'YouTube', icon: Youtube },
           { path: '/admin/branches', label: 'Branşlar', icon: BookOpen },
+          ...(sponsorEnabled ? [{ path: '/admin/publishers', label: 'Yayınevleri', icon: Building2 }] : []),
         ]
       },
       {

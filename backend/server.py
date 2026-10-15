@@ -118,6 +118,8 @@ class Teacher(BaseModel):
     status: str = "active"
     season_id: Optional[str] = None
     branches: Optional[List[dict]] = None  # [{branch_id, branch_name}]
+    sponsor_reels_price: Optional[float] = None  # Sponsorlu Reels kazanç ücreti
+    sponsor_story_price: Optional[float] = None  # Sponsorlu Hikaye kazanç ücreti
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class TeacherCreate(BaseModel):
@@ -126,6 +128,8 @@ class TeacherCreate(BaseModel):
     address: Optional[str] = None  # Öğretmen adresi
     season_id: Optional[str] = None
     status: Optional[str] = None  # Pasifleştirme için
+    sponsor_reels_price: Optional[float] = None
+    sponsor_story_price: Optional[float] = None
 
 class Branch(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -380,6 +384,7 @@ class Payment(BaseModel):
     payment_method: Optional[str] = None  # "elden" veya "resmi" - sadece Maaş kategorisi için
     tax_amount: Optional[float] = None  # Vergi tutarı - sadece resmi maaş ödemeleri için
     transfer_id: Optional[str] = None  # Kasalar arası transfer için
+    publisher_id: Optional[str] = None  # Yayınevi ödemesi için (opsiyonel)
     season_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -396,7 +401,54 @@ class PaymentCreate(BaseModel):
     expense_category: Optional[str] = None
     payment_method: Optional[str] = None  # "elden" veya "resmi"
     tax_amount: Optional[float] = None  # Vergi tutarı
+    publisher_id: Optional[str] = None  # Yayınevi ödemesi için (opsiyonel)
     season_id: Optional[str] = None
+
+# ============= YAYINEVİ (PUBLISHER) & SPONSORLU PAYLAŞIM MODELLERİ =============
+
+class PublisherContact(BaseModel):
+    name: str
+    phone: Optional[str] = None
+
+class Publisher(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    contacts: List[PublisherContact] = Field(default_factory=list)
+    reels_price: Optional[float] = None
+    story_price: Optional[float] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+class PublisherCreate(BaseModel):
+    name: str
+    contacts: Optional[List[PublisherContact]] = None
+    reels_price: Optional[float] = None
+    story_price: Optional[float] = None
+
+class SponsoredContent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    publisher_id: str
+    publisher_name_snapshot: str
+    share_name: str
+    share_type: str  # "reels" | "story"
+    teacher_id: str
+    publisher_amount: float
+    teacher_amount: float
+    share_date: str
+    season_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by: Optional[str] = None
+
+class SponsoredContentCreate(BaseModel):
+    share_name: str
+    share_type: str  # "reels" | "story"
+    teacher_id: str
+    amount: Optional[float] = None  # opsiyonel - boşsa yayınevi varsayılan ücreti kullanılır
+    share_date: Optional[str] = None
 
 # ============= CASHBOX MODELS =============
 
@@ -2714,6 +2766,16 @@ async def create_payment(payment_data: PaymentCreate, current_user: User = Depen
     # FAZ 5: Kapalı dönem kontrolü
     await check_season_is_open()
     
+    # Öğrenci ve yayınevi aynı anda seçilemez
+    if payment_data.student_id and payment_data.publisher_id:
+        raise HTTPException(status_code=400, detail="Öğrenci ve yayınevi aynı anda seçilemez, sadece birini seçin")
+    if payment_data.publisher_id:
+        if not await is_sponsor_enabled():
+            raise HTTPException(status_code=403, detail="Yayınevi & Sponsorlu Paylaşım özelliği şu anda pasif durumda.")
+        pub = await db.publishers.find_one({"id": payment_data.publisher_id})
+        if not pub:
+            raise HTTPException(status_code=404, detail="Yayınevi bulunamadı")
+    
     payment = Payment(**payment_data.model_dump())
     doc = payment.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
@@ -2753,6 +2815,182 @@ async def delete_payment(payment_id: str, current_user: User = Depends(get_curre
     
     await db.payments.delete_one({"id": payment_id})
     return {"message": "Ödeme başarıyla silindi"}
+
+# ============= YAYINEVİ (PUBLISHER) & SPONSORLU PAYLAŞIM ROUTES =============
+
+async def compute_publisher_balance(publisher_id: str) -> dict:
+    """Yayınevi bakiyesi = ödemeler - sponsorlu paylaşım tutarları (negatif = borçlu)."""
+    pay_cursor = db.payments.find({"publisher_id": publisher_id}, {"_id": 0, "amount": 1})
+    total_paid = 0.0
+    async for p in pay_cursor:
+        total_paid += p.get("amount", 0) or 0
+    sc_cursor = db.sponsored_contents.find({"publisher_id": publisher_id}, {"_id": 0, "publisher_amount": 1})
+    total_debt = 0.0
+    async for s in sc_cursor:
+        total_debt += s.get("publisher_amount", 0) or 0
+    return {
+        "total_paid": total_paid,
+        "total_sponsored": total_debt,
+        "balance": total_paid - total_debt,
+    }
+
+@api_router.get("/publishers")
+async def get_publishers(current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access publishers")
+    await check_sponsor_enabled()
+    publishers = await db.publishers.find({}, {"_id": 0}).sort([("name", 1)]).to_list(1000)
+    result = []
+    for p in publishers:
+        bal = await compute_publisher_balance(p["id"])
+        p["balance"] = bal["balance"]
+        p["total_paid"] = bal["total_paid"]
+        p["total_sponsored"] = bal["total_sponsored"]
+        result.append(p)
+    return result
+
+@api_router.post("/publishers", response_model=Publisher)
+async def create_publisher(data: PublisherCreate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can create publishers")
+    await check_sponsor_enabled()
+    publisher = Publisher(
+        name=data.name,
+        contacts=[c for c in (data.contacts or [])],
+        reels_price=data.reels_price,
+        story_price=data.story_price,
+        created_by=current_user.username,
+    )
+    doc = publisher.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.publishers.insert_one(doc)
+    return publisher
+
+@api_router.put("/publishers/{publisher_id}", response_model=Publisher)
+async def update_publisher(publisher_id: str, data: PublisherCreate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update publishers")
+    await check_sponsor_enabled()
+    existing = await db.publishers.find_one({"id": publisher_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Yayınevi bulunamadı")
+    update_data = {
+        "name": data.name,
+        "contacts": [c.model_dump() for c in (data.contacts or [])],
+        "reels_price": data.reels_price,
+        "story_price": data.story_price,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user.username,
+    }
+    await db.publishers.update_one({"id": publisher_id}, {"$set": update_data})
+    updated = await db.publishers.find_one({"id": publisher_id}, {"_id": 0})
+    if isinstance(updated.get('created_at'), str):
+        updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    if isinstance(updated.get('updated_at'), str):
+        updated['updated_at'] = datetime.fromisoformat(updated['updated_at'])
+    return Publisher(**updated)
+
+@api_router.post("/publishers/{publisher_id}/sponsored-content", response_model=SponsoredContent)
+async def create_sponsored_content(publisher_id: str, data: SponsoredContentCreate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can create sponsored content")
+    await check_sponsor_enabled()
+    publisher = await db.publishers.find_one({"id": publisher_id}, {"_id": 0})
+    if not publisher:
+        raise HTTPException(status_code=404, detail="Yayınevi bulunamadı")
+    if data.share_type not in ("reels", "story"):
+        raise HTTPException(status_code=400, detail="Geçersiz paylaşım tipi")
+    teacher = await db.teachers.find_one({"id": data.teacher_id}, {"_id": 0})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Öğretmen bulunamadı")
+    
+    # Yayınevi tutarı: manuel tutar > yayınevi varsayılan ücreti
+    if data.amount is not None:
+        publisher_amount = data.amount
+    else:
+        publisher_amount = publisher.get("reels_price") if data.share_type == "reels" else publisher.get("story_price")
+    if publisher_amount is None:
+        raise HTTPException(status_code=400, detail="Tutar girilmedi ve yayınevinin bu paylaşım türü için tanımlı ücreti yok. Lütfen tutar girin.")
+    
+    # Öğretmen kazancı: öğretmenin sponsor ücretinden (bağımsız)
+    teacher_amount = teacher.get("sponsor_reels_price") if data.share_type == "reels" else teacher.get("sponsor_story_price")
+    teacher_amount = teacher_amount or 0
+    
+    active_season = await db.seasons.find_one({"status": "active", "is_current": True}, {"_id": 0})
+    season_id = active_season["id"] if active_season else None
+    
+    share_date = data.share_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    sc = SponsoredContent(
+        publisher_id=publisher_id,
+        publisher_name_snapshot=publisher["name"],
+        share_name=data.share_name,
+        share_type=data.share_type,
+        teacher_id=data.teacher_id,
+        publisher_amount=publisher_amount,
+        teacher_amount=teacher_amount,
+        share_date=share_date,
+        season_id=season_id,
+        created_by=current_user.username,
+    )
+    doc = sc.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.sponsored_contents.insert_one(doc)
+    return sc
+
+@api_router.get("/publishers/{publisher_id}/sponsored-contents")
+async def get_publisher_sponsored_contents(publisher_id: str, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access this")
+    await check_sponsor_enabled()
+    contents = await db.sponsored_contents.find({"publisher_id": publisher_id}, {"_id": 0}).sort([("share_date", -1)]).to_list(1000)
+    # Öğretmen adlarını ekle
+    teacher_ids = list({c["teacher_id"] for c in contents if c.get("teacher_id")})
+    tmap = {}
+    if teacher_ids:
+        async for t in db.teachers.find({"id": {"$in": teacher_ids}}, {"_id": 0, "id": 1, "name": 1}):
+            tmap[t["id"]] = t["name"]
+    for c in contents:
+        c["teacher_name"] = tmap.get(c.get("teacher_id"), "-")
+    return contents
+
+async def _teacher_sponsored_detail(teacher_id: str, month: Optional[str]):
+    query = {"teacher_id": teacher_id}
+    records = await db.sponsored_contents.find(query, {"_id": 0}).sort([("share_date", -1)]).to_list(2000)
+    if month:
+        records = [r for r in records if (r.get("share_date") or "").startswith(month)]
+    total_earning = sum([r.get("teacher_amount", 0) for r in records])
+    details = [{
+        "id": r.get("id"),
+        "share_name": r.get("share_name"),
+        "publisher_name": r.get("publisher_name_snapshot"),
+        "share_type": r.get("share_type"),
+        "amount": r.get("teacher_amount", 0),
+        "date": r.get("share_date"),
+    } for r in records]
+    return {
+        "teacher_id": teacher_id,
+        "month": month,
+        "total_earning": total_earning,
+        "record_count": len(records),
+        "details": details,
+    }
+
+@api_router.get("/teachers/{teacher_id}/sponsored-contents")
+async def get_teacher_sponsored_contents(teacher_id: str, month: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    if current_user.user_type == "teacher" and current_user.teacher_id != teacher_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if current_user.user_type == "parent":
+        raise HTTPException(status_code=403, detail="Access denied")
+    await check_sponsor_enabled()
+    return await _teacher_sponsored_detail(teacher_id, month)
+
+@api_router.get("/teacher/sponsored-contents")
+async def get_my_sponsored_contents(month: Optional[str] = None, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "teacher" or not current_user.teacher_id:
+        raise HTTPException(status_code=403, detail="Sadece öğretmenler erişebilir")
+    await check_sponsor_enabled()
+    return await _teacher_sponsored_detail(current_user.teacher_id, month)
 
 # ============= FINANSAL RAPOR =============
 
@@ -3181,9 +3419,23 @@ async def get_teacher_balance(
         "date": r["date"]
     } for r in youtube_records]
     
-    # Toplam kazanç = Ders kazancı + Kamp kazancı + YouTube kazancı
-    # Kamp kazancı artık ay filtresinde de (created_at bazlı) dahil edilir
-    grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings
+    # Sponsorlu paylaşım kazançlarını hesapla - ay filtresi share_date'e göre
+    sponsor_query = {"teacher_id": teacher_id}
+    if month:
+        sponsor_query["share_date"] = {"$regex": f"^{month}"}
+    sponsor_records = await db.sponsored_contents.find(sponsor_query, {"_id": 0}).to_list(1000)
+    total_sponsor_earnings = sum([r.get("teacher_amount", 0) for r in sponsor_records])
+    
+    sponsor_earnings_details = [{
+        "share_name": r.get("share_name"),
+        "publisher_name": r.get("publisher_name_snapshot"),
+        "share_type": r.get("share_type"),
+        "amount": r.get("teacher_amount", 0),
+        "date": r.get("share_date")
+    } for r in sponsor_records]
+    
+    # Toplam kazanç = Ders + Kamp + YouTube + Sponsor
+    grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings + total_sponsor_earnings
     
     balance = grand_total_earnings - total_paid
     
@@ -3193,12 +3445,14 @@ async def get_teacher_balance(
         "lesson_earnings": total_earnings,
         "camp_earnings": total_camp_earnings,
         "youtube_earnings": total_youtube_earnings,
+        "sponsor_earnings": total_sponsor_earnings,
         "total_earnings": grand_total_earnings,
         "total_paid": total_paid,
         "balance": balance,
         "payments": payments,
         "camp_earnings_details": camp_earnings_details,
         "youtube_earnings_details": youtube_earnings_details,
+        "sponsor_earnings_details": sponsor_earnings_details,
         # Ödeme şekli detayları
         "payment_details": {
             "elden_tutar": elden_tutar,
@@ -6607,7 +6861,8 @@ async def get_system_settings(current_user: User = Depends(get_current_user)):
         {"key": "homework_tool_enabled", "value": True, "description": "Ödev Takip Sistemi"},
         {"key": "lesson_links_enabled", "value": False, "description": "Ders Giriş Özelliği"},
         {"key": "yns_league_enabled", "value": False, "description": "YNS League (Öğrenci Yıldız Sistemi)"},
-        {"key": "veli_enabled", "value": False, "description": "Veli Kullanıcısı"}
+        {"key": "veli_enabled", "value": False, "description": "Veli Kullanıcısı"},
+        {"key": "sponsor_enabled", "value": False, "description": "Yayınevi & Sponsorlu Paylaşım"}
     ]
     
     existing_keys = [s["key"] for s in settings]
@@ -6725,6 +6980,21 @@ async def check_veli_enabled():
 async def get_veli_status_public():
     """Veli özelliği durumunu kontrol et - herkese açık (login ekranı/panel için)."""
     return {"enabled": await is_veli_enabled()}
+
+async def is_sponsor_enabled() -> bool:
+    setting = await db.system_settings.find_one({"key": "sponsor_enabled"}, {"_id": 0})
+    if setting is None:
+        return False
+    return setting.get("value", False)
+
+async def check_sponsor_enabled():
+    if not await is_sponsor_enabled():
+        raise HTTPException(status_code=403, detail="Yayınevi & Sponsorlu Paylaşım özelliği şu anda pasif durumda.")
+
+@api_router.get("/system-settings/sponsor-status")
+async def get_sponsor_status_public(current_user: User = Depends(get_current_user)):
+    """Sponsor özelliği durumunu kontrol et - giriş yapmış kullanıcılar."""
+    return {"enabled": await is_sponsor_enabled()}
 
 # --- Yıldız tanımları (admin) ---
 
@@ -8666,8 +8936,12 @@ async def calculate_teacher_balance_for_preview(teacher_id: str):
     }, {"_id": 0}).to_list(1000)
     total_youtube_earnings = sum([r["amount"] for r in youtube_records])
     
+    # Sponsorlu paylaşım kazançları (yıl sonu - tüm dönem)
+    sponsor_records = await db.sponsored_contents.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
+    total_sponsor_earnings = sum([r.get("teacher_amount", 0) for r in sponsor_records])
+    
     # Toplam kazanç
-    grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings
+    grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings + total_sponsor_earnings
     
     # Ödemeler
     payments = await db.payments.find({
@@ -8997,8 +9271,12 @@ async def calculate_all_teacher_balances_for_execute(season_id: str = None):
         }, {"_id": 0}).to_list(1000)
         total_youtube_earnings = sum([r["amount"] for r in youtube_records])
         
+        # Sponsorlu paylaşım kazançları (yıl sonu - tüm dönem)
+        sponsor_records = await db.sponsored_contents.find({"teacher_id": teacher_id}, {"_id": 0}).to_list(1000)
+        total_sponsor_earnings = sum([r.get("teacher_amount", 0) for r in sponsor_records])
+        
         # Toplam kazanç
-        grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings
+        grand_total_earnings = total_earnings + total_camp_earnings + total_youtube_earnings + total_sponsor_earnings
         
         # Ödemeler
         payments = await db.payments.find({

@@ -33,6 +33,8 @@ import AdminUserForm from "./pages/admin/AdminUserForm";
 import AdminBankAccounts from "./pages/admin/AdminBankAccounts";
 import AdminBankAccountForm from "./pages/admin/AdminBankAccountForm";
 import AdminBranches from "./pages/admin/AdminBranches";
+import AdminPublishers from "./pages/admin/AdminPublishers";
+import TeacherSponsorDetail from "./pages/teacher/TeacherSponsorDetail";
 import AdminGroups from "./pages/admin/AdminGroups";
 import AdminGroupForm from "./pages/admin/AdminGroupForm";
 import AdminGroupLesson from "./pages/admin/AdminGroupLesson";
@@ -236,6 +238,16 @@ function App() {
                 <AdminBranches />
               </ProtectedRoute>
             } />
+            <Route path="/admin/publishers" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminPublishers />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/teachers/:id/sponsor-income" element={
+              <ProtectedRoute requiredRole="admin">
+                <TeacherSponsorDetail />
+              </ProtectedRoute>
+            } />
             <Route path="/admin/groups" element={
               <ProtectedRoute requiredRole="admin">
                 <AdminGroups />
@@ -401,6 +413,11 @@ function App() {
             <Route path="/teacher/youtube-income" element={
               <ProtectedRoute requiredRole="teacher">
                 <TeacherYoutubeIncomeDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/teacher/sponsor" element={
+              <ProtectedRoute requiredRole="teacher">
+                <TeacherSponsorDetail />
               </ProtectedRoute>
             } />
             <Route path="/teacher/students/:studentId/homework/:branchId" element={

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import TeacherLayout from '../../components/layouts/TeacherLayout';
 import apiClient from '../../api/axios';
 import { useAuth } from '../../contexts/AuthContext';
-import { Wallet, BookOpen, Tent, Youtube, Filter, ChevronRight, X, Banknote, Building2, Receipt } from 'lucide-react';
+import { Wallet, BookOpen, Tent, Youtube, Filter, ChevronRight, X, Banknote, Building2, Receipt, Megaphone } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { ExpandableText } from '../../components/ui/expandable-text';
@@ -18,6 +18,11 @@ const TeacherBalance = () => {
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth()); // Mevcut ay varsayılan
   const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
+  const [sponsorEnabled, setSponsorEnabled] = useState(false);
+
+  useEffect(() => {
+    apiClient.get('/system-settings/sponsor-status').then(r => setSponsorEnabled(r.data.enabled)).catch(() => {});
+  }, []);
 
   // Dinamik ay listesi: 6 ay önce, 3 ay sonra
   const dynamicMonths = generateMonthOptions(6, 3);
@@ -201,7 +206,7 @@ const TeacherBalance = () => {
         </Dialog>
 
         {/* Kazanç Detayları - Mobile optimized - Clickable */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 lg:gap-6 mb-6 lg:mb-10">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 ${sponsorEnabled ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3 lg:gap-6 mb-6 lg:mb-10`}>
           <div 
             className="teacher-card p-4 lg:p-6 cursor-pointer hover:shadow-lg transition-shadow"
             onClick={() => navigate('/teacher/lesson-income')}
@@ -249,6 +254,25 @@ const TeacherBalance = () => {
             <p className="text-xl lg:text-3xl font-bold text-red-600">{formatMoney(balanceData.youtube_earnings, false)} ₺</p>
             <p className="text-xs lg:text-sm text-slate-500 mt-1 lg:mt-2">Detay için tıklayın</p>
           </div>
+
+          {sponsorEnabled && (
+          <div 
+            className="teacher-card p-4 lg:p-6 cursor-pointer hover:shadow-lg transition-shadow"
+            onClick={() => navigate('/teacher/sponsor')}
+            data-testid="balance-sponsor-card"
+          >
+            <div className="flex items-center justify-between mb-2 lg:mb-4">
+              <div className="flex items-center gap-2 lg:gap-3">
+                <Megaphone size={20} className="lg:hidden text-fuchsia-600" />
+                <Megaphone size={24} className="hidden lg:block text-fuchsia-600" />
+                <h3 className="text-base lg:text-lg font-bold text-slate-800">Sponsor Kazancı</h3>
+              </div>
+              <ChevronRight size={18} className="text-slate-400" />
+            </div>
+            <p className="text-xl lg:text-3xl font-bold text-fuchsia-600">{formatMoney(balanceData.sponsor_earnings || 0, false)} ₺</p>
+            <p className="text-xs lg:text-sm text-slate-500 mt-1 lg:mt-2">Detay için tıklayın</p>
+          </div>
+          )}
         </div>
 
         {/* Ödeme Geçmişi - Mobile optimized */}

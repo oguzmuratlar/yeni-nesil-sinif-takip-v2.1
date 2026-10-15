@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import TeacherLayout from '../../components/layouts/TeacherLayout';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/axios';
-import { Users, Wallet, ArrowRight, Calendar, Tent, Youtube, AlertTriangle, X, BookOpen, Star } from 'lucide-react';
+import { Users, Wallet, ArrowRight, Calendar, Tent, Youtube, AlertTriangle, X, BookOpen, Star, Megaphone } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import PlanningMasterCard from './PlanningMasterCard';
 import { TeacherCalendarBar, TeacherCalendarDialog } from '../../components/TeacherCalendar';
@@ -15,9 +15,11 @@ const TeacherDashboard = () => {
   const [showWarning, setShowWarning] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [ynsEnabled, setYnsEnabled] = useState(false);
+  const [sponsorEnabled, setSponsorEnabled] = useState(false);
 
   useEffect(() => {
     apiClient.get('/system-settings/yns-league-status').then(r => setYnsEnabled(r.data.enabled)).catch(() => {});
+    apiClient.get('/system-settings/sponsor-status').then(r => setSponsorEnabled(r.data.enabled)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -113,6 +115,14 @@ const TeacherDashboard = () => {
       color: 'bg-amber-500',
       path: '/teacher/yns-league',
       testId: 'teacher-dashboard-yns-card'
+    }] : []),
+    ...(sponsorEnabled ? [{
+      title: 'Sponsorlu İçerik',
+      description: 'Sponsorlu paylaşım kazançlarınızı görüntüleyin',
+      icon: Megaphone,
+      color: 'bg-fuchsia-500',
+      path: '/teacher/sponsor',
+      testId: 'teacher-dashboard-sponsor-card'
     }] : []),
   ];
 

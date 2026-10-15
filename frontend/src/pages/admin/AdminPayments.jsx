@@ -68,8 +68,11 @@ const AdminPayments = () => {
     description: '',
     expense_category: '',
     payment_method: '',
-    tax_amount: ''
+    tax_amount: '',
+    publisher_id: ''
   });
+  const [publishers, setPublishers] = useState([]);
+  const [sponsorEnabled, setSponsorEnabled] = useState(false);
 
   useEffect(() => {
     fetchReferenceData();
@@ -141,6 +144,16 @@ const AdminPayments = () => {
       setBankAccounts(banksRes.data);
     } catch (error) {
       toast.error('Referans veriler yüklenemedi');
+    }
+    try {
+      const r = await apiClient.get('/system-settings/sponsor-status');
+      setSponsorEnabled(!!r.data.enabled);
+      if (r.data.enabled) {
+        const pubs = await apiClient.get('/publishers');
+        setPublishers(pubs.data);
+      }
+    } catch (error) {
+      // sponsor kapalıysa sorun değil
     }
     // Öğrenci kursları (branş etiketleri için) - liste/formu bloklamadan ayrı yükle
     try {
@@ -779,7 +792,7 @@ const AdminPayments = () => {
                                     key={student.id}
                                     value={student.id}
                                     onSelect={() => {
-                                      setNewPayment({ ...newPayment, student_id: student.id });
+                                      setNewPayment({ ...newPayment, student_id: student.id, publisher_id: '' });
                                       setFormStudentOpen(false);
                                       setFormStudentSearch('');
                                     }}
@@ -808,6 +821,30 @@ const AdminPayments = () => {
                       </PopoverContent>
                     </Popover>
                   </div>
+
+                  {sponsorEnabled && (
+                    <div className="space-y-2">
+                      <Label htmlFor="publisher">Yayınevi (Opsiyonel)</Label>
+                      <Select
+                        value={newPayment.publisher_id || 'none'}
+                        onValueChange={(v) => setNewPayment({ ...newPayment, publisher_id: v === 'none' ? '' : v, student_id: v === 'none' ? newPayment.student_id : '' })}
+                        disabled={!!newPayment.student_id}
+                      >
+                        <SelectTrigger className="h-12" data-testid="payment-publisher-select">
+                          <SelectValue placeholder={newPayment.student_id ? 'Öğrenci seçildiğinde yayınevi seçilemez' : 'Yayınevi seçin'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Yayınevi Seçme</SelectItem>
+                          {publishers.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {newPayment.publisher_id && (
+                        <p className="text-xs text-indigo-600">Bu ödeme seçilen yayınevinin bakiyesine yansıtılacak.</p>
+                      )}
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="branch">Branş</Label>
                     <Select 

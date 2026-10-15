@@ -1,18 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Users, Wallet, LogOut, Home, Tent, Youtube, Menu, X, Calendar } from 'lucide-react';
+import apiClient from '../../api/axios';
+import { Users, Wallet, LogOut, Home, Tent, Youtube, Menu, X, Calendar, Megaphone } from 'lucide-react';
 
 const TeacherLayout = ({ children }) => {
   const { logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sponsorEnabled, setSponsorEnabled] = useState(false);
 
   // Sayfa değiştiğinde menüyü kapat
   useEffect(() => {
     setMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    apiClient.get('/system-settings/sponsor-status').then(r => setSponsorEnabled(r.data.enabled)).catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -24,6 +30,7 @@ const TeacherLayout = ({ children }) => {
     { path: '/teacher/students', label: 'Öğrencilerim', icon: Users },
     { path: '/teacher/camps', label: 'Kamplarım', icon: Tent },
     { path: '/teacher/youtube', label: 'YouTube', icon: Youtube },
+    ...(sponsorEnabled ? [{ path: '/teacher/sponsor', label: 'Sponsor', icon: Megaphone }] : []),
     { path: '/teacher/balance', label: 'Bakiye', icon: Wallet },
   ];
 
