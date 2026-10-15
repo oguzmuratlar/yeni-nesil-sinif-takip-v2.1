@@ -2954,6 +2954,59 @@ async def get_publisher_sponsored_contents(publisher_id: str, current_user: User
         c["teacher_name"] = tmap.get(c.get("teacher_id"), "-")
     return contents
 
+@api_router.put("/publishers/{publisher_id}/sponsored-content/{content_id}", response_model=SponsoredContent)
+async def update_sponsored_content(publisher_id: str, content_id: str, data: SponsoredContentCreate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update sponsored content")
+    await check_sponsor_enabled()
+    existing = await db.sponsored_contents.find_one({"id": content_id, "publisher_id": publisher_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Sponsorlu paylaşım bulunamadı")
+    publisher = await db.publishers.find_one({"id": publisher_id}, {"_id": 0})
+    if not publisher:
+        raise HTTPException(status_code=404, detail="Yayınevi bulunamadı")
+    if data.share_type not in ("reels", "story"):
+        raise HTTPException(status_code=400, detail="Geçersiz paylaşım tipi")
+    teacher = await db.teachers.find_one({"id": data.teacher_id}, {"_id": 0})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Öğretmen bulunamadı")
+
+    # Yayınevi tutarı: manuel > yayınevi varsayılan
+    if data.amount is not None:
+        publisher_amount = data.amount
+    else:
+        publisher_amount = publisher.get("reels_price") if data.share_type == "reels" else publisher.get("story_price")
+    if publisher_amount is None:
+        raise HTTPException(status_code=400, detail="Tutar girilmedi ve yayınevinin bu paylaşım türü için tanımlı ücreti yok. Lütfen tutar girin.")
+
+    teacher_amount = teacher.get("sponsor_reels_price") if data.share_type == "reels" else teacher.get("sponsor_story_price")
+    teacher_amount = teacher_amount or 0
+
+    update_data = {
+        "share_name": data.share_name,
+        "share_type": data.share_type,
+        "teacher_id": data.teacher_id,
+        "publisher_amount": publisher_amount,
+        "teacher_amount": teacher_amount,
+    }
+    if data.share_date:
+        update_data["share_date"] = data.share_date
+    await db.sponsored_contents.update_one({"id": content_id}, {"$set": update_data})
+    updated = await db.sponsored_contents.find_one({"id": content_id}, {"_id": 0})
+    if isinstance(updated.get("created_at"), str):
+        updated["created_at"] = datetime.fromisoformat(updated["created_at"])
+    return SponsoredContent(**updated)
+
+@api_router.delete("/publishers/{publisher_id}/sponsored-content/{content_id}")
+async def delete_sponsored_content(publisher_id: str, content_id: str, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can delete sponsored content")
+    await check_sponsor_enabled()
+    result = await db.sponsored_contents.delete_one({"id": content_id, "publisher_id": publisher_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Sponsorlu paylaşım bulunamadı")
+    return {"message": "Sponsorlu paylaşım silindi"}
+
 async def _teacher_sponsored_detail(teacher_id: str, month: Optional[str]):
     query = {"teacher_id": teacher_id}
     records = await db.sponsored_contents.find(query, {"_id": 0}).sort([("share_date", -1)]).to_list(2000)
@@ -3204,6 +3257,11 @@ async def get_financial_report(
         if p.get("payment_type") == "teacher_payment" or p.get("expense_category") == "Maaş"
     ), 2)
     net_balance = round(total_income - total_expense, 2)
+    # Yayınevi geliri - ayrı gelir kalemi (publisher_id olan student_payment ödemeleri)
+    publisher_income = round(sum(
+        (p.get("amount", 0) or 0) for p in general_payments
+        if p.get("publisher_id") and p.get("payment_type") == "student_payment"
+    ), 2)
 
     if start_ym == end_ym:
         period_label = f"{_FIN_MONTHS_TR_FULL[int(start_ym[5:7]) - 1]} {start_ym[:4]}"
@@ -3218,6 +3276,7 @@ async def get_financial_report(
             "total_expense": total_expense,
             "net_balance": net_balance,
             "teacher_payments": teacher_payments,
+            "publisher_income": publisher_income,
             "period_label": period_label,
         },
         "expense_categories": expense_categories,

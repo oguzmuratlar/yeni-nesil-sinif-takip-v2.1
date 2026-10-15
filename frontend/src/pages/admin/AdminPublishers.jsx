@@ -22,7 +22,11 @@ const AdminPublishers = () => {
   const [form, setForm] = useState(emptyForm);
   const [shareDialog, setShareDialog] = useState({ open: false, publisher: null });
   const [share, setShare] = useState(emptyShare);
+  const [editingShareId, setEditingShareId] = useState(null);
+  const [contentsDialog, setContentsDialog] = useState({ open: false, publisher: null, items: [], loading: false });
   const [submitting, setSubmitting] = useState(false);
+
+  const fmtDate = (d) => d || '-';
 
   useEffect(() => {
     fetchData();
@@ -97,6 +101,48 @@ const AdminPublishers = () => {
   const openShare = (p) => {
     setShareDialog({ open: true, publisher: p });
     setShare(emptyShare);
+    setEditingShareId(null);
+  };
+
+  const openContents = async (p) => {
+    setContentsDialog({ open: true, publisher: p, items: [], loading: true });
+    try {
+      const res = await apiClient.get(`/publishers/${p.id}/sponsored-contents`);
+      setContentsDialog({ open: true, publisher: p, items: res.data, loading: false });
+    } catch (error) {
+      toast.error('Paylaşımlar yüklenemedi');
+      setContentsDialog({ open: true, publisher: p, items: [], loading: false });
+    }
+  };
+
+  const refreshContents = async (publisherId) => {
+    try {
+      const res = await apiClient.get(`/publishers/${publisherId}/sponsored-contents`);
+      setContentsDialog(prev => ({ ...prev, items: res.data }));
+    } catch (e) { /* ignore */ }
+  };
+
+  const editShare = (p, item) => {
+    setShareDialog({ open: true, publisher: p });
+    setEditingShareId(item.id);
+    setShare({
+      share_name: item.share_name || '',
+      share_type: item.share_type || 'reels',
+      teacher_id: item.teacher_id || '',
+      amount: item.publisher_amount != null ? String(item.publisher_amount) : ''
+    });
+  };
+
+  const deleteShare = async (publisherId, contentId) => {
+    if (!window.confirm('Bu sponsorlu paylaşımı silmek istediğinize emin misiniz?')) return;
+    try {
+      await apiClient.delete(`/publishers/${publisherId}/sponsored-content/${contentId}`);
+      toast.success('Sponsorlu paylaşım silindi');
+      await refreshContents(publisherId);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Silinemedi');
+    }
   };
 
   const handleSaveShare = async () => {
@@ -110,12 +156,20 @@ const AdminPublishers = () => {
         teacher_id: share.teacher_id,
         amount: share.amount === '' ? null : parseFloat(share.amount)
       };
-      await apiClient.post(`/publishers/${shareDialog.publisher.id}/sponsored-content`, payload);
-      toast.success('Sponsorlu paylaşım eklendi');
+      if (editingShareId) {
+        await apiClient.put(`/publishers/${shareDialog.publisher.id}/sponsored-content/${editingShareId}`, payload);
+        toast.success('Sponsorlu paylaşım güncellendi');
+      } else {
+        await apiClient.post(`/publishers/${shareDialog.publisher.id}/sponsored-content`, payload);
+        toast.success('Sponsorlu paylaşım eklendi');
+      }
+      const pubId = shareDialog.publisher.id;
       setShareDialog({ open: false, publisher: null });
+      setEditingShareId(null);
+      if (contentsDialog.open) await refreshContents(pubId);
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Paylaşım eklenemedi');
+      toast.error(error.response?.data?.detail || 'Kaydedilemedi');
     } finally {
       setSubmitting(false);
     }
@@ -180,8 +234,11 @@ const AdminPublishers = () => {
                         <Button size="sm" variant="outline" onClick={() => openEdit(p)} data-testid={`edit-publisher-${p.id}`}>
                           <Pencil size={14} className="mr-1" /> Düzenle
                         </Button>
+                        <Button size="sm" variant="outline" onClick={() => openContents(p)} data-testid={`view-shares-${p.id}`}>
+                          <Megaphone size={14} className="mr-1" /> Paylaşımlar
+                        </Button>
                         <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" onClick={() => openShare(p)} data-testid={`add-share-${p.id}`}>
-                          <Megaphone size={14} className="mr-1" /> Sponsorlu Paylaşım Ekle
+                          <Plus size={14} className="mr-1" /> Sponsorlu Paylaşım Ekle
                         </Button>
                       </div>
                     </td>
@@ -251,7 +308,7 @@ const AdminPublishers = () => {
       <Dialog open={shareDialog.open} onOpenChange={(open) => setShareDialog(prev => ({ ...prev, open }))}>
         <DialogContent className="max-w-md" data-testid="share-dialog">
           <DialogHeader>
-            <DialogTitle>Sponsorlu Paylaşım Ekle{shareDialog.publisher ? ` — ${shareDialog.publisher.name}` : ''}</DialogTitle>
+            <DialogTitle>{editingShareId ? 'Sponsorlu Paylaşım Düzenle' : 'Sponsorlu Paylaşım Ekle'}{shareDialog.publisher ? ` — ${shareDialog.publisher.name}` : ''}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -290,6 +347,51 @@ const AdminPublishers = () => {
             <Button variant="outline" onClick={() => setShareDialog({ open: false, publisher: null })}>İptal</Button>
             <Button onClick={handleSaveShare} disabled={submitting} className="bg-indigo-600 hover:bg-indigo-700" data-testid="save-share-btn">
               {submitting ? 'Ekleniyor...' : 'Ekle'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Yayınevi sponsorlu paylaşımları listesi (düzenle/sil) */}
+      <Dialog open={contentsDialog.open} onOpenChange={(open) => setContentsDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="contents-dialog">
+          <DialogHeader>
+            <DialogTitle>Sponsorlu Paylaşımlar{contentsDialog.publisher ? ` — ${contentsDialog.publisher.name}` : ''}</DialogTitle>
+          </DialogHeader>
+          {contentsDialog.loading ? (
+            <div className="text-center py-8 text-slate-500">Yükleniyor...</div>
+          ) : contentsDialog.items.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">Henüz sponsorlu paylaşım yok</div>
+          ) : (
+            <div className="space-y-2">
+              {contentsDialog.items.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg" data-testid={`content-item-${item.id}`}>
+                  <div className="min-w-0">
+                    <p className="font-medium text-slate-800 truncate">{item.share_name}</p>
+                    <p className="text-xs text-slate-500">
+                      {fmtDate(item.share_date)} · {item.share_type === 'reels' ? 'Reels' : 'Hikaye'} · {item.teacher_name}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Yayınevi: <span className="font-semibold text-red-600">{formatMoney(item.publisher_amount, false)} ₺</span>
+                      {' · '}Öğretmen: <span className="font-semibold text-emerald-600">{formatMoney(item.teacher_amount, false)} ₺</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button size="sm" variant="outline" onClick={() => editShare(contentsDialog.publisher, item)} data-testid={`edit-share-${item.id}`}>
+                      <Pencil size={14} />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="text-red-500" onClick={() => deleteShare(contentsDialog.publisher.id, item.id)} data-testid={`delete-share-${item.id}`}>
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setContentsDialog({ open: false, publisher: null, items: [], loading: false })}>Kapat</Button>
+            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={() => contentsDialog.publisher && openShare(contentsDialog.publisher)} data-testid="contents-add-share-btn">
+              <Plus size={14} className="mr-1" /> Yeni Paylaşım
             </Button>
           </DialogFooter>
         </DialogContent>

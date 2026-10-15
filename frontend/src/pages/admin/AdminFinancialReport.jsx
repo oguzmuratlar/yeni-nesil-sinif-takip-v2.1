@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Scale, GraduationCap, CalendarRange, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Scale, GraduationCap, CalendarRange, BarChart3, Building2 } from 'lucide-react';
 import { formatMoney } from '../../lib/utils';
 import { toast } from 'sonner';
 
@@ -211,6 +211,7 @@ const AdminFinancialReport = () => {
     { label: 'Toplam Gider', value: s?.total_expense, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-100', testId: 'card-total-expense' },
     { label: 'Net Bilanço', value: s?.net_balance, icon: Scale, color: (s?.net_balance ?? 0) >= 0 ? 'text-blue-600' : 'text-red-600', bg: 'bg-blue-100', testId: 'card-net-balance' },
     { label: 'Öğretmen Ödemeleri', value: s?.teacher_payments, icon: GraduationCap, color: 'text-purple-600', bg: 'bg-purple-100', testId: 'card-teacher-payments' },
+    { label: 'Yayınevi Geliri', value: s?.publisher_income, icon: Building2, color: 'text-fuchsia-600', bg: 'bg-fuchsia-100', testId: 'card-publisher-income' },
   ];
 
   return (
@@ -222,7 +223,7 @@ const AdminFinancialReport = () => {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
           {summaryCards.map(card => {
             const Icon = card.icon;
             return (

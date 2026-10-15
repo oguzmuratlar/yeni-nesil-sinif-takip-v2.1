@@ -7,6 +7,10 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
+### Sponsorlu Paylaşım Düzenle/Sil + Finansal Rapor Yayınevi Geliri (Ekim 2026 - 2. tur)
+- **Sponsorlu Paylaşım Düzenle/Sil**: Yayınevleri listesinde her yayınevi için "Paylaşımlar" butonu → o yayınevinin sponsorlu paylaşımlarını listeleyen dialog (yayınevi/öğretmen tutarları + düzenle/sil). Backend: `PUT /api/publishers/{pid}/sponsored-content/{cid}` (tutar/tip/hoca/ad güncellenir; publisher_amount manuel>varsayılan, teacher_amount güncel öğretmen ücretinden yeniden hesaplanır), `DELETE .../{cid}`. Düzenleme/silme yayınevi bakiyesini anında günceller (admin-only).
+- **Finansal Rapor — Yayınevi Geliri**: `get_financial_report` summary_cards'a `publisher_income` (publisher_id olan student_payment ödemeleri toplamı) eklendi; frontend'de 6. özet kartı "Yayınevi Geliri". Test: curl ile düzenle (-9500), sil (-500), rapor yayınevi geliri (7000) + ekran görüntüsü doğrulandı.
+
 ### YENİ ÖZELLİK: Yayınevi & Sponsorlu Paylaşım ✅ (Ekim 2026)
 - Feature flag: "Yeni Geliştirmeler" > **Yayınevi & Sponsorlu Paylaşım** (key `sponsor_enabled`, varsayılan kapalı). Pasifken tüm sponsor endpoint'leri 403; admin "Yayınevleri" menüsü + öğretmen "Sponsor" menü/kart gizli. Durum: `GET /api/system-settings/sponsor-status`.
 - Yeni koleksiyonlar: `publishers` (name, contacts[], reels_price?, story_price?), `sponsored_contents` (snapshot: publisher_name_snapshot, publisher_amount, teacher_amount, share_type, share_date, season_id). Teacher'a `sponsor_reels_price`/`sponsor_story_price`; Payment'a `publisher_id`.
