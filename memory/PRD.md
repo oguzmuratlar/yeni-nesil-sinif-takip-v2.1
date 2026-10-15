@@ -699,5 +699,5 @@ POST   /api/year-end/execute
 
 ---
 
-Son Test: 19 Ağustos 2026
-Durum: TÜM TESTLER GEÇTİ ✅ (Backend: 18/18, Frontend: 100%)
+Son Test: 15 Ekim 2026
+Durum: Sponsorlu paylaşıma zorunlu tarih seçimi eklendi (AdminPublishers dialog). Öğretmen kazancı share_date'in ait olduğu aya yazılıyor (backend zaten mevcut). Smoke test geçti ✅

@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Building2, Plus, Pencil, Megaphone, Trash2, Phone, User } from 'lucide-react';
 
 const emptyForm = { name: '', reels_price: '', story_price: '', contacts: [{ name: '', phone: '' }] };
-const emptyShare = { share_name: '', share_type: 'reels', teacher_id: '', amount: '' };
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const emptyShare = { share_name: '', share_type: 'reels', teacher_id: '', amount: '', share_date: todayStr() };
 
 const AdminPublishers = () => {
   const [publishers, setPublishers] = useState([]);
@@ -100,7 +101,7 @@ const AdminPublishers = () => {
 
   const openShare = (p) => {
     setShareDialog({ open: true, publisher: p });
-    setShare(emptyShare);
+    setShare({ ...emptyShare, share_date: todayStr() });
     setEditingShareId(null);
   };
 
@@ -129,7 +130,8 @@ const AdminPublishers = () => {
       share_name: item.share_name || '',
       share_type: item.share_type || 'reels',
       teacher_id: item.teacher_id || '',
-      amount: item.publisher_amount != null ? String(item.publisher_amount) : ''
+      amount: item.publisher_amount != null ? String(item.publisher_amount) : '',
+      share_date: item.share_date || todayStr()
     });
   };
 
@@ -148,13 +150,15 @@ const AdminPublishers = () => {
   const handleSaveShare = async () => {
     if (!share.share_name.trim()) { toast.error('Paylaşım adı zorunludur'); return; }
     if (!share.teacher_id) { toast.error('Paylaşım hocası seçilmelidir'); return; }
+    if (!share.share_date) { toast.error('Paylaşım tarihi zorunludur'); return; }
     setSubmitting(true);
     try {
       const payload = {
         share_name: share.share_name.trim(),
         share_type: share.share_type,
         teacher_id: share.teacher_id,
-        amount: share.amount === '' ? null : parseFloat(share.amount)
+        amount: share.amount === '' ? null : parseFloat(share.amount),
+        share_date: share.share_date
       };
       if (editingShareId) {
         await apiClient.put(`/publishers/${shareDialog.publisher.id}/sponsored-content/${editingShareId}`, payload);
@@ -324,6 +328,11 @@ const AdminPublishers = () => {
                   <SelectItem value="story">Hikaye</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Paylaşım Tarihi *</Label>
+              <Input type="date" value={share.share_date} onChange={(e) => setShare({ ...share, share_date: e.target.value })} data-testid="share-date-input" />
+              <p className="text-xs text-slate-500">Öğretmenin kazancı bu tarihin ait olduğu aya yazılır.</p>
             </div>
             <div className="space-y-2">
               <Label>Paylaşım Hocası *</Label>
