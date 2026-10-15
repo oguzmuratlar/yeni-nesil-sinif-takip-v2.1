@@ -7,7 +7,15 @@
 
 ## Son Güncelleme: 18 Eylül 2026
 
-### Veli - Çoklu Öğrenci & Mevcut Veliye Ekleme (7 Ekim 2026 - 3. tur)
+### YENİ ÖZELLİK: Yayınevi & Sponsorlu Paylaşım ✅ (Ekim 2026)
+- Feature flag: "Yeni Geliştirmeler" > **Yayınevi & Sponsorlu Paylaşım** (key `sponsor_enabled`, varsayılan kapalı). Pasifken tüm sponsor endpoint'leri 403; admin "Yayınevleri" menüsü + öğretmen "Sponsor" menü/kart gizli. Durum: `GET /api/system-settings/sponsor-status`.
+- Yeni koleksiyonlar: `publishers` (name, contacts[], reels_price?, story_price?), `sponsored_contents` (snapshot: publisher_name_snapshot, publisher_amount, teacher_amount, share_type, share_date, season_id). Teacher'a `sponsor_reels_price`/`sponsor_story_price`; Payment'a `publisher_id`.
+- Admin: "Yayınevleri" sayfası Branşlar'ın hemen altında (ayrı menü) — liste (Ad, İletişim Kişileri, Reels/Hikaye Ücreti, Bakiye, İşlemler), oluştur/düzenle (çoklu iletişim kişisi), "Sponsorlu Paylaşım Ekle" dialog. Öğretmen profilinde "Sponsorlu Paylaşım" ücret bölümü. Ödemeler formunda opsiyonel "Yayınevi" alanı (öğrenci XOR yayınevi).
+- Sponsorlu paylaşım tutarı: manuel tutar > yayınevi varsayılan ücreti; ikisi de yoksa 400. Öğretmen kazancı öğretmenin kendi sponsor ücretinden (yayınevi tutarından bağımsız). Yayınevi bakiyesi = ödemeler − sponsorlu tutarlar (negatif=borçlu).
+- Öğretmen: dashboard "Sponsorlu İçerik" kartı + üst menü "Sponsor"; `/teacher/sponsor` detay ekranı (YouTube detay tasarımı, aylık filtre, toplam kazanç, tablo). Bakiye ekranında 4. kart "Sponsor Kazancı". Öğretmen toplam bakiyesine sponsor kazancı dahil (aylık, share_date). Snapshot: ücret değişse bile eski kayıt değişmez.
+- Endpoint'ler: GET/POST/PUT /api/publishers, POST/GET /api/publishers/{id}/sponsored-content(s), GET /api/teachers/{id}/sponsored-contents, GET /api/teacher/sponsored-contents. Yetki backend'de zorlanır (öğretmen/veli yönetim endpoint'lerine 403, öğretmen sadece kendi kayıtları). Test: Backend 18/18, Frontend E2E (iteration_30).
+
+
 - Öğrenci formunda veli eklerken MEVCUT bir veli kullanıcı adı girilirse onay dialogu çıkar: "{username} velisi mevcut, {öğrenciler} öğrencilerinin velisi. Bu öğrenciyi de {username} velisine eklemek istiyor musunuz?" Onaylanırsa öğrenci o veliye eklenir (linked_student_ids'e append). Böylece bir veliye önyüzden birden fazla öğrenci bağlanabilir.
 - Yeni endpoint: `GET /api/admin/veli-lookup?username=` → {exists, is_parent, student_names, student_count} (admin).
 - Backend `create_student`: mevcut parent kullanıcı adıyla gelince hata vermek yerine öğrenciyi mevcut veliye ekler; şifre gerekmez. Parent olmayan (admin/teacher) kullanıcı adı → 400. `update_student`: girilen kullanıcı adı başka mevcut veliye aitse öğrenciyi eski veliden çıkarıp hedef veliye taşır; eski veli öğrencisiz kalırsa silinir.
