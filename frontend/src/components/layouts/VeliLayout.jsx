@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Home, BookOpen, CreditCard, LogOut, Menu, X } from 'lucide-react';
+import VeliAnnouncements from '../veli/VeliAnnouncements';
 
 const VeliLayout = ({ children }) => {
   const { logout } = useAuth();
@@ -106,6 +107,8 @@ const VeliLayout = ({ children }) => {
           </div>
         )}
       </header>
+
+      <VeliAnnouncements />
 
       <main className="container mx-auto px-4 lg:px-6 py-6 lg:py-10">
         {children}

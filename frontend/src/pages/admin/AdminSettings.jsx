@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
-import { Settings, ToggleLeft, ToggleRight, BookOpen, Loader2, Calendar, ChevronRight, Link2, Database, Download, Upload, AlertTriangle, CheckCircle2, X, Users } from 'lucide-react';
+import { Settings, ToggleLeft, ToggleRight, BookOpen, Loader2, Calendar, ChevronRight, Link2, Database, Download, Upload, AlertTriangle, CheckCircle2, X, Users, Megaphone } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Switch } from '../../components/ui/switch';
@@ -72,6 +72,8 @@ const AdminSettings = () => {
         return <Link2 className="h-5 w-5 text-teal-600" />;
       case 'veli_enabled':
         return <Users className="h-5 w-5 text-indigo-600" />;
+      case 'announcements_enabled':
+        return <Megaphone className="h-5 w-5 text-indigo-600" />;
       default:
         return <Settings className="h-5 w-5 text-slate-600" />;
     }
@@ -223,6 +225,8 @@ const AdminSettings = () => {
         return 'Öğretmenlerin öğrenci panelinde "Dersi Başlat" butonunu görmesini ve ders linklerini kullanarak hızlı ders girişi yapmasını kontrol eder.';
       case 'veli_enabled':
         return 'Veli kullanıcısı oluşturmayı ve veli panelini (ders/bakiye/ödeme görüntüleme) açar. Pasifken veli girişi kapanır ve öğrenci/kullanıcı formlarındaki veli alanları gizlenir.';
+      case 'announcements_enabled':
+        return 'Admin "Duyurular" sayfasını, login ekranındaki kayan duyuru alanını ve veli panelindeki duyuru/popup gösterimini açar. Pasifken tüm duyurular gizlenir.';
       default:
         return '';
     }

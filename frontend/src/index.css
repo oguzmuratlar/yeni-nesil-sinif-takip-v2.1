@@ -207,3 +207,21 @@ code {
 .animate-slide-in {
     animation: slideIn 0.2s ease-out;
 }
+
+
+/* Duyuru ticker (kayar yazı) */
+@keyframes announcement-marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+
+.announcement-marquee {
+    display: inline-flex;
+    white-space: nowrap;
+    will-change: transform;
+    animation: announcement-marquee linear infinite;
+}
+
+.announcement-marquee-wrap:hover .announcement-marquee {
+    animation-play-state: paused;
+}

@@ -27,7 +27,8 @@ import {
   Link2,
   BarChart3,
   Star,
-  Building2
+  Building2,
+  Megaphone
 } from 'lucide-react';
 
 const AdminLayout = ({ children }) => {
@@ -37,11 +38,13 @@ const AdminLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [ynsEnabled, setYnsEnabled] = useState(false);
   const [sponsorEnabled, setSponsorEnabled] = useState(false);
+  const [announcementsEnabled, setAnnouncementsEnabled] = useState(false);
 
   useEffect(() => {
     import('../../api/axios').then(({ default: api }) => {
       api.get('/system-settings/yns-league-status').then(r => setYnsEnabled(r.data.enabled)).catch(() => {});
       api.get('/system-settings/sponsor-status').then(r => setSponsorEnabled(r.data.enabled)).catch(() => {});
+      api.get('/system-settings/announcements-status').then(r => setAnnouncementsEnabled(r.data.enabled)).catch(() => {});
     });
   }, []);
   
@@ -119,6 +122,7 @@ const AdminLayout = ({ children }) => {
     ],
     bottom: [
       { path: '/admin/settings', label: 'Yeni Geliştirmeler', icon: Settings },
+      ...(announcementsEnabled ? [{ path: '/admin/announcements', label: 'Duyurular', icon: Megaphone }] : []),
       { path: '/admin/homework-content', label: 'İçerik Yönetimi', icon: Library },
       { path: '/admin/badges', label: 'Rozetler', icon: Trophy },
       ...(ynsEnabled ? [{ path: '/admin/yns-league', label: 'YNS League', icon: Star }] : []),

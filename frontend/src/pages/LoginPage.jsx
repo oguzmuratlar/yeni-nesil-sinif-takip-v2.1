@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import apiClient from '../api/axios';
+import AnnouncementTicker from '../components/announcements/AnnouncementTicker';
+import AnnouncementModal from '../components/announcements/AnnouncementModal';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
@@ -12,8 +15,16 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
+  const [annModalOpen, setAnnModalOpen] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    apiClient.get('/announcements/login')
+      .then(r => setAnnouncements(r.data || []))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,6 +50,17 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
+      {announcements.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
+          <AnnouncementTicker
+            announcements={announcements}
+            variant="light"
+            onClick={() => setAnnModalOpen(true)}
+          />
+        </div>
+      )}
+      <AnnouncementModal items={announcements} open={annModalOpen} onOpenChange={setAnnModalOpen} />
+
       {/* Form Side - Full width on mobile */}
       <div className="flex-1 flex items-center justify-center p-6 lg:p-8 bg-white min-h-screen lg:min-h-0">
         <div className="w-full max-w-md">

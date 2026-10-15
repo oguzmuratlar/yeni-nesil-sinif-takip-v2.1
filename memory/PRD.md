@@ -699,5 +699,15 @@ POST   /api/year-end/execute
 
 ---
 
+### 2026-10-15 — Duyurular (Announcements) Sistemi
+- **Feature flag**: `announcements_enabled` (Yeni Geliştirmeler sayfasından aç/kapa). Kapalıyken menü, login ticker ve veli duyuruları gizlenir.
+- **Admin Duyurular sayfası** (`/admin/announcements`, AdminAnnouncements.jsx): başlık, metin, başlangıç/bitiş tarihi, çoklu "Kimler Görecek" hedefi (checkbox, VEYA mantığı). CRUD + aktif/pasif rozet.
+- **Hedef türleri**: individual_students, group_students, math_students, turkish_students, science_students, grade_5..8, everyone, login_only. Öğrenci branş/ders tipi `student_courses`'tan, sınıf `student.level`'dan çözülür.
+- **Login ekranı**: altta sabit kayan yazı (ticker) — yalnızca `login_only` aktif duyuruları. Tıkla → tam metin popup. Public endpoint `/api/announcements/login`.
+- **Veli paneli**: üstte kayan duyuru alanı (hedefe uyan aktif duyurular, deduped). İlk girişte görülmemiş duyurular otomatik popup; `announcement_views` (parent_id+announcement_id) ile tekrar açılmaz. Birden fazla → başlık listesi → tıkla → detay.
+- **Collections**: `announcements`, `announcement_views`.
+- **Endpoints**: admin CRUD `/api/admin/announcements`, `/api/announcements/login` (public), `/api/parent/announcements`, `/api/parent/announcements/unseen`, `POST /api/parent/announcements/{id}/seen`. Yetki + hedefleme backend'de uygulanır.
+- **Test**: curl ile OR eşleşme, login_only izolasyonu, süre filtresi, idempotent seen doğrulandı. Frontend smoke (login ticker+modal, veli auto-popup+seen suppression, admin CRUD) desktop+mobil geçti.
+
 Son Test: 15 Ekim 2026
 Durum: Sponsorlu paylaşıma zorunlu tarih seçimi eklendi (AdminPublishers dialog). Öğretmen kazancı share_date'in ait olduğu aya yazılıyor (backend zaten mevcut). Smoke test geçti ✅

@@ -34,6 +34,7 @@ import AdminBankAccounts from "./pages/admin/AdminBankAccounts";
 import AdminBankAccountForm from "./pages/admin/AdminBankAccountForm";
 import AdminBranches from "./pages/admin/AdminBranches";
 import AdminPublishers from "./pages/admin/AdminPublishers";
+import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import TeacherSponsorDetail from "./pages/teacher/TeacherSponsorDetail";
 import AdminGroups from "./pages/admin/AdminGroups";
 import AdminGroupForm from "./pages/admin/AdminGroupForm";
@@ -241,6 +242,11 @@ function App() {
             <Route path="/admin/publishers" element={
               <ProtectedRoute requiredRole="admin">
                 <AdminPublishers />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/announcements" element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminAnnouncements />
               </ProtectedRoute>
             } />
             <Route path="/admin/teachers/:id/sponsor-income" element={

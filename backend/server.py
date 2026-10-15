@@ -450,6 +450,35 @@ class SponsoredContentCreate(BaseModel):
     amount: Optional[float] = None  # opsiyonel - boşsa yayınevi varsayılan ücreti kullanılır
     share_date: Optional[str] = None
 
+# ============= DUYURULAR (ANNOUNCEMENTS) MODELS =============
+
+ANNOUNCEMENT_TARGET_TYPES = {
+    "individual_students", "group_students",
+    "math_students", "turkish_students", "science_students",
+    "grade_5", "grade_6", "grade_7", "grade_8",
+    "everyone", "login_only",
+}
+
+class Announcement(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    message: str
+    start_date: str  # YYYY-MM-DD
+    end_date: str    # YYYY-MM-DD
+    target_types: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
+class AnnouncementCreate(BaseModel):
+    title: str
+    message: str
+    start_date: str
+    end_date: str
+    target_types: List[str] = Field(default_factory=list)
+
 # ============= CASHBOX MODELS =============
 
 class BranchCashbox(BaseModel):
@@ -3006,6 +3035,207 @@ async def delete_sponsored_content(publisher_id: str, content_id: str, current_u
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Sponsorlu paylaşım bulunamadı")
     return {"message": "Sponsorlu paylaşım silindi"}
+
+# ============= DUYURULAR (ANNOUNCEMENTS) ENDPOINTS =============
+
+def _today_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+def _is_active_announcement(ann: dict, today: str) -> bool:
+    return (ann.get("start_date") or "") <= today <= (ann.get("end_date") or "")
+
+async def _compute_parent_target_set(linked_student_ids: List[str]) -> set:
+    """Velinin bağlı öğrencilerinin karşıladığı hedef türlerinin birleşimi (OR)."""
+    if not linked_student_ids:
+        return set()
+    targets = set()
+    students = await db.students.find(
+        {"id": {"$in": linked_student_ids}}, {"_id": 0, "id": 1, "level": 1}
+    ).to_list(1000)
+    for s in students:
+        lvl = str(s.get("level", "")).strip()
+        if lvl in ("5", "6", "7", "8"):
+            targets.add(f"grade_{lvl}")
+    courses = await db.student_courses.find(
+        {"student_id": {"$in": linked_student_ids}, "status": "active"},
+        {"_id": 0, "branch_id": 1, "lesson_type_id": 1}
+    ).to_list(10000)
+    if courses:
+        branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)
+        branch_name_map = {b["id"]: b["name"] for b in branches}
+        lts = await db.lesson_types.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)
+        lt_name_map = {l["id"]: l["name"] for l in lts}
+        branch_target = {"Matematik": "math_students", "Türkçe": "turkish_students", "Fen Bilimleri": "science_students"}
+        lt_target = {"Birebir": "individual_students", "Grup": "group_students"}
+        for c in courses:
+            bn = branch_name_map.get(c.get("branch_id"))
+            if bn in branch_target:
+                targets.add(branch_target[bn])
+            ln = lt_name_map.get(c.get("lesson_type_id"))
+            if ln in lt_target:
+                targets.add(lt_target[ln])
+    return targets
+
+def _announcement_matches_parent(ann: dict, parent_set: set) -> bool:
+    """login_only hariç; everyone herkese; diğer hedefler OR mantığıyla eşleşir."""
+    tt = set(ann.get("target_types", []))
+    if "login_only" in tt:
+        return False
+    if "everyone" in tt:
+        return True
+    concrete = tt - {"everyone", "login_only"}
+    return bool(concrete & parent_set)
+
+# --- Admin ---
+
+@api_router.get("/admin/announcements")
+async def admin_list_announcements(current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin erişebilir")
+    await check_announcements_enabled()
+    anns = await db.announcements.find({}, {"_id": 0}).sort([("created_at", -1)]).to_list(1000)
+    return anns
+
+def _validate_announcement(data: AnnouncementCreate):
+    if not data.title.strip():
+        raise HTTPException(status_code=400, detail="Başlık zorunludur")
+    if not data.message.strip():
+        raise HTTPException(status_code=400, detail="Duyuru metni zorunludur")
+    if not data.start_date or not data.end_date:
+        raise HTTPException(status_code=400, detail="Başlangıç ve bitiş tarihi zorunludur")
+    if data.end_date < data.start_date:
+        raise HTTPException(status_code=400, detail="Bitiş tarihi başlangıç tarihinden önce olamaz")
+    if not data.target_types:
+        raise HTTPException(status_code=400, detail="En az bir hedef kitle seçilmelidir")
+    invalid = [t for t in data.target_types if t not in ANNOUNCEMENT_TARGET_TYPES]
+    if invalid:
+        raise HTTPException(status_code=400, detail=f"Geçersiz hedef: {invalid}")
+
+@api_router.post("/admin/announcements", response_model=Announcement)
+async def admin_create_announcement(data: AnnouncementCreate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin oluşturabilir")
+    await check_announcements_enabled()
+    _validate_announcement(data)
+    ann = Announcement(
+        title=data.title.strip(),
+        message=data.message.strip(),
+        start_date=data.start_date,
+        end_date=data.end_date,
+        target_types=list(dict.fromkeys(data.target_types)),
+        created_by=current_user.username,
+    )
+    doc = ann.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.announcements.insert_one(doc)
+    return ann
+
+@api_router.put("/admin/announcements/{announcement_id}", response_model=Announcement)
+async def admin_update_announcement(announcement_id: str, data: AnnouncementCreate, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin güncelleyebilir")
+    await check_announcements_enabled()
+    existing = await db.announcements.find_one({"id": announcement_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Duyuru bulunamadı")
+    _validate_announcement(data)
+    update_data = {
+        "title": data.title.strip(),
+        "message": data.message.strip(),
+        "start_date": data.start_date,
+        "end_date": data.end_date,
+        "target_types": list(dict.fromkeys(data.target_types)),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user.username,
+    }
+    await db.announcements.update_one({"id": announcement_id}, {"$set": update_data})
+    merged = {**existing, **update_data}
+    if isinstance(merged.get("created_at"), str):
+        merged["created_at"] = datetime.fromisoformat(merged["created_at"])
+    if isinstance(merged.get("updated_at"), str):
+        merged["updated_at"] = datetime.fromisoformat(merged["updated_at"])
+    return Announcement(**merged)
+
+@api_router.delete("/admin/announcements/{announcement_id}")
+async def admin_delete_announcement(announcement_id: str, current_user: User = Depends(get_current_user)):
+    if current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Sadece admin silebilir")
+    await check_announcements_enabled()
+    result = await db.announcements.delete_one({"id": announcement_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Duyuru bulunamadı")
+    await db.announcement_views.delete_many({"announcement_id": announcement_id})
+    return {"message": "Duyuru silindi"}
+
+# --- Login ekranı (public) ---
+
+@api_router.get("/announcements/login")
+async def get_login_announcements():
+    """Login ekranı için aktif 'Sadece Login sayfası' duyuruları. Herkese açık."""
+    if not await is_announcements_enabled():
+        return []
+    today = _today_str()
+    anns = await db.announcements.find(
+        {"target_types": "login_only"}, {"_id": 0, "id": 1, "title": 1, "message": 1, "start_date": 1, "end_date": 1}
+    ).sort([("created_at", -1)]).to_list(1000)
+    return [{"id": a["id"], "title": a["title"], "message": a["message"]} for a in anns if _is_active_announcement(a, today)]
+
+# --- Veli ---
+
+@api_router.get("/parent/announcements")
+async def get_parent_announcements(current_user: User = Depends(get_current_user)):
+    """Velinin hedef kriterlerine uyan aktif duyurular (deduped)."""
+    _require_parent(current_user)
+    await check_announcements_enabled()
+    today = _today_str()
+    parent_set = await _compute_parent_target_set(current_user.linked_student_ids or [])
+    anns = await db.announcements.find({}, {"_id": 0}).sort([("created_at", -1)]).to_list(2000)
+    result = []
+    for a in anns:
+        if _is_active_announcement(a, today) and _announcement_matches_parent(a, parent_set):
+            result.append({"id": a["id"], "title": a["title"], "message": a["message"]})
+    return result
+
+@api_router.get("/parent/announcements/unseen")
+async def get_parent_unseen_announcements(current_user: User = Depends(get_current_user)):
+    """Veli için görülmemiş (popup açılacak) aktif duyurular."""
+    _require_parent(current_user)
+    await check_announcements_enabled()
+    today = _today_str()
+    parent_set = await _compute_parent_target_set(current_user.linked_student_ids or [])
+    seen_docs = await db.announcement_views.find(
+        {"parent_id": current_user.id}, {"_id": 0, "announcement_id": 1}
+    ).to_list(5000)
+    seen_ids = {s["announcement_id"] for s in seen_docs}
+    anns = await db.announcements.find({}, {"_id": 0}).sort([("created_at", -1)]).to_list(2000)
+    result = []
+    for a in anns:
+        if a["id"] in seen_ids:
+            continue
+        if _is_active_announcement(a, today) and _announcement_matches_parent(a, parent_set):
+            result.append({"id": a["id"], "title": a["title"], "message": a["message"]})
+    return result
+
+@api_router.post("/parent/announcements/{announcement_id}/seen")
+async def mark_parent_announcement_seen(announcement_id: str, current_user: User = Depends(get_current_user)):
+    """Veli + duyuru bazında 'görüldü' kaydı (idempotent)."""
+    _require_parent(current_user)
+    await check_announcements_enabled()
+    ann = await db.announcements.find_one({"id": announcement_id}, {"_id": 0, "id": 1})
+    if not ann:
+        raise HTTPException(status_code=404, detail="Duyuru bulunamadı")
+    await db.announcement_views.update_one(
+        {"parent_id": current_user.id, "announcement_id": announcement_id},
+        {"$setOnInsert": {
+            "id": str(uuid.uuid4()),
+            "parent_id": current_user.id,
+            "announcement_id": announcement_id,
+            "first_seen_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"message": "ok"}
+
 
 async def _teacher_sponsored_detail(teacher_id: str, month: Optional[str]):
     query = {"teacher_id": teacher_id}
@@ -6921,7 +7151,8 @@ async def get_system_settings(current_user: User = Depends(get_current_user)):
         {"key": "lesson_links_enabled", "value": False, "description": "Ders Giriş Özelliği"},
         {"key": "yns_league_enabled", "value": False, "description": "YNS League (Öğrenci Yıldız Sistemi)"},
         {"key": "veli_enabled", "value": False, "description": "Veli Kullanıcısı"},
-        {"key": "sponsor_enabled", "value": False, "description": "Yayınevi & Sponsorlu Paylaşım"}
+        {"key": "sponsor_enabled", "value": False, "description": "Yayınevi & Sponsorlu Paylaşım"},
+        {"key": "announcements_enabled", "value": False, "description": "Duyurular"}
     ]
     
     existing_keys = [s["key"] for s in settings]
@@ -7055,7 +7286,20 @@ async def get_sponsor_status_public(current_user: User = Depends(get_current_use
     """Sponsor özelliği durumunu kontrol et - giriş yapmış kullanıcılar."""
     return {"enabled": await is_sponsor_enabled()}
 
-# --- Yıldız tanımları (admin) ---
+async def is_announcements_enabled() -> bool:
+    setting = await db.system_settings.find_one({"key": "announcements_enabled"}, {"_id": 0})
+    if setting is None:
+        return False
+    return setting.get("value", False)
+
+async def check_announcements_enabled():
+    if not await is_announcements_enabled():
+        raise HTTPException(status_code=403, detail="Duyurular özelliği şu anda pasif durumda.")
+
+@api_router.get("/system-settings/announcements-status")
+async def get_announcements_status_public():
+    """Duyurular özelliği durumunu kontrol et - herkese açık (login ekranı için)."""
+    return {"enabled": await is_announcements_enabled()}
 
 @api_router.get("/admin/student-point-definitions")
 async def admin_list_point_definitions(current_user: User = Depends(get_current_user)):
