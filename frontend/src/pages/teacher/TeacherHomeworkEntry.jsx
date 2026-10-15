@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import apiClient from '../../api/axios';
 import { toast } from 'sonner';
+import BookTrackingModal from './BookTrackingModal';
+import { buildBookTrackingSection, bookTrackingStyles } from './bookTrackingPdf';
 
 // Test durumları ve renkleri
 const TEST_STATUSES = {
@@ -114,6 +116,23 @@ const TeacherHomeworkEntry = () => {
   
   // Undo
   const [undoStack, setUndoStack] = useState([]);
+
+  // Kitap Takip Listesi
+  const [bookTrackingOpen, setBookTrackingOpen] = useState(false);
+
+  const refreshBooksAndProgress = async () => {
+    try {
+      const booksRes = await apiClient.get(`/homework/students/${studentId}/books?branch_id=${branchId}`);
+      setBooks(booksRes.data);
+      if (selectedBook) {
+        fetchTestProgress(selectedBook.id);
+        const updated = booksRes.data.find(b => b.id === selectedBook.id);
+        if (updated) setSelectedBook(updated);
+      }
+    } catch (e) {
+      console.error('refreshBooks error:', e);
+    }
+  };
 
   useEffect(() => {
     fetchInitialData();
@@ -883,7 +902,17 @@ const TeacherHomeworkEntry = () => {
   };
 
   // PDF Export - Öğrenci dostu renkli tasarım
-  const handlePDFExport = () => {
+  const handlePDFExport = async () => {
+    // Güncel kitap takip verisini çek (ödev PDF'inin sonuna eklenecek)
+    let trackingData = null;
+    try {
+      const tRes = await apiClient.get(`/homework/students/${studentId}/book-tracking`, {
+        params: { branch_id: branchId },
+      });
+      trackingData = tRes.data;
+    } catch (e) {
+      console.error('Book tracking fetch for PDF failed:', e);
+    }
     const planDates = getPlanDates();
     const monthNames = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
     const startDate = new Date(activePlan?.start_date);
@@ -1246,6 +1275,9 @@ const TeacherHomeworkEntry = () => {
               min-height: auto;
             }
           }
+          /* Kitap Takip Listesi (ödev PDF sonuna eklenir) */
+          .bt-page { page-break-before: always; background: #fff; }
+          ${bookTrackingStyles}
         </style>
       </head>
       <body>
@@ -1369,6 +1401,7 @@ const TeacherHomeworkEntry = () => {
     html += `
           </div>
         </div>
+        ${trackingData ? `<div class="bt-page">${buildBookTrackingSection(trackingData)}</div>` : ''}
         
         <script>
           window.onload = function() {
@@ -1605,6 +1638,17 @@ const TeacherHomeworkEntry = () => {
                     Kitaplar
                   </button>
                   <div className="flex gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 text-xs text-indigo-700 hover:bg-indigo-50"
+                      onClick={() => setBookTrackingOpen(true)}
+                      data-testid="open-book-tracking-btn"
+                      title="Kitap Takip Listesi"
+                    >
+                      <ClipboardCheck className="w-3 h-3 mr-1" />
+                      Takip Listesi
+                    </Button>
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -2343,6 +2387,15 @@ const TeacherHomeworkEntry = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Kitap Takip Listesi Modal */}
+      <BookTrackingModal
+        open={bookTrackingOpen}
+        onOpenChange={setBookTrackingOpen}
+        studentId={studentId}
+        branchId={branchId}
+        onDataChanged={refreshBooksAndProgress}
+      />
 
       {/* Tüm Kitaplar ve Yüzdeleri Dialog */}
       <Dialog open={showAllBooksDialog} onOpenChange={setShowAllBooksDialog}>

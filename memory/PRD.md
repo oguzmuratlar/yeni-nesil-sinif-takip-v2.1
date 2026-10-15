@@ -709,5 +709,13 @@ POST   /api/year-end/execute
 - **Endpoints**: admin CRUD `/api/admin/announcements`, `/api/announcements/login` (public), `/api/parent/announcements`, `/api/parent/announcements/unseen`, `POST /api/parent/announcements/{id}/seen`. Yetki + hedefleme backend'de uygulanır.
 - **Test**: curl ile OR eşleşme, login_only izolasyonu, süre filtresi, idempotent seen doğrulandı. Frontend smoke (login ticker+modal, veli auto-popup+seen suppression, admin CRUD) desktop+mobil geçti.
 
+### 2026-10-15 — Kitap Takip Listesi (Book Tracking)
+- Mevcut ödev takip sistemi üzerine kurulu, **ikinci truth source YOK**. Tek kaynak: book_units/topics/tests + student_test_progress.
+- **Backend** (server.py ~8264): `GET /api/homework/students/{id}/book-tracking?branch_id=` (matris özeti, tek endpoint, toplu sorgu — N+1 yok) ve `PUT .../books/{book_id}/units/{unit_id}/complete` (ünitenin tüm testlerini `completed` yapar). Yetki `_verify_student_access` ile backend'de (öğretmen sadece kendi branşındaki öğrencisi — 403 doğrulandı).
+- Yüzde mevcut `/books` mantığıyla aynı (done=completed+skipped / total). Ünite yeşil = o ünitenin tüm testleri done. Kitapta olmayan ünite hücresi pasif, %'ye dahil değil.
+- **Frontend**: `BookTrackingModal.jsx` (satır=kitap, kolon=ortak üniteler, yuvarlak hücreler: yeşil/beyaz/gri, sticky kitap kolonu, yatay scroll, responsive). "Takip Listesi" butonu ödev ekranı Kitaplar panelinde. Hücreye tıkla → onay → ünite tamamla → çift yönlü senkron (ödev ekranı % + ağaç progress güncellenir).
+- **PDF**: `bookTrackingPdf.js` — bağımsız "PDF İndir" (landscape) + ödev PDF'inin sonuna otomatik eklenir (handlePDFExport async, aynı veri kaynağı). Mevcut ödev PDF içeriği korundu.
+- **Test**: curl (tracking, complete, 80%→100% iki yönlü senkron, 403) + frontend (buton, matris, hücre tıkla tamamla, mobil, standalone PDF içeriği) geçti.
+
 Son Test: 15 Ekim 2026
 Durum: Sponsorlu paylaşıma zorunlu tarih seçimi eklendi (AdminPublishers dialog). Öğretmen kazancı share_date'in ait olduğu aya yazılıyor (backend zaten mevcut). Smoke test geçti ✅

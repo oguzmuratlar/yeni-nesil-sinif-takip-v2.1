@@ -8261,6 +8261,203 @@ async def update_test_status(
         await db.student_test_progress.insert_one(doc)
         return {"message": "İlerleme kaydı oluşturuldu", "progress_id": progress.id}
 
+# ------------- KİTAP TAKİP LİSTESİ (BOOK TRACKING) -------------
+
+DONE_STATUSES = ["completed", "skipped"]
+
+async def _verify_student_access(student_id: str, current_user: User, branch_id: Optional[str] = None):
+    """Öğretmen/admin öğrenciye (ve verilirse branşa) erişim yetkisini doğrular."""
+    student = await db.students.find_one({"id": student_id}, {"_id": 0})
+    if not student:
+        raise HTTPException(status_code=404, detail="Öğrenci bulunamadı")
+    if current_user.user_type == "teacher":
+        q = {"student_id": student_id, "teacher_id": current_user.teacher_id}
+        if branch_id:
+            q["branch_id"] = branch_id
+        course = await db.student_courses.find_one(q)
+        if not course:
+            raise HTTPException(status_code=403, detail="Bu öğrenciye erişim yetkiniz yok")
+    elif current_user.user_type != "admin":
+        raise HTTPException(status_code=403, detail="Yetkisiz erişim")
+    return student
+
+@api_router.get("/homework/students/{student_id}/book-tracking")
+async def get_student_book_tracking(
+    student_id: str,
+    branch_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Kitap Takip Listesi matrisi: kitaplar (satır) x ortak üniteler (kolon).
+    Tek doğruluk kaynağı = student_test_progress. Mevcut kitap ilerleme mantığıyla aynı yüzde.
+    N+1 önlemek için tüm veri toplu sorgularla çekilir."""
+    student = await _verify_student_access(student_id, current_user, branch_id)
+    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0})
+
+    assignments = await db.student_book_assignments.find(
+        {"student_id": student_id, "branch_id": branch_id, "status": "active"}, {"_id": 0}
+    ).sort([("order", 1), ("assigned_at", 1)]).to_list(200)
+    book_ids = [a["book_id"] for a in assignments]
+
+    if not book_ids:
+        return {
+            "student": {"id": student["id"], "name": student.get("name"), "level": student.get("level")},
+            "branch": {"id": branch_id, "name": branch["name"] if branch else "Bilinmiyor"},
+            "unit_columns": [], "books": []
+        }
+
+    books = await db.books.find({"id": {"$in": book_ids}}, {"_id": 0}).to_list(200)
+    book_map = {b["id"]: b for b in books}
+
+    # Toplu: units -> topics -> tests -> progress
+    units = await db.book_units.find({"book_id": {"$in": book_ids}}, {"_id": 0}).to_list(5000)
+    unit_ids = [u["id"] for u in units]
+    topics = await db.book_topics.find({"unit_id": {"$in": unit_ids}}, {"_id": 0}).to_list(20000) if unit_ids else []
+    topic_to_unit = {t["id"]: t["unit_id"] for t in topics}
+    topic_ids = [t["id"] for t in topics]
+    tests = await db.book_tests.find({"topic_id": {"$in": topic_ids}}, {"_id": 0}).to_list(100000) if topic_ids else []
+    progress_records = await db.student_test_progress.find(
+        {"student_id": student_id, "book_id": {"$in": book_ids}}, {"_id": 0, "test_id": 1, "status": 1}
+    ).to_list(200000)
+    done_test_ids = {p["test_id"] for p in progress_records if p.get("status") in DONE_STATUSES}
+
+    # unit_id -> [test_id'ler]
+    unit_test_ids = {uid: [] for uid in unit_ids}
+    book_test_count = {bid: 0 for bid in book_ids}
+    book_done_count = {bid: 0 for bid in book_ids}
+    units_by_book = {}
+    for u in units:
+        units_by_book.setdefault(u["book_id"], []).append(u)
+    for t in tests:
+        uid = topic_to_unit.get(t["topic_id"])
+        if uid is None:
+            continue
+        unit_test_ids.setdefault(uid, []).append(t["id"])
+
+    # Kitap yüzdesi (mevcut mantık: done/total tüm testler)
+    unit_of_test = {}  # test_id -> unit_id (for book counting)
+    for uid, tids in unit_test_ids.items():
+        for tid in tids:
+            unit_of_test[tid] = uid
+    # unit -> book
+    unit_book = {u["id"]: u["book_id"] for u in units}
+    for tid, uid in unit_of_test.items():
+        bid = unit_book.get(uid)
+        if bid is None:
+            continue
+        book_test_count[bid] += 1
+        if tid in done_test_ids:
+            book_done_count[bid] += 1
+
+    # Ortak ünite kolonları (isim bazlı birleştirme)
+    col_by_key = {}  # key -> {"name","order"}
+    for u in units:
+        name = (u.get("name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        order = u.get("order", 0) or 0
+        if key not in col_by_key:
+            col_by_key[key] = {"key": key, "name": name, "order": order}
+        else:
+            col_by_key[key]["order"] = min(col_by_key[key]["order"], order)
+    unit_columns = sorted(col_by_key.values(), key=lambda c: (c["order"], c["name"]))
+
+    # Her kitap için hücreler
+    result_books = []
+    for a in assignments:
+        bid = a["book_id"]
+        book = book_map.get(bid)
+        if not book:
+            continue
+        total = book_test_count.get(bid, 0)
+        done = book_done_count.get(bid, 0)
+        cells = {}
+        for u in units_by_book.get(bid, []):
+            name = (u.get("name") or "").strip()
+            if not name:
+                continue
+            key = name.lower()
+            tids = unit_test_ids.get(u["id"], [])
+            completed = len(tids) > 0 and all(tid in done_test_ids for tid in tids)
+            cells[key] = {
+                "present": True,
+                "completed": completed,
+                "unit_id": u["id"],
+                "test_count": len(tids),
+            }
+        result_books.append({
+            "id": bid,
+            "name": book.get("name"),
+            "total_tests": total,
+            "completed_tests": done,
+            "progress_percent": round((done / total * 100) if total > 0 else 0, 1),
+            "cells": cells,
+        })
+
+    return {
+        "student": {"id": student["id"], "name": student.get("name"), "level": student.get("level")},
+        "branch": {"id": branch_id, "name": branch["name"] if branch else "Bilinmiyor"},
+        "unit_columns": unit_columns,
+        "books": result_books,
+    }
+
+@api_router.put("/homework/students/{student_id}/books/{book_id}/units/{unit_id}/complete")
+async def complete_book_unit(
+    student_id: str,
+    book_id: str,
+    unit_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Bir kitabın ünitesindeki tüm testleri 'completed' durumuna çeker (çift yönlü senkron)."""
+    await check_homework_tool_enabled()
+    book = await db.books.find_one({"id": book_id}, {"_id": 0})
+    if not book:
+        raise HTTPException(status_code=404, detail="Kitap bulunamadı")
+    await _verify_student_access(student_id, current_user, book.get("branch_id"))
+
+    unit = await db.book_units.find_one({"id": unit_id, "book_id": book_id}, {"_id": 0})
+    if not unit:
+        raise HTTPException(status_code=404, detail="Ünite bu kitaba ait değil")
+
+    topics = await db.book_topics.find({"unit_id": unit_id}, {"_id": 0, "id": 1}).to_list(10000)
+    topic_ids = [t["id"] for t in topics]
+    tests = await db.book_tests.find({"topic_id": {"$in": topic_ids}}, {"_id": 0, "id": 1}).to_list(100000) if topic_ids else []
+    test_ids = [t["id"] for t in tests]
+    if not test_ids:
+        raise HTTPException(status_code=400, detail="Bu ünitede tamamlanacak test yok")
+
+    now = datetime.now(timezone.utc).isoformat()
+    updated_by = current_user.teacher_id if current_user.user_type == "teacher" else "admin"
+    existing = await db.student_test_progress.find(
+        {"student_id": student_id, "test_id": {"$in": test_ids}}, {"_id": 0, "test_id": 1}
+    ).to_list(100000)
+    existing_ids = {e["test_id"] for e in existing}
+
+    # Mevcut kayıtları completed yap
+    if existing_ids:
+        await db.student_test_progress.update_many(
+            {"student_id": student_id, "test_id": {"$in": list(existing_ids)}},
+            {"$set": {"status": "completed", "updated_at": now, "updated_by": updated_by}}
+        )
+    # Eksik kayıtları oluştur
+    new_docs = []
+    for tid in test_ids:
+        if tid in existing_ids:
+            continue
+        prog = StudentTestProgress(
+            student_id=student_id, book_id=book_id, test_id=tid,
+            status="completed", updated_by=updated_by
+        )
+        d = prog.model_dump()
+        d['created_at'] = d['created_at'].isoformat()
+        d['updated_at'] = d['updated_at'].isoformat()
+        new_docs.append(d)
+    if new_docs:
+        await db.student_test_progress.insert_many(new_docs)
+
+    return {"message": "Ünite tamamlandı olarak işaretlendi", "tests_completed": len(test_ids)}
+
+
 # ------------- HAFTALIK PLAN -------------
 
 @api_router.get("/homework/students/{student_id}/plans")
