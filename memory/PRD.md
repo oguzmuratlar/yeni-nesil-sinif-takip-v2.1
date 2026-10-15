@@ -717,5 +717,7 @@ POST   /api/year-end/execute
 - **PDF**: `bookTrackingPdf.js` — bağımsız "PDF İndir" (landscape) + ödev PDF'inin sonuna otomatik eklenir (handlePDFExport async, aynı veri kaynağı). Mevcut ödev PDF içeriği korundu.
 - **Test**: curl (tracking, complete, 80%→100% iki yönlü senkron, 403) + frontend (buton, matris, hücre tıkla tamamla, mobil, standalone PDF içeriği) geçti.
 
+- **Tasarım (teal tema)**: Ekran + PDF, referans görseldeki "KİTAP TAKİP LİSTESİ" tasarımına uyarlandı — teal başlık barı (SINIF kutusu, Pacifico cursive öğrenci adı, yeşil onay), sol panelde %odometre + marka maskotu (`/public/mascot-books.png`, şeffaf) + dikey Instagram handle (branşa göre), dikey ünite başlıkları + numaralı kolonlar, teal yuvarlak pill satırlar, yeşil/beyaz/soluk daireler. Homework PDF'ine landscape named-page olarak eklenir.
+
 Son Test: 15 Ekim 2026
 Durum: Sponsorlu paylaşıma zorunlu tarih seçimi eklendi (AdminPublishers dialog). Öğretmen kazancı share_date'in ait olduğu aya yazılıyor (backend zaten mevcut). Smoke test geçti ✅

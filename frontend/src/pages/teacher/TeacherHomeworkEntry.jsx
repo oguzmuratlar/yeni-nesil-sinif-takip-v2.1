@@ -1275,8 +1275,9 @@ const TeacherHomeworkEntry = () => {
               min-height: auto;
             }
           }
-          /* Kitap Takip Listesi (ödev PDF sonuna eklenir) */
-          .bt-page { page-break-before: always; background: #fff; }
+          /* Kitap Takip Listesi (ödev PDF sonuna otomatik eklenir) */
+          @page bt { size: A4 landscape; margin: 8mm; }
+          .bt-page { page-break-before: always; page: bt; background: #d4f1f4; }
           ${bookTrackingStyles}
         </style>
       </head>
